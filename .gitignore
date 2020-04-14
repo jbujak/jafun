@@ -1,0 +1,8 @@
+*.vo
+*.glob
+*.v#
+*.aux
+.coqdeps.d
+Makefile
+Makefile.coq
+*.bkp

@@ -1,0 +1,10 @@
+Requirements:
+* Coq 8.7.2
+* Hammer
+  http://cl-informatik.uibk.ac.at/cek/coqhammer/
+  If you do not have it installed globally, you can
+  create a subdirectory Hammer, compile (only Reconstr.vo is needed)
+  and add the following line to the top of _CoqProject
+  -R Hammer Hammer
+  
+[jjb] Przy przekompilowaniu `export COQBIN=/usr/bin/`
