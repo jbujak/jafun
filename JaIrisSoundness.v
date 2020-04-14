@@ -125,13 +125,6 @@ Qed.
 
 (* =============== Gamma Match Env Lemmas =============== *)
 
-Lemma ShrinkedGammaMatchesShrinkedEnv : forall x l type env gamma h,
-  (JFIGammaMatchEnv h gamma env) ->
-  (JFILocOfType l h type) ->
-  (JFIGammaMatchEnv h (StrMap.remove x gamma) ((StrMap.remove x env))).
-Proof.
-Admitted.
-
 Lemma ExtendedGammaMatchesExtendedEnv : forall x l type env gamma h,
   (JFIGammaMatchEnv h gamma env) ->
   (JFILocOfType l h type) ->
@@ -206,88 +199,6 @@ Qed.
 
 (* =============== Env Lemmas =============== *)
 
-Lemma EqualValuesExistInEnv : forall h env val1 val2,
-  (JFIHeapSatisfiesInEnv h (JFIEq val1 val2) env) ->
-   exists loc1 loc2, JFIValToLoc val1 env = Some loc1 /\ JFIValToLoc val2 env = Some loc2.
-Proof.
-  intros h env val1 val2.
-  intros h_satisfies_eq.
-  unfold JFIHeapSatisfiesInEnv in h_satisfies_eq.
-  destruct (JFIValToLoc val1 env), (JFIValToLoc val2 env).
-  + exists l, l0.
-    split; trivial.
-  + destruct h_satisfies_eq.
-  + destruct h_satisfies_eq.
-  + destruct h_satisfies_eq.
-Qed.
-
-Lemma ValToLocGivesSomeIffArgInEnv : forall env x,
-  (exists loc, JFIValToLoc (JFSyn (JFVar x)) env = Some loc) <-> (StrMap.In x env).
-Proof.
-  intros env x.
-  split; unfold JFIValToLoc; apply StrMap_in_find_iff.
-Qed.
-
-Lemma ExtendingEnvPreservesExistingVars : forall v x l loc env,
-  (~ StrMap.In x env) ->
-  (JFIValToLoc v env = Some loc) ->
-   JFIValToLoc v env = JFIValToLoc v (StrMap.add x l env).
-Proof.
-  intros v x l loc env.
-  intros x_not_in_env v_in_env.
-  unfold JFIValToLoc.
-  destruct v.
-  + trivial.
-  + destruct x0.
-    ++ symmetry.
-       destruct (Classical_Prop.classic (x = x0)) as [ x_eq_x0 | x_ne_x0 ].
-       +++ replace x0 with x in v_in_env.
-           - exfalso.
-             destruct (ValToLocGivesSomeIffArgInEnv env x) as ( _ & H ).
-             apply (ex_intro (fun (y : Loc) => JFIValToLoc (JFSyn (JFVar x)) env = Some y)) in v_in_env.
-             apply (ValToLocGivesSomeIffArgInEnv env x) in v_in_env.
-             apply x_not_in_env.
-             apply v_in_env.
-       +++ apply StrMapFacts.add_neq_o.
-           exact x_ne_x0.
-    ++ trivial. (* TODO this *)
-Qed.
-
-Lemma EnvAddNewGivesSomeThenItIsJustAdd : forall x l env env_x,
-  (JFIEnvAddNew x l env = Some env_x) ->
-    (StrMap.add x l env) = env_x.
-Proof.
-  intros x l env env_x.
-  intros add_x_to_env.
-  unfold JFIEnvAddNew in add_x_to_env.
-  destruct (StrMap.mem (elt:=Loc) x env).
-    ++ discriminate add_x_to_env.
-    ++ injection add_x_to_env.
-       trivial.
-Qed.
-
-Lemma EnvAddNewPreservesExistingVars : forall v x l loc env env_x,
-  (JFIEnvAddNew x l env = Some env_x) ->
-  (JFIValToLoc v env = Some loc) ->
-   JFIValToLoc v env = JFIValToLoc v env_x.
-Proof.
-  intros v x l loc env env_x.
-  intros add_x_to_env v_is_some_loc.
-  unfold JFIEnvAddNew in add_x_to_env.
-  fold JFIEnvAddNew in add_x_to_env.
-  replace env_x with (StrMap.add x l env).
-  + apply ExtendingEnvPreservesExistingVars with (loc := loc).
-    ++ unfold not.
-       intros x_in_env.
-       apply StrMapFacts.mem_in_iff in x_in_env.
-       destruct (StrMap.mem (elt:=Loc) x env).
-       +++ discriminate add_x_to_env.
-       +++ discriminate x_in_env.
-    ++ exact v_is_some_loc.
-  + apply EnvAddNewGivesSomeThenItIsJustAdd.
-    exact add_x_to_env.
-Qed.
-
 Lemma FreshVarDifferentFromForallVar : forall x class name t,
   (JFIVarFreshInTerm x (JFIForall class name t)) ->
    x <> name.
@@ -302,46 +213,6 @@ Proof.
   destruct (String.eqb name x).
   + destruct x_fresh.
   + discriminate x_eq_name.
-Qed.
-
-Lemma ExtendingEnvPreservesHeapSatisfiyingEq : forall val1 val2 x l env env_x h,
-  (JFIEnvAddNew x l env = Some env_x) ->
-  (JFIHeapSatisfiesInEnv h (JFIEq val1 val2) env) ->
-   JFIHeapSatisfiesInEnv h (JFIEq val1 val2) env_x.
-Proof.
-  intros val1 val2 x l env env_x h.
-  intros add_env_x h_satisfies_eq.
-  simpl.
-  replace (JFIValToLoc val1 env_x) with (JFIValToLoc val1 env);
-    replace (JFIValToLoc val2 env_x) with (JFIValToLoc val2 env).
-  + exact h_satisfies_eq.
-  + unfold JFIHeapSatisfiesInEnv in h_satisfies_eq.
-    destruct (JFIValToLoc val1 env) in h_satisfies_eq.
-    ++ apply EnvAddNewPreservesExistingVars with (x := x) (l := l) (loc := l0).
-       exact add_env_x.
-       +++ destruct (JFIValToLoc val2 env).
-           - replace l0 with l1.
-             trivial.
-           - destruct h_satisfies_eq.
-    ++ destruct h_satisfies_eq.
-  + unfold JFIHeapSatisfiesInEnv in h_satisfies_eq.
-    destruct (JFIValToLoc val2 env) in h_satisfies_eq.
-    ++ apply EnvAddNewPreservesExistingVars with (x := x) (l := l) (loc := l0).
-       +++ exact add_env_x.
-       +++ destruct (JFIValToLoc val1 env).
-           - replace l0 with l1.
-              trivial.
-           - destruct h_satisfies_eq.
-    ++ destruct (JFIValToLoc val1 env); destruct h_satisfies_eq.
-  + unfold JFIHeapSatisfiesInEnv in h_satisfies_eq.
-    destruct (JFIValToLoc val1 env) in h_satisfies_eq.
-    ++ apply EnvAddNewPreservesExistingVars with (x := x) (l := l) (loc := l0).
-       +++ exact add_env_x.
-       +++ destruct (JFIValToLoc val2 env).
-           - replace l0 with l1.
-              trivial.
-           - destruct h_satisfies_eq.
-    ++ destruct h_satisfies_eq.
 Qed.
 
 Lemma AddingFreshVarPreservesValToLoc : forall x l val env,
@@ -654,87 +525,6 @@ Proof.
   + admit.
 Admitted.
 
-Lemma ExtendingEnvPreservesHeapSatisfiying : forall h q x l env env_x,
-  (JFIEnvAddNew x l env = Some env_x) ->
-    ((JFIHeapSatisfiesInEnv h q env) <->
-      JFIHeapSatisfiesInEnv h q env_x).
-Proof.
-  intros h q x l env env_x.
-  intros add_env_x.
-  induction q as
-    [ | | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | type name t IH_t
-    | type name t IH_t
-    | t1 IH_t1 e v t2 IH_t2
-    | val1 val2
-    | obj field val
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    ].
-  (* JFITrue *)
-  + simpl.
-    split; trivial.
-  (* JFIFalse *)
-  + simpl.
-    split; trivial.
-  (* JFIAnd t1 t2 *)
-  + simpl.
-    split; intros (h_satisfies_t1 & h_satisfies_t2); split.
-    ++ apply IH_t1; exact h_satisfies_t1.
-    ++ apply IH_t2; exact h_satisfies_t2.
-    ++ apply IH_t1; exact h_satisfies_t1.
-    ++ apply IH_t2; exact h_satisfies_t2.
-  (* JFIOr t1 t2 *)
-  + simpl.
-    split; intros [ h_satisfies_t1 | h_satisfies_t2 ].
-    ++ apply or_introl.
-       apply IH_t1; exact h_satisfies_t1.
-    ++ apply or_intror.
-       apply IH_t2; exact h_satisfies_t2.
-    ++ apply or_introl.
-       apply IH_t1; exact h_satisfies_t1.
-    ++ apply or_intror.
-       apply IH_t2; exact h_satisfies_t2.
-  (* JFIImplies t1 t2 *)
-  + simpl.
-    split; intros [ not_h_satisfies_t1 | h_satisfies_t2 ].
-    ++ apply or_introl.
-       unfold not.
-       intros h_satisfies_t1.
-       apply IH_t1 in h_satisfies_t1.
-       exact (not_h_satisfies_t1 h_satisfies_t1).
-    ++ apply or_intror.
-       apply IH_t2; exact h_satisfies_t2.
-    ++ apply or_introl.
-       unfold not.
-       intros h_satisfies_t1.
-       apply IH_t1 in h_satisfies_t1.
-       exact (not_h_satisfies_t1 h_satisfies_t1).
-    ++ apply or_intror.
-       apply IH_t2; exact h_satisfies_t2.
-  (* JFIExists *)
-  + admit.
-  (* JFIForall *)
-  + admit.
-  (* JFIHoare *)
-  + admit.
-  (* JFIEq *)
-  + split.
-    ++ apply ExtendingEnvPreservesHeapSatisfiyingEq with (x := x) (l := l).
-       exact add_env_x.
-    ++ admit.
-  (* JFIFieldEq *)
-  + admit.
-  (* JFISep*)
-  + admit.
-  (* JFIWand *)
-  + admit.
-Admitted.
-
-
-
 Lemma GammaAddRemove : forall x type gamma gamma_x,
   (JFIGammaAddNew x type gamma = Some gamma_x) ->
    StrMap.remove x gamma_x = gamma.
@@ -758,29 +548,6 @@ Lemma GammaAddNewSimple : forall x type gamma gamma_x,
    StrMap.add x type gamma = gamma_x.
 Proof.
 Admitted.
-
-Lemma ExistsShrinkedEnv : forall gamma x x_type gamma_x env_x h,
-  (JFIGammaAddNew x x_type gamma = Some gamma_x) ->
-  (JFIGammaMatchEnv h gamma_x env_x) ->
-  exists env l, JFIGammaMatchEnv h gamma env /\ EnvEq env_x (StrMap.add x l env).
-Proof.
-  intros gamma x type gamma_x env_x h.
-  intros gamma_add_x gamma_x_match_env_x.
-  exists (StrMap.remove x env_x).
-  set (exists_l := VarFromGammaIsInMatchingEnv x type gamma_x env_x h gamma_x_match_env_x).
-  destruct exists_l as (l & (find_x_gives_some_l & l_of_type)).
-  exists l.
-  split.
-  + replace gamma with (StrMap.remove x gamma_x).
-    ++ apply ShrinkedGammaMatchesShrinkedEnv with (l := l) (type := type).
-       +++ exact gamma_x_match_env_x.
-       +++ exact l_of_type.
-    ++ unfold JFIGammaAdd.
-       apply GammaAddRemove with (type := type).
-       exact gamma_add_x.
-  + apply EnvAddRemove.
-    exact find_x_gives_some_l.
-Qed.
 
 (* =============== Substitution Lemmas =============== *)
 
