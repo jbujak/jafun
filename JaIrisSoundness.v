@@ -22,6 +22,12 @@ Require Import FMapFacts.
 Module HeapFacts := Facts Heap.
 Module StrMapFacts := Facts StrMap.
 
+Definition JFISemanticallyImplies (gamma : JFITypeEnv) (s : JFITerm) (p : JFITerm) :=
+  forall env h,
+    (JFIGammaMatchEnv h gamma env) ->
+    (JFIHeapSatisfiesInEnv h s env) ->
+     JFIHeapSatisfiesInEnv h p env.
+
 Ltac unfoldSubstitutions :=
   unfold JFITermSubstituteVals;
   unfold JFITermSubstituteVar;
@@ -495,11 +501,11 @@ Proof.
     | obj field val
     | t1 IH_t1 t2 IH_t2
     | t1 IH_t1 t2 IH_t2
-    ].
+    ]; intros env1 env2 env1_eq_env2.
   (* JFITrue *)
-  + admit.
+  + split; simpl; trivial.
   (* JFIFalse *)
-  + admit.
+  + split; simpl; trivial.
   (* JFIAnd t1 t2 *)
   + admit.
   (* JFIOr t1 t2 *)
@@ -507,15 +513,11 @@ Proof.
   (* JFIImplies t1 t2 *)
   + admit.
   (* JFIExists *)
-  + intros env1 env2.
-    intros env1_eq_env2.
-    split; apply EnvEqGivesExistsImplication; try exact IH_t.
+  + split; apply EnvEqGivesExistsImplication; try exact IH_t.
     ++ exact env1_eq_env2.
     ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIForall *)
-  + intros env1 env2.
-    intros env1_eq_env2.
-    split; apply EnvEqGivesForallImplication; try exact IH_t.
+  + split; apply EnvEqGivesForallImplication; try exact IH_t.
     ++ exact env1_eq_env2.
     ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIHoare *)
@@ -780,40 +782,6 @@ Proof.
     exact find_x_gives_some_l.
 Qed.
 
-Lemma ExtendingGammaPreservesSoundness : forall h q x x_type gamma gamma_x,
-  (JFIVarFreshInTerm x q) ->
-  (JFIGammaAddNew x x_type gamma = Some gamma_x) ->
-    ((JFIHeapSatisfies h q gamma) <-> (JFIHeapSatisfies h q gamma_x)).
-Proof.
-  intros h q x x_type gamma gamma_x.
-  intros x_fresh gamma_add_new_x.
-  split.
-  + intros h_satisfies_q.
-    unfold JFIHeapSatisfies.
-    intros env_x gamma_x_match_env_x.
-    apply ExistsShrinkedEnv
-      with (gamma := gamma) (x := x) (x_type := x_type)
-      in gamma_x_match_env_x
-      as (env & l & (gamma_match_env & env_x_eq_env_with_x)).
-    ++ apply EqualEnvsAreEquivalent with (env1 := env_x) (env2 := (StrMap.add x l env)).
-       +++ exact env_x_eq_env_with_x.
-       +++ apply AddingFreshVarPreservesHeapSatisfiying.
-           - exact x_fresh.
-           - apply h_satisfies_q.
-             exact gamma_match_env.
-    ++ exact gamma_add_new_x.
-  + intros h_satisfies_q.
-    unfold JFIHeapSatisfies.
-    intros env gamma_match_env.
-    apply (AddingFreshVarPreservesHeapSatisfiying h q x null env).
-    ++ exact x_fresh.
-    ++ apply h_satisfies_q.
-       apply StrictlyExtendedGammaMatchesExtendedEnv with (type := x_type) (gamma := gamma).
-       +++ exact gamma_match_env.
-       +++ unfold JFILocOfType. trivial.
-       +++ exact gamma_add_new_x.
-Qed.
-
 (* =============== Substitution Lemmas =============== *)
 
 Definition JFISubstitutionImplies x v1 v2 t h env :=
@@ -1045,16 +1013,6 @@ Proof.
   + destruct v1_eq_v2.
 Qed.
 
-Lemma EqReflexivity: forall v h env,
-   JFIHeapSatisfiesInEnv h (JFIEq v v) env.
-Proof.
-  intros h v env.
-  unfold JFIHeapSatisfiesInEnv.
-  destruct (JFIValToLoc h env).
-  + trivial.
-  + admit. (* TODO zapewnic obecnosc zmiennej w srodowisku *)
-Admitted.
-
 Lemma JFIEqualValuesAreEquivalent : forall v1 v2 h x q env,
   (JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env) ->
   JFISubstitutionsEquivalent x v1 v2 q h env.
@@ -1109,175 +1067,221 @@ Admitted.
 
 (* =============== Soundness of basic logical rules =============== *)
 
-Lemma FalseElimRuleSoundness : forall q h env,
-  (JFIHeapSatisfiesInEnv h JFIFalse env) ->
-   JFIHeapSatisfiesInEnv h q env.
+Lemma AsmRuleSoundness : forall gamma p,
+  JFISemanticallyImplies gamma p p.
 Proof.
-  intros q h env.
-  intros h_satisfies_false.
+  intros gamma p.
+  intros env h gamma_match_env h_satisfies_p.
+  exact h_satisfies_p.
+Qed.
+
+Lemma TransRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma p q) ->
+  (JFISemanticallyImplies gamma q r) ->
+   JFISemanticallyImplies gamma p r.
+Proof.
+  intros gamma p q r.
+  intros p_implies_q.
+  intros q_implies_r.
+  intros env h gamma_match_env h_satisfies_p.
+  apply (q_implies_r env h gamma_match_env).
+  apply (p_implies_q env h gamma_match_env).
+  exact h_satisfies_p.
+Qed.
+
+Lemma EqRuleSoundness : forall gamma x v1 v2 p q r,
+  (r = JFITermSubstituteVal x v2 q) ->
+  (JFISemanticallyImplies gamma p (JFITermSubstituteVal x v1 q)) ->
+  (JFISemanticallyImplies gamma p (JFIEq v1 v2)) ->
+   JFISemanticallyImplies gamma p r.
+Proof.
+  intros gamma x v1 v2 p q r.
+  intros r_is_subst_v2 p_implies_subst_v1 p_implies_eq.
+  intros env h gamma_match_env h_satisfies_p.
+  rewrite r_is_subst_v2.
+  apply (JFIEqualValuesAreEquivalent v1 v2).
+  + apply p_implies_eq.
+    exact gamma_match_env.
+    exact h_satisfies_p.
+  + apply p_implies_subst_v1.
+    exact gamma_match_env.
+    exact h_satisfies_p.
+Qed.
+
+Lemma EqReflRuleSoundness : forall gamma p v,
+  JFISemanticallyImplies gamma p (JFIEq v v).
+Proof.
+  intros gamma p v.
+  intros env h gamma_match_env h_satisfies_p.
+  unfold JFIHeapSatisfiesInEnv.
+  destruct (JFIValToLoc v env).
+  + trivial.
+  + admit. (* TODO zapewnic obecnosc zmiennej w srodowisku *)
+Admitted.
+
+Lemma EqSymRuleSoundness : forall gamma p v1 v2,
+  JFISemanticallyImplies gamma p (JFIEq v1 v2) -> JFISemanticallyImplies gamma p (JFIEq v2 v1).
+Proof.
+  intros gamma p v1 v2.
+  intros v1_eq_v2.
+  intros env h gamma_match_env h_satisfies_p.
+  apply EqSymmetry.
+  apply (v1_eq_v2 env h).
+  + exact gamma_match_env.
+  + exact h_satisfies_p.
+Qed.
+
+Lemma FalseElimRuleSoundness : forall gamma p q,
+  (JFISemanticallyImplies gamma p JFIFalse) ->
+   JFISemanticallyImplies gamma p q.
+Proof.
+  intros gamma p q.
+  intros p_implies_false.
+  intros env h gamma_match_env h_satisfies_p.
+  set (h_satisfies_false := p_implies_false env h gamma_match_env h_satisfies_p).
   simpl in h_satisfies_false.
   destruct h_satisfies_false.
 Qed.
 
-Lemma TrueIntroRuleSoundness : forall h env,
-  JFIHeapSatisfiesInEnv h JFITrue env.
+Lemma TrueIntroRuleSoundness : forall gamma p,
+  JFISemanticallyImplies gamma p JFITrue.
 Proof.
-  intros h env.
+  intros gamma p.
+  intros env h gamma_match_env h_satisfies_p.
   unfold JFIHeapSatisfiesInEnv.
   trivial.
 Qed.
 
-Lemma AndIntroRuleSoundness : forall r h env p q,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h p env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h q env) ->
-   JFIHeapSatisfiesInEnv h (JFIAnd p q) env.
+Lemma AndIntroRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma r p) ->
+  (JFISemanticallyImplies gamma r q) ->
+   JFISemanticallyImplies gamma r (JFIAnd p q).
 Proof.
-  intros h env p q r.
-  intros h_satisfies_r r_implies_p r_implies_q.
+  intros gamma p q r.
+  intros r_implies_p r_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
   simpl.
   split.
   + apply r_implies_p.
-    exact h_satisfies_r.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
   + apply r_implies_q.
-    exact h_satisfies_r.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
 Qed.
 
-Lemma AndElimLRuleSoundness : forall q r h env p,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h (JFIAnd p q) env) ->
-   JFIHeapSatisfiesInEnv h p env.
+Lemma AndElimRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma r (JFIAnd p q)) ->
+   JFISemanticallyImplies gamma r p /\ JFISemanticallyImplies gamma r q.
 Proof.
-  intros q h env p r.
-  intros h_satisfies_r r_implies_p_and_q.
+  intros gamma p q r.
+  intros r_implies_p_and_q.
+  split;
+  intros env h gamma_match_env h_satisfies_r;
   apply r_implies_p_and_q.
-  exact h_satisfies_r.
+  + exact gamma_match_env.
+  + exact h_satisfies_r.
+  + exact gamma_match_env.
+  + exact h_satisfies_r.
 Qed.
 
-Lemma AndElimRRuleSoundness : forall p r h env q,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h (JFIAnd p q) env) ->
-   JFIHeapSatisfiesInEnv h q env.
+Lemma OrIntroRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma r p \/ JFISemanticallyImplies gamma r q) ->
+   JFISemanticallyImplies gamma r (JFIOr p q).
 Proof.
-  intros q h env p r.
-  intros h_satisfies_r r_implies_p_and_q.
-  apply r_implies_p_and_q.
-  exact h_satisfies_r.
+  intros gamma p q r.
+  intros [r_implies_p | r_implies_q]; intros env h gamma_match_env h_satisfies_r; simpl.
+  + apply or_introl.
+    apply r_implies_p.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
+  + apply or_intror.
+    apply r_implies_q.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
 Qed.
 
-Lemma OrIntroLRuleSoundness : forall r p q h env,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h p env) ->
-   JFIHeapSatisfiesInEnv h (JFIOr p q) env.
+Lemma OrElimRuleSoundness : forall gamma p q r s,
+  (JFISemanticallyImplies gamma s (JFIOr p q)) ->
+  (JFISemanticallyImplies gamma (JFIAnd s p) r) ->
+  (JFISemanticallyImplies gamma (JFIAnd s q) r) ->
+   JFISemanticallyImplies gamma s r.
 Proof.
-  intros r p q h env.
-  intros h_satisfies_r r_implies_p.
-  simpl.
-  apply or_introl.
-  apply r_implies_p.
-  exact h_satisfies_r.
-Qed.
-
-Lemma OrIntroRRuleSoundness : forall r p q h env,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h q env) ->
-   JFIHeapSatisfiesInEnv h (JFIOr p q) env.
-Proof.
-  intros r p q h env.
-  intros h_satisfies_r r_implies_q.
-  simpl.
-  apply or_intror.
-  apply r_implies_q.
-  exact h_satisfies_r.
-Qed.
-
-Lemma OrElimRuleSoundness : forall p q s r h env,
-  (JFIHeapSatisfiesInEnv h s env) ->
-  (JFIHeapSatisfiesInEnv h s env -> JFIHeapSatisfiesInEnv h (JFIOr p q) env) ->
-  (JFIHeapSatisfiesInEnv h (JFIAnd s p) env -> JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h (JFIAnd s q) env -> JFIHeapSatisfiesInEnv h r env) ->
-   JFIHeapSatisfiesInEnv h r env.
-Proof.
-  intros p q s r h env.
-  intros h_satisfies_s s_implies_p_or_q s_and_p_implies_r s_and_q_implies_r.
-  apply s_implies_p_or_q in h_satisfies_s as h_satisfies_p_or_q.
-  simpl in h_satisfies_p_or_q.
-  destruct h_satisfies_p_or_q as [ h_satisfies_p | h_satisfies_q ].
-  + apply s_and_p_implies_r.
+  intros gamma p q r s.
+  intros s_implies_p_or_q s_and_p_implies_r s_and_q_implies_r.
+  intros env h gamma_match_env h_satisfies_s.
+  set (p_or_q := s_implies_p_or_q env h gamma_match_env h_satisfies_s).
+  destruct p_or_q as [h_satisfies_p | h_satisfies_q].
+  + apply (s_and_p_implies_r env h gamma_match_env).
     simpl.
-    split.
-    ++ exact h_satisfies_s.
-    ++ exact h_satisfies_p.
-  + apply s_and_q_implies_r.
+    exact (conj h_satisfies_s h_satisfies_p).
+  + apply (s_and_q_implies_r env h gamma_match_env).
     simpl.
-    split.
-    ++ exact h_satisfies_s.
-    ++ exact h_satisfies_q.
+    exact (conj h_satisfies_s h_satisfies_q).
 Qed.
 
-Lemma ImpliesIntroRuleSoundness : forall r p q h env,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h (JFIAnd r p) env -> JFIHeapSatisfiesInEnv h q env) ->
-   JFIHeapSatisfiesInEnv h (JFIImplies p q) env.
+Lemma ImpliesIntroRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma (JFIAnd r p) q) ->
+   JFISemanticallyImplies gamma r (JFIImplies p q).
 Proof.
-  intros r p q h env.
-  intros h_satisfies_r r_and_p_implies_q.
+  intros gamma p q r.
+  intros r_and_p_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
   simpl.
   simpl in r_and_p_implies_q.
   apply Classical_Prop.imply_to_or.
   intros h_satisfies_p.
   apply r_and_p_implies_q.
-  apply (conj h_satisfies_r h_satisfies_p).
+  + exact gamma_match_env.
+  + apply (conj h_satisfies_r h_satisfies_p).
 Qed.
 
-Lemma ImpliesElimRuleSoundness : forall p r q h env,
-  (JFIHeapSatisfiesInEnv h r env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h (JFIImplies p q) env) ->
-  (JFIHeapSatisfiesInEnv h r env -> JFIHeapSatisfiesInEnv h p env) ->
-   JFIHeapSatisfiesInEnv h q env.
+Lemma ImpliesElimRuleSoundness : forall gamma p q r,
+  (JFISemanticallyImplies gamma r (JFIImplies p q)) ->
+  (JFISemanticallyImplies gamma r p) ->
+   JFISemanticallyImplies gamma r q.
 Proof.
-  intros p r q h env.
-  intros h_satisfies_r r_implies_p_implies_q r_implies_p.
-  simpl in r_implies_p_implies_q.
+  intros gamma p q r.
+  intros r_implies_p_implies_q r_implies_p.
+  intros env h gamma_match_env h_satisfies_r.
   apply (Classical_Prop.or_to_imply (JFIHeapSatisfiesInEnv h p env)).
   + apply r_implies_p_implies_q.
-    exact h_satisfies_r.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
   + apply r_implies_p.
-    exact h_satisfies_r.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
 Qed.
 
-Lemma ForallIntroRuleSoundndess : forall x type p q h gamma gamma_x env,
+Lemma ForallIntroRuleSoundness : forall x type gamma gamma_x p q,
   (JFIVarFreshInTerm x q) ->
   (JFIGammaAddNew x type gamma = Some gamma_x) ->
-  (JFIHeapSatisfies h q gamma) ->
-  (JFIHeapSatisfies h q gamma_x ->
-      JFIHeapSatisfies h p gamma_x) ->
-  (JFIGammaMatchEnv h gamma env) -> 
-   JFIHeapSatisfiesInEnv h (JFIForall type x p) env.
+  (JFISemanticallyImplies gamma_x q p) ->
+   JFISemanticallyImplies gamma q (JFIForall type x p).
 Proof.
-  intros x type p q h gamma gamma_x env.
-  intros x_fresh_in_q gamma_add_new_x h_satisfies_q q_implies_p gamma_match_env.
+  intros x type gamma gamma_x p q.
+  intros x_fresh_in_q gamma_add_new_x q_implies_p.
+  intros env h gamma_match_env h_satisfies_q.
   simpl.
-  intros l l_of_type.
+  intros loc loc_of_type.
   apply q_implies_p.
-  + apply (ExtendingGammaPreservesSoundness h q x type gamma gamma_x x_fresh_in_q gamma_add_new_x).
-    exact h_satisfies_q.
   + apply StrictlyExtendedGammaMatchesExtendedEnv with (type := type) (gamma := gamma).
     ++ exact gamma_match_env.
-    ++ exact l_of_type.
+    ++ exact loc_of_type.
     ++ exact gamma_add_new_x.
+  + apply AddingFreshVarPreservesHeapSatisfiying.
+    ++ exact x_fresh_in_q.
+    ++ exact h_satisfies_q.
 Qed.
 
 (* =============== Main theorem =============== *)
 
-Theorem JFISoundness : forall gamma decls h p t,
+Theorem JFISoundness : forall gamma decls p t,
   (JFIProves decls gamma p t) ->
-  (JFIHeapSatisfies h p gamma) ->
-   JFIHeapSatisfies h t gamma.
+   JFISemanticallyImplies gamma p t.
 Proof.
-  intros gamma decls h p t.
+  intros gamma decls p t.
   intros jfi_proof.
-  intros h_satisfies_p. (* TODO wrzucić do indukcji *)
   induction jfi_proof as
   [
   (* JFIAsmRule *)
@@ -1368,100 +1372,66 @@ Proof.
   |  cn method rettypeCN p' w q' x decls gamma s p q u v vs mn
   (* JFIHTInvokeNoRetRule *)
   |  cn method p' w q' decls gamma s p q u v vs mn
-  ]; intros env gamma_match_env.
-
+  ].
   (* JFIAsmRule *)
-  + apply h_satisfies_p.
-    exact gamma_match_env.
+  + apply AsmRuleSoundness.
   (* JFITransRule *)
-  + apply IH_q_proves_r.
-    ++ intros env' gamma_match_env'.
-       apply IH_p_proves_q.
-       +++ exact h_satisfies_p.
-       +++ exact gamma_match_env'.
-    ++ exact gamma_match_env.
+  + apply (TransRuleSoundness gamma p q r).
+    ++ exact IH_p_proves_q.
+    ++ exact IH_q_proves_r.
   (* JFIEqRule *)
-  + rewrite r_is_subst_v2.
-    apply (JFIEqualValuesAreEquivalent v1 v2).
-    ++ apply IH_p_proves_v1_eq_v2.
-       exact h_satisfies_p.
-       exact gamma_match_env.
-    ++ apply IH_p_proves_subst_v1.
-       exact h_satisfies_p.
-       exact gamma_match_env.
+  + apply EqRuleSoundness with (x := x) (v1 := v1) (v2 := v2) (q := q).
+    ++ exact r_is_subst_v2.
+    ++ exact IH_p_proves_subst_v1.
+    ++ exact IH_p_proves_v1_eq_v2.
   (* JFIEqReflRule*)
-  + apply EqReflexivity.
+  + apply EqReflRuleSoundness.
   (* JFIEqSymRule *)
-  + apply EqSymmetry.
-    apply IH_p_proves_v1_eq_v2.
-    exact h_satisfies_p.
-    exact gamma_match_env.
+  + apply EqSymRuleSoundness.
+    exact IH_p_proves_v1_eq_v2.
   (* JFIFalseElimRule *)
   + apply FalseElimRuleSoundness.
-    apply (IH_p_proves_false h_satisfies_p).
-    exact gamma_match_env.
+    exact IH_p_proves_false.
   (* JFITrueIntroRule *)
   + apply TrueIntroRuleSoundness.
   (* JFIAndIntroRule *)
-  + apply (AndIntroRuleSoundness r).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_p h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_q h_satisfies_p env gamma_match_env).
+  + apply AndIntroRuleSoundness.
+    ++ exact IH_r_proves_p.
+    ++ exact IH_r_proves_q.
   (* JFIAndElimLRule *)
-  + apply (AndElimLRuleSoundness q r).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_p_and_q h_satisfies_p env gamma_match_env).
+  + apply AndElimRuleSoundness with (q := q).
+    ++ exact IH_r_proves_p_and_q.
   (* JFIAndElimRRule *)
-  + apply (AndElimRRuleSoundness p r).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_p_and_q h_satisfies_p env gamma_match_env).
+  + apply AndElimRuleSoundness with (p := p).
+    ++ exact IH_r_proves_p_and_q.
   (* JFIOrIntroLRule *)
-  + apply (OrIntroLRuleSoundness r).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_p h_satisfies_p env gamma_match_env).
+  + apply OrIntroRuleSoundness.
+    apply (or_introl IH_r_proves_p).
   (* JFIOrIntroRRule *)
-  + apply (OrIntroRRuleSoundness r).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_r_proves_q h_satisfies_p env gamma_match_env).
+  + apply OrIntroRuleSoundness.
+    apply (or_intror IH_r_proves_q).
   (* JFIOrElimRule *)
-  + (* apply (OrElimRuleSoundness p q s).
-    ++ exact (h_satisfies_p env gamma_match_env).
-    ++ intros _.
-       exact (IH_s_proves_p_or_q h_satisfies_p env gamma_match_env).
-    ++ intros h_satisfies_s_and_p.
-       exact (IH_s_and_p_proves_r h_satisfies_ env gamma_match_env).
-    ++ intros _.
-       exact (IH_s_and_q_proves_r h_satisfies_p env gamma_match_env). *) admit.
+  + apply OrElimRuleSoundness with (gamma := gamma) (p := p) (q := q).
+    ++ exact IH_s_proves_p_or_q.
+    ++ exact IH_s_and_p_proves_r.
+    ++ exact IH_s_and_q_proves_r.
   (* JFIImpliesIntroRule *)
-  + (* apply (ImpliesIntroRuleSoundness r).
-    ++ exact h_satisfies_p.
-    ++ intros h_satisfies_r.
-       exact (IH_r_and_p_proves_q h_satisfies_r gamma_match_env). *) admit.
+  + apply ImpliesIntroRuleSoundness.
+    exact IH_r_and_p_proves_q.
   (* JFIImpliesElimRule *)
-  + (* apply (ImpliesElimRuleSoundness p r).
-    ++ exact h_satisfies_p.
-    ++ intros h_satisfies_r.
-       exact (IH_r_proves_p_implies_r h_satisfies_r gamma_match_env).
-    ++ intros h_satisfies_r.
-       exact (IH_r_proves_p h_satisfies_r gamma_match_env). *) admit.
+  + apply ImpliesElimRuleSoundness with (p := p).
+    ++ exact IH_r_proves_p_implies_r.
+    ++ exact IH_r_proves_p.
   (* JFIForallIntroRule *)
-  + apply ForallIntroRuleSoundndess with (q := q) (gamma := gamma) (gamma_x := gamma_x).
+  + apply ForallIntroRuleSoundness with (gamma := gamma) (gamma_x := gamma_x).
     ++ exact x_fresh_in_q.
     ++ exact gamma_add_new_x.
-    ++ exact h_satisfies_p.
     ++ exact IH_q_with_x_proves_p.
-    ++ exact gamma_match_env. 
   (* JFIForallElimRule *)
   + admit. (* TODO *)
   (* JFIExistsIntroRule *)
   + admit. (* TODO *)
-  (* JFIExistsElimRule <=================================================== dzisiaj*)
+  (* JFIExistsElimRule *)
   + admit. (* TODO *)
   (* JFITypeAddRule *)
   + admit. (* TODO *)
