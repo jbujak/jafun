@@ -37,9 +37,6 @@ Inductive JFITerm : Set :=
 | JFISep (t1 : JFITerm) (t2 : JFITerm)
 | JFIWand (t1 : JFITerm) (t2 : JFITerm).
 
-Definition JFEval : JFExpr -> Heap -> list Heap -> Heap -> Loc -> Prop := (* TODO *)
-  fun e h0 hs hn value => True.
-
 (* Heaps *)
 
 Definition JFIHeapsDisjoint (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
@@ -104,6 +101,25 @@ Definition JFIValToLoc (val : JFVal) (env : JFITermEnv) : option Loc :=
     | JFSyn JFThis => None (* TODO *)
   end.
 
+Fixpoint JFEval_rec (h : Heap) (st : FrameStack) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop:= 
+  match hs with
+  | expected_h::_::hs' => h = expected_h /\
+      match red [] (h, st) with
+      | Some (h', st') => JFEval_rec h' st' hs' hn value env
+      | None => False
+      end 
+  | [expected_h] => h = expected_h /\
+    match st with
+      | [Ctx [[JFVal1 w ]]_ None] => JFIValToLoc w env = Some value
+      | _ => False
+    end
+  | [] => False
+  end.
+
+Definition JFEval (e : JFExpr) (h0 : Heap) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop :=
+  let Ctx := []
+  in JFEval_rec h0 [Ctx [[ e ]]_ None] hs hn value env.
+
 Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
   match t with
     | JFITrue => True
@@ -119,7 +135,7 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
         in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
     | JFIHoare t1 e valueName t2 => forall h0 hs hn valueLoc,
         let newEnv := StrMap.add valueName valueLoc env
-        in (JFIHeapSatisfiesInEnv h0 t1 env) -> (JFEval e h0 hs hn valueLoc) -> (JFIHeapSatisfiesInEnv hn t2 newEnv)
+        in (JFIHeapSatisfiesInEnv h0 t1 env) -> (JFEval e h0 hs hn valueLoc env) -> (JFIHeapSatisfiesInEnv hn t2 newEnv)
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env
         in let l2 := JFIValToLoc val2 env
@@ -138,7 +154,8 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
         (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
         (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h2 t2 env)
     | JFIWand t1 t2 => exists (h1 : Heap) (h_h1 : Heap),
-        (JFIHeapsDisjoint h h1 /\ JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapsUnion h h1 h_h1)
+        (JFIHeapsDisjoint h h1 /\ JFIHeapsUnion h h1 h_h1) /\ 
+        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h_h1 t2 env)
   end.
 
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
@@ -258,7 +275,6 @@ Fixpoint JFITermPersistent (t : JFITerm) : Prop :=
   | JFISep t1 t2 => False
   | JFIWand t1 t2 => False
   end.
-
 
 (* Program structure for proofs *)
 
