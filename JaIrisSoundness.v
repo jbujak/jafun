@@ -741,30 +741,6 @@ Proof.
   + admit.
 Admitted.
 
-Lemma GammaAddRemove : forall x type gamma gamma_x,
-  (JFIGammaAddNew x type gamma = Some gamma_x) ->
-   StrMap.remove x gamma_x = gamma.
-Proof.
-Admitted.
-
-Lemma EnvAddRemove : forall x l env,
-  (StrMap.find x env = Some l) ->
-   EnvEq env (StrMap.add x l (StrMap.remove x env)).
-Proof.
-Admitted.
-
-Lemma VarFromGammaIsInMatchingEnv : forall x x_type gamma env_x h,
-  (JFIGammaMatchEnv h gamma env_x) ->
-   exists l, StrMap.find x env_x = Some l /\ JFILocOfType l h x_type.
-Proof.
-Admitted.
-
-Lemma GammaAddNewSimple : forall x type gamma gamma_x,
-  (JFIGammaAddNew x type gamma = Some gamma_x) ->
-   StrMap.add x type gamma = gamma_x.
-Proof.
-Admitted.
-
 (* =============== Substitution Lemmas =============== *)
 
 Definition JFISubstitutionImplies x v1 v2 t h env :=
