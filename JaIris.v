@@ -98,27 +98,27 @@ Definition JFIValToLoc (val : JFVal) (env : JFITermEnv) : option Loc :=
   match val with
     | JFVLoc loc => Some loc
     | JFSyn (JFVar x) => StrMap.find x env
-    | JFSyn JFThis => None (* TODO *)
+    | JFSyn JFThis => Some null (* TODO *)
   end.
 
-Fixpoint JFEval_rec (h : Heap) (st : FrameStack) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop:= 
+Fixpoint JFIEval_rec (h : Heap) (st : FrameStack) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop:= 
   match hs with
-  | expected_h::_::hs' => h = expected_h /\
-      match red [] (h, st) with
-      | Some (h', st') => JFEval_rec h' st' hs' hn value env
-      | None => False
-      end 
-  | [expected_h] => h = expected_h /\
+  | [expected_h] => h = expected_h /\ hn = expected_h /\
     match st with
       | [Ctx [[JFVal1 w ]]_ None] => JFIValToLoc w env = Some value
       | _ => False
     end
+  | expected_h::hs' => h = expected_h /\
+      match red [] (h, st) with
+      | Some (h', st') => JFIEval_rec h' st' hs' hn value env
+      | None => False
+      end 
   | [] => False
   end.
 
-Definition JFEval (e : JFExpr) (h0 : Heap) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop :=
+Definition JFIEval (e : JFExpr) (h0 : Heap) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop :=
   let Ctx := []
-  in JFEval_rec h0 [Ctx [[ e ]]_ None] hs hn value env.
+  in JFIEval_rec h0 [Ctx [[ e ]]_ None] hs hn value env.
 
 Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
   match t with
@@ -133,9 +133,9 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
     | JFIForall class name term => forall l : Loc,
         let env1 := StrMap.add name l env
         in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
-    | JFIHoare t1 e valueName t2 => forall h0 hs hn valueLoc,
+    | JFIHoare t1 e valueName t2 => forall hs hn valueLoc,
         let newEnv := StrMap.add valueName valueLoc env
-        in (JFIHeapSatisfiesInEnv h0 t1 env) -> (JFEval e h0 hs hn valueLoc env) -> (JFIHeapSatisfiesInEnv hn t2 newEnv)
+        in (JFIHeapSatisfiesInEnv h t1 env) -> (JFIEval e h hs hn valueLoc env) -> (JFIHeapSatisfiesInEnv hn t2 newEnv)
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env
         in let l2 := JFIValToLoc val2 env
