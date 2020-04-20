@@ -755,6 +755,12 @@ Proof.
   + admit.
 Admitted.
 
+Lemma VarNameChangePreservesHeapSatisfiying : forall h t u v l env,
+  (JFIHeapSatisfiesInEnv h t (StrMap.add v l env)) ->
+   JFIHeapSatisfiesInEnv h (JFITermSubstituteVar v u t) (StrMap.add u l env).
+Proof.
+Admitted.
+
 (* =============== Substitution Lemmas =============== *)
 
 Definition JFISubstitutionImplies x v1 v2 t h env :=
@@ -1382,6 +1388,22 @@ Proof.
   + exact l1_neq_l2.
 Qed.
 
+
+Lemma EvaluationPreservesGammaMatching : forall gamma env e h hs hn res,
+  (JFIGammaMatchEnv h gamma env) ->
+  (JFIEval e h hs hn res env) ->
+  (JFIGammaMatchEnv hn gamma env).
+Proof.
+Admitted.
+
+Lemma EvaluationPreservesPersistentTerms : forall env s e h hs hn res,
+  (JFITermPersistent s) ->
+  (JFIHeapSatisfiesInEnv h s env) ->
+  (JFIEval e h hs hn res env) ->
+   JFIHeapSatisfiesInEnv hn s env.
+Proof.
+Admitted.
+
 (* =============== Soundness of Hoare triple rules =============== *)
 
 Lemma HTFalseRuleSoundness : forall gamma s e v q,
@@ -1446,6 +1468,77 @@ Proof.
            - apply DifferentVarIsFresh.
              exact w_is_not_v.
 Qed.
+
+Lemma HTPreconditionStrenghtenSoundness : forall gamma s p p' e v q,
+  (JFISemanticallyImplies gamma s (JFIImplies p p')) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p' e v q)) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e v q).
+Proof.
+  intros gamma s p p' e v q.
+  intros p_implies_p' hoare_p'.
+  intros env h gamma_match_env h_satisfies_s.
+  simpl.
+  intros hs hn res.
+  intros h_satisfies_p eval_e.
+  set (h_satisfies_hoare_p' := hoare_p' env h gamma_match_env h_satisfies_s).
+  simpl in h_satisfies_hoare_p'.
+  apply (h_satisfies_hoare_p' hs hn res).
+  + destruct (p_implies_p' env h gamma_match_env h_satisfies_s) as [not_h_satisfies_p | h_satisfies_p'].
+    ++ destruct (not_h_satisfies_p h_satisfies_p).
+    ++ exact h_satisfies_p'.
+  + exact eval_e.
+Qed.
+
+Lemma HTPostconditionWeakenSoundness : forall gamma s p e v q q' cn u,
+  (JFITermPersistent s) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p e v q')) ->
+  (JFISemanticallyImplies gamma s
+    (JFIForall cn u
+      (JFIImplies (JFITermSubstituteVar v u q')
+        (JFITermSubstituteVar v u q)))) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e v q).
+Proof.
+  intros gamma s p e v q q' cn u.
+  intros s_persistent hoare_q' q_implies_q'.
+  intros env h gamma_match_env h_satisfies_s.
+  simpl.
+  intros hs hn res.
+  intros h_satisfies_p eval_e.
+  set (h_satisfies_q' := hoare_q' env h gamma_match_env h_satisfies_s hs hn res h_satisfies_p eval_e);
+  fold JFIHeapSatisfiesInEnv in h_satisfies_q'.
+  set (gamma_match_env_in_hn := EvaluationPreservesGammaMatching gamma env e h hs hn res gamma_match_env eval_e).
+  set (hn_satisfies_s := EvaluationPreservesPersistentTerms env s e h hs hn res s_persistent h_satisfies_s eval_e).
+  set (h_satisfies_forall := q_implies_q' env hn gamma_match_env_in_hn hn_satisfies_s).
+  simpl in h_satisfies_forall.
+  destruct (h_satisfies_forall res) as [not_h_satisfies_q' | h_satisfies_q].
+  + admit. (* TODO type of res *)
+  + exfalso.
+    apply not_h_satisfies_q'.
+    apply VarNameChangePreservesHeapSatisfiying.
+    exact h_satisfies_q'.
+Admitted.
+
+Lemma HTCsqRuleSoundness : forall gamma s p p' e v q q' cn u,
+  (JFITermPersistent s) ->
+  (JFISemanticallyImplies gamma s (JFIImplies p p')) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p' e v q')) ->
+  (JFISemanticallyImplies gamma s
+    (JFIForall cn u
+      (JFIImplies (JFITermSubstituteVar v u q')
+        (JFITermSubstituteVar v u q)))) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e v q).
+Proof.
+  intros gamma s p p' e v q q' cn u.
+  intros s_persistent p_implies_p' hoare_p'q' q_implies_q'.
+  apply HTPostconditionWeakenSoundness with (q':=q') (cn:=cn) (u:=u).
+  + exact s_persistent.
+  + apply HTPreconditionStrenghtenSoundness with (p':=p').
+    ++ exact p_implies_p'.
+    ++ exact hoare_p'q'.
+  + exact q_implies_q'.
+Qed.
+
+Hint Resolve HTCsqRuleSoundness : core.
 
 Theorem HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s u,
   (JFISemanticallyImplies gamma s 
@@ -1571,7 +1664,7 @@ Proof.
   (* JFIHTRetRule *)
   |  decls gamma s v w
   (* JFIHTCsqRule *)
-  |  p' q' cn u decls gamma s p q v e
+  |  p' q' cn u decls gamma s p q v e s_persistent _ IH_p_implies_p' _ IH_HT_p'evq' _ IH_q'_implies_q
   (* JFIHTDisjIntroRule *)
   |  decls gamma s p q r e v
   (* JFIHTDisjElimLRule *)
@@ -1682,7 +1775,7 @@ Proof.
   (* JFIHTRetRule *)
   + apply HTRetRuleSoundness.
   (* JFIHTCsqRule: *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTDisjIntroRule *)
   + admit. (* TODO *)
   (* JFIHTDisjElimLRule *)

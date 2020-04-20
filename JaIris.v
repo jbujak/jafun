@@ -271,7 +271,7 @@ Fixpoint JFITermPersistent (t : JFITerm) : Prop :=
   | JFIForall class name term => JFITermPersistent term
   | JFIHoare t1 e valueName t2 => JFITermPersistent t1 /\ JFITermPersistent t2
   | JFIEq val1 val2 => True
-  | JFIFieldEq obj fieldName val => True
+  | JFIFieldEq obj fieldName val => False
   | JFISep t1 t2 => False
   | JFIWand t1 t2 => False
   end.
@@ -550,9 +550,9 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 (* TODO HT-Bind *)
 
-(* TODO HT-Csq s persistent *)
 | JFIHTCsqRule:
     forall p' q' cn u decls gamma s p q v e,
+      (JFITermPersistent s) ->
       (JFIProves decls gamma s (JFIImplies p p')) ->
       (JFIProves decls gamma s (JFIHoare p' e v q')) ->
       (JFIProves decls gamma s (JFIForall cn u (JFIImplies (JFITermSubstituteVar v u q') (JFITermSubstituteVar v u q)))) ->
