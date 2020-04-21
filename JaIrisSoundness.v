@@ -1289,6 +1289,26 @@ Proof.
   destruct j; trivial.
 Qed.
 
+Lemma AllocSucceedsInCorrectProgram : forall prog h cn vs,
+  exists newloc newheap, alloc_init prog h cn vs = Some (newloc, newheap).
+Proof.
+Admitted.
+
+Lemma SuccessfullAllocIsNotNull : forall prog h cn vs newloc newheap,
+  (alloc_init prog h cn vs = Some (newloc, newheap)) ->
+   newloc <> null.
+Proof.
+Admitted.
+
+Lemma SuccessfullAllocSetsFields : forall decls h cn vs newloc newheap objflds n field l,
+  (alloc_init (JFIDeclsProg decls) h cn vs = Some (newloc, newheap)) ->
+  (flds (JFIDeclsProg decls) (JFClass cn) = Some objflds) ->
+  (nth_error objflds n = Some field) ->
+  (nth_error vs n = Some l) ->
+   JFIObjFieldEq newloc field l newheap.
+Proof.
+Admitted.
+
 (* =============== JFIEval Lemmas =============== *)
 
 Lemma EvaluationFirstStepIsDeterministic : forall e h0 h h' hs hs' hn hn' res res' env,
@@ -1388,6 +1408,13 @@ Proof.
   + exact l1_neq_l2.
 Qed.
 
+Lemma NewEvaluationStep : forall prog h env ls newloc newheap mu cn vs,
+  (alloc_init prog h cn ls = Some (newloc, newheap)) ->
+   JFIEval (JFNew mu cn vs) h [h; newheap] newheap newloc env.
+Proof.
+Admitted.
+
+Hint Resolve NewEvaluationStep : core.
 
 Lemma EvaluationPreservesGammaMatching : forall gamma env e h hs hn res,
   (JFIGammaMatchEnv h gamma env) ->
@@ -1436,6 +1463,11 @@ Lemma EnsureValIsLoc : forall (v : JFVal),
 Proof.
 Admitted.
 
+Lemma EnsureValsListIsLocsList : forall (vs : list JFVal),
+  exists ls, forall n l, nth_error ls n = Some l <-> nth_error vs n = Some (JFVLoc l).
+Proof.
+Admitted.
+
 Lemma HTRetRuleSoundness : forall gamma s v w,
   JFISemanticallyImplies gamma s
     (JFIHoare JFITrue (JFVal1 w) v (JFIEq (JFSyn (JFVar v)) w)).
@@ -1444,29 +1476,29 @@ Proof.
   intros env h gamma_match_env h_satisfies_s.
   set (w_to_loc_gives_some := EnsureValToLoc w env).
   destruct w_to_loc_gives_some as (loc & w_to_loc).
-  + apply CorrectEvaluationProvesHoareTriple.
-    exists [h], h, loc.
+  apply CorrectEvaluationProvesHoareTriple.
+  exists [h], h, loc.
+  split; [ | split].
+  + simpl. trivial.
+  + unfold JFIEval, JFIEval_rec.
     split; [ | split].
-    ++ simpl. trivial.
-    ++ unfold JFIEval, JFIEval_rec.
-       split; [ | split].
-       +++ exact eq_refl.
-       +++ exact eq_refl.
-       +++ exact w_to_loc.
-    ++ simpl.
-       rewrite StrMapFacts.add_eq_o; try apply eq_refl.
-       destruct (Classical_Prop.classic (w = (JFSyn (JFVar v)))) as [w_is_v | w_is_not_v].
-       +++ unfold JFIValToLoc.
-           destruct w; [ | destruct x]; try discriminate w_is_v.
-           rewrite StrMapFacts.add_eq_o.
-           - trivial.
-           - symmetry in w_is_v.
-             injection w_is_v.
-             trivial.
-       +++ rewrite <- AddingFreshVarPreservesValToLoc.
-           - rewrite w_to_loc. trivial.
-           - apply DifferentVarIsFresh.
-             exact w_is_not_v.
+    ++ exact eq_refl.
+    ++ exact eq_refl.
+    ++ exact w_to_loc.
+  + simpl.
+    rewrite StrMapFacts.add_eq_o; try apply eq_refl.
+    destruct (Classical_Prop.classic (w = (JFSyn (JFVar v)))) as [w_is_v | w_is_not_v].
+    ++ unfold JFIValToLoc.
+       destruct w; [ | destruct x]; try discriminate w_is_v.
+       rewrite StrMapFacts.add_eq_o.
+       +++ trivial.
+       +++ symmetry in w_is_v.
+           injection w_is_v.
+           trivial.
+    ++ rewrite <- AddingFreshVarPreservesValToLoc.
+       +++ rewrite w_to_loc. trivial.
+       +++ apply DifferentVarIsFresh.
+           exact w_is_not_v.
 Qed.
 
 Lemma HTPreconditionStrenghtenSoundness : forall gamma s p p' e v q,
@@ -1537,10 +1569,71 @@ Proof.
     ++ exact hoare_p'q'.
   + exact q_implies_q'.
 Qed.
-
 Hint Resolve HTCsqRuleSoundness : core.
 
-Theorem HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s u,
+Lemma HTNewNotNullRuleSoundness : forall gamma s p mu cn vs v,
+  JFISemanticallyImplies gamma s
+    (JFIHoare p (JFNew mu cn vs) v
+     (JFIImplies (JFIEq (JFSyn (JFVar v)) JFnull) JFIFalse)).
+Proof.
+  intros gamma s p mu cn vs v.
+  intros env h gamma_match_env h_satisfies_s.
+  assert (prog : JFProgram); [admit |]. (* TODO *)
+  destruct (EnsureValsListIsLocsList vs) as (ls & vs_is_ls).
+  destruct (AllocSucceedsInCorrectProgram prog h cn ls)
+    as (newloc & (newheap & alloc_newloc_newheap)).
+  destruct (Classical_Prop.classic (JFIHeapSatisfiesInEnv h p env)) as [h_satisfies_p | not_h_satisfies_p].
+  + apply CorrectEvaluationProvesHoareTriple.
+    exists [h; newheap], newheap, newloc.
+    split; [ | split].
+    ++ exact h_satisfies_p.
+    ++ eauto.
+    ++ simpl.
+       apply or_introl.
+       rewrite StrMapFacts.add_eq_o.
+       +++ apply (SuccessfullAllocIsNotNull prog h cn ls newloc newheap alloc_newloc_newheap).
+       +++ trivial.
+  + simpl.
+    intros hs hn res h_satisfies_p.
+    destruct (not_h_satisfies_p h_satisfies_p).
+Admitted.
+Hint Resolve HTNewNotNullRuleSoundness : core.
+
+Lemma HTNewFieldRuleSoundness : forall decls gamma cn objflds vs n field value s p mu v,
+  (flds (JFIDeclsProg decls) (JFClass cn) = Some objflds) ->
+  (nth_error objflds n = Some field) ->
+  (nth_error vs n = Some value) ->
+    JFISemanticallyImplies gamma s
+      (JFIHoare p (JFNew mu cn vs) v (JFIFieldEq (JFSyn (JFVar v)) field value)).
+Proof.
+  intros decls gamma cn objflds vs n field value s p mu v.
+  intros fdls_of_cn nth_field nth_value.
+  intros env h gamma_match_env h_satisfies_s.
+  destruct (EnsureValsListIsLocsList vs) as (ls & vs_is_ls).
+  destruct (EnsureValIsLoc value) as (l & value_is_l).
+  destruct (AllocSucceedsInCorrectProgram (JFIDeclsProg decls) h cn ls)
+    as (newloc & (newheap & alloc_newloc_newheap)).
+  destruct (Classical_Prop.classic (JFIHeapSatisfiesInEnv h p env)) as [h_satisfies_p | not_h_satisfies_p].
+  + apply CorrectEvaluationProvesHoareTriple.
+    exists [h; newheap], newheap, newloc.
+    split; [assumption | split].
+    ++ eauto.
+    ++ simpl.
+       unfold JFIValToLoc.
+       rewrite value_is_l.
+       rewrite StrMapFacts.add_eq_o.
+       +++ apply (SuccessfullAllocSetsFields decls h cn ls newloc newheap objflds n field l); try assumption.
+           apply (vs_is_ls n l).
+           rewrite <- value_is_l.
+           exact nth_value.
+       +++ trivial.
+  + simpl.
+    intros hs hn res h_satisfies_p.
+    destruct (not_h_satisfies_p h_satisfies_p).
+Admitted.
+Hint Resolve HTNewFieldRuleSoundness : core.
+
+Lemma HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s u,
   (JFISemanticallyImplies gamma s 
     (JFIHoare (JFIAnd p (JFIEq v1 v2)) e1 u q)) ->
   (JFISemanticallyImplies gamma s
@@ -1551,10 +1644,9 @@ Proof.
   intros gamma v1 v2 e1 e2 p q s u.
   intros IH_if_eq IH_if_neq.
   intros env h gamma_match_env h_satisfies_s.
-  set (v1_is_loc := EnsureValIsLoc v1).
-  set (v2_is_loc := EnsureValIsLoc v2).
-  destruct v1_is_loc as (l1 & v1_is_l1).
-  destruct v2_is_loc as (l2 & v2_is_l2).
+
+  destruct (EnsureValIsLoc v1) as (l1 & v1_is_l1).
+  destruct (EnsureValIsLoc v2) as (l2 & v2_is_l2).
   rewrite v1_is_l1.
   rewrite v2_is_l2.
   intros hs hn res env_res.
@@ -1789,9 +1881,9 @@ Proof.
   (* JFIHTEqRule2 *)
   + admit. (* TODO *)
   (* JFIHTNewNotNullRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTNewFieldRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTLetRule *)
   + admit. (* TODO *)
   (* JFIHTFieldAssignRule *)
