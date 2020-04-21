@@ -600,7 +600,12 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
     forall decls gamma s p mu cn vs v,
       JFIProves decls gamma s (JFIHoare p (JFNew mu cn vs) v (JFIImplies (JFIEq (JFSyn (JFVar v)) JFnull) JFIFalse))
 
-(* TODO JFIHTNewRule *)
+| JFIHTNewFieldRule :
+    forall decls gamma s p mu cn vs v objflds n field value,
+      (flds (JFIDeclsProg decls) (JFClass cn) = Some objflds) ->
+      (nth_error objflds n = Some field) ->
+      (nth_error vs n = Some value) ->
+       JFIProves decls gamma s (JFIHoare p (JFNew mu cn vs) v (JFIFieldEq (JFSyn (JFVar v)) field value))
 
 | JFIHTLetRule :
     forall v q decls gamma p r s e1 e2 x u class,

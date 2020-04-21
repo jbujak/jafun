@@ -1677,6 +1677,8 @@ Proof.
   |  decls gamma s v1 v2 p e v q
   (* JFIHTNewNotNullRule *)
   |  decls gamma s p mu cn vs v
+  (* JFIHTNewFieldRule *)
+  |  decls gamma s p mu cn vs v objflds n field value objflds_is_flds field_n value_n
   (* JFIHTLetRule *)
   |  v q decls gamma p r s e1 e2 x u class
   (* JFIHTFieldAssignRule *)
@@ -1787,6 +1789,8 @@ Proof.
   (* JFIHTEqRule2 *)
   + admit. (* TODO *)
   (* JFIHTNewNotNullRule *)
+  + admit. (* TODO *)
+  (* JFIHTNewFieldRule *)
   + admit. (* TODO *)
   (* JFIHTLetRule *)
   + admit. (* TODO *)
