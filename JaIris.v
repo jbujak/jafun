@@ -101,26 +101,21 @@ Definition JFIValToLoc (val : JFVal) (env : JFITermEnv) : option Loc :=
     | JFSyn JFThis => Some null (* TODO *)
   end.
 
-Fixpoint JFIEval_rec (h : Heap) (st : FrameStack) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop:= 
-  match hs with
-  | [expected_h] => h = expected_h /\ hn = expected_h /\
-    match st with
-      | [Ctx [[JFVal1 w ]]_ None] => JFIValToLoc w env = Some value
-      | _ => False
-    end
-  | expected_h::hs' => h = expected_h /\
-      match red [] (h, st) with
-      | Some (h', st') => JFIEval_rec h' st' hs' hn value env
+Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * FrameStack)) (hn : Heap) (stn : FrameStack) : Prop :=
+  match confs with
+  | [] => h0 = hn /\ st0 = stn
+  | (expected_h, expected_st)::confs' => h0 = expected_h /\ st0 = expected_st /\
+      match red [] (h0, st0) with
+      | Some (h, st) => JFIPartialEval h st confs' hn stn
       | None => False
       end 
-  | [] => False
   end.
 
-Definition JFIEval (e : JFExpr) (h0 : Heap) (hs : list Heap) (hn : Heap) (value : Loc) (env : JFITermEnv) : Prop :=
-  let Ctx := []
-  in JFIEval_rec h0 [Ctx [[ e ]]_ None] hs hn value env.
+Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) : Prop :=
+  let EmptyCtx := []
+  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None].
 
-Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
+Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm)(env : JFITermEnv)  : Prop :=
   match t with
     | JFITrue => True
     | JFIFalse => False
@@ -133,9 +128,9 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
     | JFIForall class name term => forall l : Loc,
         let env1 := StrMap.add name l env
         in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
-    | JFIHoare t1 e valueName t2 => forall hs hn valueLoc,
-        let newEnv := StrMap.add valueName valueLoc env
-        in (JFIHeapSatisfiesInEnv h t1 env) -> (JFIEval e h hs hn valueLoc env) -> (JFIHeapSatisfiesInEnv hn t2 newEnv)
+    | JFIHoare t1 e valueName t2 => forall confs hn res,
+        let newEnv := StrMap.add valueName res env
+        in (JFIHeapSatisfiesInEnv h t1 env) -> (JFIEval h e confs hn res ) -> JFIHeapSatisfiesInEnv hn t2 newEnv
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env
         in let l2 := JFIValToLoc val2 env
@@ -615,7 +610,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFLet class x e1 e2) u r )
 
-| JFIHTFieldAssignRule :
+| JFIHTFieldSetRule :
     forall decls gamma s x field v loc,
       (*--------------------------------------------------*)
       JFIProves decls gamma s
@@ -623,6 +618,10 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
           (JFIImplies (JFIEq x JFnull) JFIFalse)
           (JFAssign (x, field) (JFVLoc loc))
           v (JFIFieldEq x field (JFVLoc loc)))
+
+(* TODO JFIHTFieldGetRule *)
+
+(* TODO JFIHTNullFieldAccessRule *)
 
 | JFIHTIfRule :
     forall decls gamma p v1 v2 e1 e2 u q s,
@@ -656,6 +655,8 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (JFIProves decls gamma s (JFIImplies (JFITermSubstituteVals (params_of_md method) vs q') q)) ->
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFInvoke (JFSyn v) mn vs) u q) (* TODO null *)
+
+(* TODO JFIHTNullInvokeRule *)
 
 (* TODO JFIHTThrowRule *)
 
