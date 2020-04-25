@@ -174,7 +174,7 @@ Fixpoint JFITermSubstituteVal (from : string) (to : JFVal) (t : JFITerm) : JFITe
           valueName
           (JFITermSubstituteVal from to t2)
     | JFIEq val1 val2 => JFIEq (JFIValSubstituteVal from to val1) (JFIValSubstituteVal from to val2)
-    | JFIFieldEq obj fieldName val => JFIFieldEq (JFIValSubstituteVal from to obj) fieldName (JFIValSubstituteVal from to obj)
+    | JFIFieldEq obj fieldName val => JFIFieldEq (JFIValSubstituteVal from to obj) fieldName (JFIValSubstituteVal from to val)
     | JFISep t1 t2 => JFISep (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
     | JFIWand t1 t2 => JFIWand (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
     end.

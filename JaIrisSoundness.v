@@ -930,6 +930,86 @@ Proof.
   trivial.
 Qed.
 
+Lemma ValSubstituteIdentity : forall x v,
+  JFIValSubstituteVal x (JFSyn (JFVar x)) v = v.
+Proof.
+  intros x v.
+  unfold JFIValSubstituteVal.
+  destruct v; try trivial.
+  destruct x0; try trivial.
+  destruct (Classical_Prop.classic (x0 = x)).
+  + apply String.eqb_eq in H as H1.
+    rewrite H1.
+    rewrite H.
+    trivial.
+  + apply String.eqb_neq in H.
+    rewrite H.
+    trivial.
+Qed.
+
+Lemma ValMapSubstituteIdentity : forall x vs,
+  map (JFIValSubstituteVal x (JFSyn (JFVar x))) vs = vs.
+Proof.
+  intros x vs.
+  induction vs; try trivial.
+  rewrite List.map_cons.
+  rewrite IHvs.
+  rewrite ValSubstituteIdentity.
+  trivial.
+Qed.
+
+Lemma ExprSubstituteIdentity : forall x e,
+  JFIExprSubstituteVal x (JFSyn (JFVar x)) e = e.
+Proof.
+  intros x e.
+  unfold JFIExprSubstituteVal.
+  induction e; fold JFIExprSubstituteVal in *.
+  + rewrite ValMapSubstituteIdentity.
+    trivial.
+  + destruct (String.eqb x0 x);
+    try rewrite IHe1;
+    try rewrite IHe2;
+    trivial.
+  + rewrite IHe1; rewrite IHe2.
+    rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValMapSubstituteIdentity.
+    rewrite ValSubstituteIdentity.
+    trivial.
+  + destruct vx.
+    rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValSubstituteIdentity; trivial.
+  + destruct vx.
+    rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValSubstituteIdentity; trivial.
+  + rewrite IHe1; rewrite IHe2.
+    destruct (String.eqb x0 x); trivial.
+Qed.
+
+Lemma TermSubstituteIdentity : forall x q,
+  JFITermSubstituteVal x (JFSyn (JFVar x)) q = q.
+Proof.
+  intros x q.
+  unfold JFITermSubstituteVal.
+  induction q; fold JFITermSubstituteVal in *.
+  + trivial.
+  + trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + destruct (String.eqb name x); try trivial.
+    rewrite IHq; trivial.
+  + destruct (String.eqb name x); try trivial.
+    rewrite IHq; trivial.
+  + rewrite IHq1; rewrite IHq2; rewrite ExprSubstituteIdentity; trivial.
+  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
+  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+Qed.
+
 (* =============== Equality Lemmas =============== *)
 
 Lemma EqualValuesGiveEqualLocations : forall h v1 v2 env,
@@ -1745,11 +1825,6 @@ Lemma SubstituteEnvVarElim : forall x v l e env,
 Proof.
 Admitted.
 
-Lemma SubstituteIdentity : forall x q,
-  JFITermSubstituteVar x x q = q.
-Proof.
-Admitted.
-
 Lemma LetRuleE1Soundness : forall h' x e1_res q env,
   (JFIHeapSatisfiesInEnv h' q (StrMap.add x e1_res env)) ->
   JFIHeapSatisfiesInEnv h' (JFITermSubstituteVal x (JFVLoc e1_res) q) env.
@@ -1757,7 +1832,8 @@ Proof.
     intros h' x e1_res q env.
     intros h'_satisfies_q.
     apply (SubstituteLocIffSubstituteVarInEnv h' env x x e1_res q).
-    rewrite SubstituteIdentity.
+    unfold JFITermSubstituteVar.
+    rewrite TermSubstituteIdentity.
     exact h'_satisfies_q.
 Qed.
 
