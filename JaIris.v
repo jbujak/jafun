@@ -487,7 +487,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*----------------------------------------*)
       JFIProves decls gamma q r
 
-
 | JFIExistsIntroRule :
     forall decls gamma p q x v type,
       (JFIProves decls (JFIGammaAdd v type gamma) q (JFITermSubstituteVal x (JFSyn (JFVar v)) p)) ->
@@ -641,6 +640,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFIHTLetRule :
     forall v q decls gamma p r s e1 e2 x u class,
       (JFITermPersistent s) ->
+      (JFIVarFreshInTerm v r) ->
       (JFIProves decls gamma s (JFIHoare p e1 x q)) ->
       (JFIProves decls gamma s (JFIForall class v
           (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) u r))) ->

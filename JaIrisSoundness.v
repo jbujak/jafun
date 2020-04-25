@@ -1815,6 +1815,7 @@ Proof.
     ++ apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
           (confs := confs_e1) (res := e1_res); assumption.
 Admitted.
+Hint Resolve HTLetRuleSoundness : core.
 
 Lemma HTFieldSetRuleSoundness : forall gamma s x field loc v,
   JFISemanticallyImplies gamma s
@@ -2003,7 +2004,7 @@ Proof.
   (* JFIHTNewFieldRule *)
   |  decls gamma s p mu cn vs v objflds n field value objflds_is_flds field_n value_n
   (* JFIHTLetRule *)
-  |  v q decls gamma p r s e1 e2 x u class _ IH_e1 _ IH_e2
+  |  v q decls gamma p r s e1 e2 x u class s_persistent v_fresh_in_r _ IH_e1 _ IH_e2
   (* JFIHTFieldSetRule *)
   |  decls gamma s x field v loc
   (* JFIHTIfRule *)
@@ -2116,7 +2117,7 @@ Proof.
   (* JFIHTNewFieldRule *)
   + eauto.
   (* JFIHTLetRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTFieldSetRule *)
   + eauto.
   (* JFIHTIfRule *)
