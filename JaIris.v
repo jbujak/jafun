@@ -101,67 +101,6 @@ Definition JFIValToLoc (val : JFVal) (env : JFITermEnv) : option Loc :=
     | JFSyn JFThis => Some null (* TODO *)
   end.
 
-Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * FrameStack)) (hn : Heap) (stn : FrameStack) : Prop :=
-  match confs with
-  | [] => h0 = hn /\ st0 = stn
-  | (expected_h, expected_st)::confs' => h0 = expected_h /\ st0 = expected_st /\
-      match red [] (h0, st0) with
-      | Some (h, st) => JFIPartialEval h st confs' hn stn
-      | None => False
-      end 
-  end.
-
-Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) : Prop :=
-  let EmptyCtx := []
-  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None].
-
-Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm)(env : JFITermEnv)  : Prop :=
-  match t with
-    | JFITrue => True
-    | JFIFalse => False
-    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env /\ JFIHeapSatisfiesInEnv h t2 env
-    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env \/ JFIHeapSatisfiesInEnv h t2 env
-    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env) \/ JFIHeapSatisfiesInEnv h t2 env
-    | JFIExists class name term => exists l : Loc,
-        let env1 := StrMap.add name l env
-        in JFILocOfType l h class /\ JFIHeapSatisfiesInEnv h term env1
-    | JFIForall class name term => forall l : Loc,
-        let env1 := StrMap.add name l env
-        in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
-    | JFIHoare t1 e valueName t2 => forall confs hn res,
-        let newEnv := StrMap.add valueName res env
-        in (JFIHeapSatisfiesInEnv h t1 env) -> (JFIEval h e confs hn res ) -> JFIHeapSatisfiesInEnv hn t2 newEnv
-    | JFIEq val1 val2 =>
-        let l1 := JFIValToLoc val1 env
-        in let l2 := JFIValToLoc val2 env
-        in match (l1, l2) with
-           | (Some loc1, Some loc2) => loc1 = loc2
-           | _ => False
-        end
-    | JFIFieldEq obj fieldName val =>
-        let l1 := JFIValToLoc obj env
-        in let l2 := JFIValToLoc val env
-        in match (l1, l2) with
-          | (Some objLoc, Some valLoc) => JFIObjFieldEq objLoc fieldName valLoc h
-          | _ => False
-        end
-    | JFISep t1 t2 => exists (h1 : Heap) (h2 : Heap),
-        (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
-        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h2 t2 env)
-    | JFIWand t1 t2 => exists (h1 : Heap) (h_h1 : Heap),
-        (JFIHeapsDisjoint h h1 /\ JFIHeapsUnion h h1 h_h1) /\ 
-        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h_h1 t2 env)
-  end.
-
-Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
-  forall var_name var_loc var_type,
-    (StrMap.In var_name gamma <-> StrMap.In var_name env) /\
-    (StrMap.find var_name gamma = Some var_type) ->
-    (StrMap.find var_name env = Some var_loc) ->
-     JFILocOfType var_loc h var_type.
-
-Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) : Prop :=
-  forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env.
 
 (* Substitutions *)
 
@@ -252,6 +191,103 @@ Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFVal) (t : JFI
 
 Definition JFITermSubstituteVar (from : string) (to : string) (t : JFITerm) : JFITerm :=
     JFITermSubstituteVal from (JFSyn (JFVar to)) t.
+
+
+Definition JFIValSubstituteEnv (env : JFITermEnv) (val : JFVal)  :=
+  StrMap.fold (fun k v a => JFIValSubstituteVal k (JFVLoc v) a) env val.
+
+Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
+  match e with
+  | JFNew mu C vs => JFNew mu C (List.map (JFIValSubstituteEnv env) vs)
+  | JFLet C x e1 e2 =>
+    if StrMap.mem x env then
+      JFLet C x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv (StrMap.remove x env) e2)
+    else
+      JFLet C x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2)
+  | JFIf v1 v2 e1 e2 =>
+    JFIf (JFIValSubstituteEnv env v1) (JFIValSubstituteEnv env v2)
+         (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2)
+  | JFInvoke v1 m vs =>
+    JFInvoke (JFIValSubstituteEnv env v1) m (List.map (JFIValSubstituteEnv env) vs)
+  | JFAssign (v1,fld) v2 =>
+    JFAssign (JFIValSubstituteEnv env v1, fld) (JFIValSubstituteEnv env v2)
+  | JFVal1 v1 =>
+    JFVal1 (JFIValSubstituteEnv env v1)
+  | JFVal2 (v1, fld) =>
+    JFVal2 (JFIValSubstituteEnv env v1, fld)
+  | JFThrow v1 =>
+    JFThrow  (JFIValSubstituteEnv env v1)
+  | JFTry e1 mu C x e2 =>
+    if StrMap.mem x env then
+      JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) e2)
+    else
+      JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv env e2)
+  end.
+
+(* Semantics *)
+Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * FrameStack)) (hn : Heap) (stn : FrameStack) : Prop :=
+  match confs with
+  | [] => h0 = hn /\ st0 = stn
+  | (expected_h, expected_st)::confs' => h0 = expected_h /\ st0 = expected_st /\
+      match red [] (h0, st0) with
+      | Some (h, st) => JFIPartialEval h st confs' hn stn
+      | None => False
+      end 
+  end.
+
+Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) : Prop :=
+  let EmptyCtx := []
+  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None].
+
+Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
+  match t with
+    | JFITrue => True
+    | JFIFalse => False
+    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env /\ JFIHeapSatisfiesInEnv h t2 env
+    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env \/ JFIHeapSatisfiesInEnv h t2 env
+    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env) \/ JFIHeapSatisfiesInEnv h t2 env
+    | JFIExists class name term => exists l : Loc,
+        let env1 := StrMap.add name l env
+        in JFILocOfType l h class /\ JFIHeapSatisfiesInEnv h term env1
+    | JFIForall class name term => forall l : Loc,
+        let env1 := StrMap.add name l env
+        in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
+    | JFIHoare t1 e valueName t2 => forall confs hn res,
+        let newEnv := StrMap.add valueName res env
+        in (JFIHeapSatisfiesInEnv h t1 env) ->
+           (JFIEval h (JFIExprSubstituteEnv env e) confs hn res) ->
+            JFIHeapSatisfiesInEnv hn t2 newEnv
+    | JFIEq val1 val2 =>
+        let l1 := JFIValToLoc val1 env
+        in let l2 := JFIValToLoc val2 env
+        in match (l1, l2) with
+           | (Some loc1, Some loc2) => loc1 = loc2
+           | _ => False
+        end
+    | JFIFieldEq obj fieldName val =>
+        let l1 := JFIValToLoc obj env
+        in let l2 := JFIValToLoc val env
+        in match (l1, l2) with
+          | (Some objLoc, Some valLoc) => JFIObjFieldEq objLoc fieldName valLoc h
+          | _ => False
+        end
+    | JFISep t1 t2 => exists (h1 : Heap) (h2 : Heap),
+        (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
+        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h2 t2 env)
+    | JFIWand t1 t2 => exists (h1 : Heap) (h_h1 : Heap),
+        (JFIHeapsDisjoint h h1 /\ JFIHeapsUnion h h1 h_h1) /\ 
+        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h_h1 t2 env)
+  end.
+
+Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
+  forall var_name var_loc var_type,
+    (StrMap.In var_name gamma <-> StrMap.In var_name env) /\
+    (StrMap.find var_name gamma = Some var_type) ->
+    (StrMap.find var_name env = Some var_loc) ->
+     JFILocOfType var_loc h var_type.
+
+Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) : Prop :=
+  forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env.
 
 (* Persistence *)
 
@@ -604,6 +640,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIHTLetRule :
     forall v q decls gamma p r s e1 e2 x u class,
+      (JFITermPersistent s) ->
       (JFIProves decls gamma s (JFIHoare p e1 x q)) ->
       (JFIProves decls gamma s (JFIForall class v
           (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) u r))) ->
