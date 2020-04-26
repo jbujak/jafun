@@ -225,41 +225,41 @@ Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
   end.
 
 (* Semantics *)
-Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * FrameStack)) (hn : Heap) (stn : FrameStack) : Prop :=
+Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * FrameStack)) (hn : Heap) (stn : FrameStack) (CC : JFProgram) : Prop :=
   match confs with
   | [] => h0 = hn /\ st0 = stn
   | (expected_h, expected_st)::confs' => h0 = expected_h /\ st0 = expected_st /\
-      match red [] (h0, st0) with
-      | Some (h, st) => JFIPartialEval h st confs' hn stn
+      match red CC (h0, st0) with
+      | Some (h, st) => JFIPartialEval h st confs' hn stn CC
       | None => False
       end 
   end.
 
-Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) : Prop :=
+Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (CC : JFProgram) : Prop :=
   let EmptyCtx := []
-  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None].
+  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None] CC.
 
-Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (env : JFITermEnv) : Prop :=
-  JFIEval h (JFIExprSubstituteEnv env e) confs hn res.
+Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (env : JFITermEnv) (CC : JFProgram) : Prop :=
+  JFIEval h (JFIExprSubstituteEnv env e) confs hn res CC.
 
-Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
+Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC : JFProgram) : Prop :=
   match t with
     | JFITrue => True
     | JFIFalse => False
-    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env /\ JFIHeapSatisfiesInEnv h t2 env
-    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env \/ JFIHeapSatisfiesInEnv h t2 env
-    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env) \/ JFIHeapSatisfiesInEnv h t2 env
+    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC /\ JFIHeapSatisfiesInEnv h t2 env CC
+    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC \/ JFIHeapSatisfiesInEnv h t2 env CC
+    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env CC) \/ JFIHeapSatisfiesInEnv h t2 env CC
     | JFIExists class name term => exists l : Loc,
         let env1 := StrMap.add name l env
-        in JFILocOfType l h class /\ JFIHeapSatisfiesInEnv h term env1
+        in JFILocOfType l h class /\ JFIHeapSatisfiesInEnv h term env1 CC
     | JFIForall class name term => forall l : Loc,
         let env1 := StrMap.add name l env
-        in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1
+        in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1 CC
     | JFIHoare t1 e valueName t2 => forall confs hn res,
         let newEnv := StrMap.add valueName res env
-        in (JFIHeapSatisfiesInEnv h t1 env) ->
-           (JFIEvalInEnv h e confs hn res env) ->
-            JFIHeapSatisfiesInEnv hn t2 newEnv
+        in (JFIHeapSatisfiesInEnv h t1 env CC) ->
+           (JFIEvalInEnv h e confs hn res env CC) ->
+            JFIHeapSatisfiesInEnv hn t2 newEnv CC
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env
         in let l2 := JFIValToLoc val2 env
@@ -276,10 +276,10 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
         end
     | JFISep t1 t2 => exists (h1 : Heap) (h2 : Heap),
         (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
-        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h2 t2 env)
+        (JFIHeapSatisfiesInEnv h1 t1 env CC /\ JFIHeapSatisfiesInEnv h2 t2 env CC)
     | JFIWand t1 t2 => exists (h1 : Heap) (h_h1 : Heap),
         (JFIHeapsDisjoint h h1 /\ JFIHeapsUnion h h1 h_h1) /\ 
-        (JFIHeapSatisfiesInEnv h1 t1 env /\ JFIHeapSatisfiesInEnv h_h1 t2 env)
+        (JFIHeapSatisfiesInEnv h1 t1 env CC /\ JFIHeapSatisfiesInEnv h_h1 t2 env CC)
   end.
 
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
@@ -289,8 +289,8 @@ Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :
     (StrMap.find var_name env = Some var_loc) ->
      JFILocOfType var_loc h var_type.
 
-Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) : Prop :=
-  forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env.
+Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) (CC : JFProgram) : Prop :=
+  forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env CC.
 
 (* Persistence *)
 
