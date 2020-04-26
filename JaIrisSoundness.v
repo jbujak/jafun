@@ -1475,7 +1475,7 @@ Qed.
 
 Lemma CorrectEvaluationImpliesHoareTriple : forall h p e v q env,
   (exists confs hn res,
-  (JFIHeapSatisfiesInEnv h p env) /\ (JFIEval h (JFIExprSubstituteEnv env e) confs hn res) /\ (JFIHeapSatisfiesInEnv hn q (StrMap.add v res env))) ->
+  (JFIHeapSatisfiesInEnv h p env) /\ (JFIEvalInEnv h e confs hn res env) /\ (JFIHeapSatisfiesInEnv hn q (StrMap.add v res env))) ->
    JFIHeapSatisfiesInEnv h (JFIHoare p e v q) env.
 Proof.
   intros h p e v q env.
@@ -1507,13 +1507,12 @@ Qed.
 
 Lemma IfEvaluationStepEq : forall l1 l2 e1 e2 h h' st' confs hn res env,
   (l1 = l2) ->
-  (JFIEval h (JFIExprSubstituteEnv env (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2))
-    ((h', st')::confs) hn res) ->
-  (h = h' /\ JFIEval h' (JFIExprSubstituteEnv env e1) confs hn res).
+  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn res env) ->
+  (h = h' /\ JFIEvalInEnv h' e1 confs hn res env).
 Proof.
   intros l1 l2 e1 e2 h h' st' confs hn res env.
   intros l1_eq_l2 if_eval.
-  unfold JFIEval, JFIPartialEval in if_eval.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval in if_eval.
   rewrite IfReductionEq in if_eval.
   + fold JFIPartialEval in if_eval.
     destruct if_eval as (h_eq_h' & (_ & e1_eval)).
@@ -1525,13 +1524,12 @@ Qed.
 
 Lemma IfEvaluationStepNeq : forall l1 l2 e1 e2 h h' st' confs hn res env,
   (l1 <> l2) ->
-  (JFIEval h (JFIExprSubstituteEnv env (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2))
-    ((h', st')::confs) hn res) ->
-  (h = h' /\ JFIEval h' (JFIExprSubstituteEnv env e2) confs hn res).
+  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn res env) ->
+  (h = h' /\ JFIEvalInEnv h' e2 confs hn res env).
 Proof.
   intros l1 l2 e1 e2 h h' st' confs hn res env.
   intros l1_eq_l2 if_eval.
-  unfold JFIEval, JFIPartialEval in if_eval.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval in if_eval.
   rewrite IfReductionNeq in if_eval.
   + fold JFIPartialEval in if_eval.
     destruct if_eval as (h_eq_h' & (_ & e2_eval)).
@@ -1541,9 +1539,9 @@ Proof.
   + exact l1_eq_l2.
 Qed.
 
-Lemma NewEvaluationStep : forall prog h ls newloc newheap mu cn vs,
+Lemma NewEvaluationStep : forall prog h ls newloc newheap mu cn vs env,
   (alloc_init prog h cn ls = Some (newloc, newheap)) ->
-   JFIEval h (JFNew mu cn vs) [(h, [ [] [[ (JFNew mu cn vs) ]]_ None])] newheap newloc.
+   JFIEvalInEnv h (JFNew mu cn vs) [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])] newheap newloc env.
 Proof.
 Admitted.
 Hint Resolve NewEvaluationStep : core.
@@ -1651,7 +1649,7 @@ Proof.
   exists [], h, loc.
   split; [ | split].
   + simpl. trivial.
-  + unfold JFIEval, JFIPartialEval.
+  + unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
     rewrite w_is_loc.
     rewrite ExprEnvSubstitutionPreservesVLoc.
     auto.
@@ -1751,8 +1749,7 @@ Proof.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])], newheap, newloc.
   split; [ | split].
   + exact h_satisfies_p.
-  + simpl.
-    eauto.
+  + eauto.
   + simpl.
     apply or_introl.
     rewrite StrMapFacts.add_eq_o.
@@ -1781,8 +1778,7 @@ Proof.
   apply CorrectEvaluationImpliesHoareTriple.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])], newheap, newloc.
   split; [assumption | split].
-  + simpl.
-    eauto.
+  + eauto.
   + simpl.
     unfold JFIValToLoc.
     rewrite value_is_l.
@@ -1797,14 +1793,6 @@ Proof.
     ++ trivial.
 Qed.
 Hint Resolve HTNewFieldRuleSoundness : core.
-
-Lemma LetEvaluation : forall h class x e1 e2 confs hn res env,
-   (JFIEval h (JFIExprSubstituteEnv env (JFLet class x e1 e2)) confs hn res) ->
-    exists confs_e1 confs_e2 h' e1_res,
-      (JFIEval h (JFIExprSubstituteEnv env e1) confs_e1 h' e1_res) /\
-      (JFIEval h' (JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc e1_res) e2)) confs_e2 hn res).
-Proof.
-Admitted.
 
 Lemma AddingFreshVarInsidePreservesHeapSatisfiying : forall q h env x1 l1 x2 l2,
    (JFIVarFreshInTerm x2 q) ->
@@ -1825,6 +1813,15 @@ Lemma SubstituteEnvVarElim : forall x v l e env,
 Proof.
 Admitted.
 
+Lemma LetEvaluation : forall h class x e1 e2 confs hn res env,
+   (JFIEvalInEnv h (JFLet class x e1 e2) confs hn res env) ->
+    exists confs_e1 confs_e2 h' e1_res,
+      (JFIEvalInEnv h e1 confs_e1 h' e1_res env) /\
+      (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_e2 hn res env).
+Proof.
+  intros h class x e1 e2 confs hn res env.
+Admitted.
+
 Lemma LetRuleE1Soundness : forall h' x e1_res q env,
   (JFIHeapSatisfiesInEnv h' q (StrMap.add x e1_res env)) ->
   JFIHeapSatisfiesInEnv h' (JFITermSubstituteVal x (JFVLoc e1_res) q) env.
@@ -1840,7 +1837,7 @@ Qed.
 Lemma LetRuleE2Soundness : forall h' x e1_res e2 confs_e2 hn res class v q u r env,
   (JFILocOfType e1_res h' class) ->
   (JFIVarFreshInTerm v r) ->
-  (JFIEval h' (JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc e1_res) e2)) confs_e2 hn res) ->
+  (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_e2 hn res env) ->
   (JFIHeapSatisfiesInEnv h' (JFITermSubstituteVal x (JFVLoc e1_res) q) env) ->
   (JFIHeapSatisfiesInEnv h' (JFIForall class v (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) u r)) env) ->
    JFIHeapSatisfiesInEnv hn r (StrMap.add u res env)
@@ -1855,7 +1852,8 @@ Proof.
   apply tmp.
   + apply SubstituteLocIffSubstituteVarInEnv.
     assumption.
-  + rewrite SubstituteEnvVarElim.
+  + unfold JFIEvalInEnv.
+    rewrite SubstituteEnvVarElim.
     assumption.
 Qed.
 
@@ -1915,8 +1913,9 @@ Proof.
        exists x_n.
        assumption.
     ++ split.
-       +++ unfold JFIEval, JFIPartialEval.
+       +++ unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
            split; try trivial.
+           unfold JFIExprSubstituteEnv.
            rewrite ValEnvSubstitutionPreservesVLoc.
            rewrite ValEnvSubstitutionPreservesVLoc.
            unfold red.

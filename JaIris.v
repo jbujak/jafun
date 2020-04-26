@@ -239,6 +239,9 @@ Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (h
   let EmptyCtx := []
   in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None].
 
+Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (env : JFITermEnv) : Prop :=
+  JFIEval h (JFIExprSubstituteEnv env e) confs hn res.
+
 Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Prop :=
   match t with
     | JFITrue => True
@@ -255,7 +258,7 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) : Pro
     | JFIHoare t1 e valueName t2 => forall confs hn res,
         let newEnv := StrMap.add valueName res env
         in (JFIHeapSatisfiesInEnv h t1 env) ->
-           (JFIEval h (JFIExprSubstituteEnv env e) confs hn res) ->
+           (JFIEvalInEnv h e confs hn res env) ->
             JFIHeapSatisfiesInEnv hn t2 newEnv
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env
