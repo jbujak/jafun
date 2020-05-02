@@ -1118,6 +1118,11 @@ Proof.
     admit.
 Admitted.
 
+Lemma RemoveSubstitutedVarFromEnv : forall env x v e,
+  JFIExprSubstituteEnv (StrMap.remove (elt:=Loc) x env) (JFIExprSubstituteVal x v e) =
+  JFIExprSubstituteEnv env (JFIExprSubstituteVal x v e).
+Proof.
+Admitted.
 
 (* =============== Equality Lemmas =============== *)
 
@@ -2138,8 +2143,11 @@ Lemma StrippedConfHasSameHeap : forall e1_h e1_st let_h let_st h class x e2,
   E1ConfIsStrippedLetConf (e1_h, e1_st) (let_h, let_st) class x e2 -> let_h = h -> e1_h = h.
 Proof.
   intros.
-  admit.
-Admitted.
+  unfold E1ConfIsStrippedLetConf, fst in H.
+  destruct H as (h_eq & _).
+  rewrite h_eq.
+  exact H0.
+Qed.
 
 Lemma ForStripedConfExistLetContext : forall e1_h e1_st h st class x e2,
   E1ConfIsStrippedLetConf (e1_h, e1_st) (h, st) class x e2 ->
@@ -2147,21 +2155,63 @@ Lemma ForStripedConfExistLetContext : forall e1_h e1_st h st class x e2,
    [(ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ None] = st /\
    [ ctx [[ e1 ]]_ None] = e1_st.
 Proof.
-Admitted.
+  intros.
+  unfold E1ConfIsStrippedLetConf in H.
+  destruct H as (_ & (ctx & (e1 & (e1_st_eq & st_eq)))).
+  exists ctx, e1.
+  split.
+  + unfold LetCtxSt, snd in st_eq.
+    symmetry.
+    exact st_eq.
+  + unfold snd in e1_st_eq.
+    symmetry.
+    exact e1_st_eq.
+Qed.
 
-
-Lemma StrippedConfHasSameTopContexts : forall ctx class x e1 e2 e1_h e1_st h st,
-  E1ConfIsStrippedLetConf (e1_h, e1_st) (h, st) class x e2 ->
-  [(ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ None] = st ->
-  [ ctx [[ e1 ]]_ None] = e1_st.
+Lemma StrenghtenInAssumption : forall T (h : T) l (p : T -> Prop),
+  (forall x, (In x (h::l)) -> p x) ->
+  (forall x, ((In x l) -> p x)).
 Proof.
-Admitted.
+  intros T h l p.
+  intros forall_x_px.
+  intros x x_in_l.
+  apply forall_x_px.
+  apply List.in_cons.
+  exact x_in_l.
+Qed.
 
 Lemma ExistsStrippedInnerLetEvaluation : forall confs class x e2,
   (forall conf, In conf confs -> exists conf_h ctxs' e1', conf = (conf_h, LetCtxSt (ctxs' ++ []) class x e1' e2)) ->
   exists e1_confs, E1ConfsAreStrippedLetConfs e1_confs confs class x e2.
 Proof.
-Admitted.
+  intros confs class x e2.
+  intros forall_conf_confs_exists_stripped_conf.
+  induction confs as [ | conf].
+  + exists [].
+    simpl.
+    trivial.
+  + destruct (forall_conf_confs_exists_stripped_conf conf (List.in_eq conf confs))
+      as (e1_h & (ctxs' & (e1' & conf_eq))).
+    assert (e1_confs : forall conf0 : Heap * list Frame,
+               In conf0 confs ->
+               exists (conf_h : Heap) (ctxs' : list JFContextNode) (e1' : JFExpr),
+                 conf0 = (conf_h, LetCtxSt (ctxs' ++ []) class x e1' e2));
+      [apply StrenghtenInAssumption with (h := conf);
+       exact forall_conf_confs_exists_stripped_conf |].
+    apply IHconfs in e1_confs as (e1_confs & e1_confs_stripped).
+    unfold LetCtxSt in conf_eq.
+    exists ((e1_h, [ ctxs' [[ e1' ]]_ None])::e1_confs).
+    simpl.
+    split.
+    ++ rewrite conf_eq.
+       unfold E1ConfIsStrippedLetConf, fst, snd.
+       split; trivial.
+       exists ctxs', e1'.
+       unfold LetCtxSt.
+       rewrite app_nil_r.
+       split; trivial.
+    ++ exact e1_confs_stripped.
+Qed.
 
 Lemma RedIsNoneIsFalseImpliesRedIsSome : forall CC conf p,
   match red CC conf with
@@ -2326,6 +2376,7 @@ Proof.
 Qed.
 
 Lemma LetGoEvaluationStep : forall h class x env e1_res e2 confs_let_e2 hn res CC,
+  ~StrMap.In x env ->
   JFIPartialEval h (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) (JFIExprSubstituteEnv env e2))
             confs_let_e2 hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC ->
   exists confs_e2, JFIPartialEval h
@@ -2334,7 +2385,7 @@ Lemma LetGoEvaluationStep : forall h class x env e1_res e2 confs_let_e2 hn res C
 Proof.
   intros h class x env e1_res e2 confs_let_e2 hn res CC.
   simpl.
-  intros let_eval.
+  intros x_not_in_env let_eval.
   unfold JFIPartialEval, LetCtxSt in let_eval.
   destruct confs_let_e2.
   + discriminate (proj2 let_eval).
@@ -2344,10 +2395,8 @@ Proof.
     rewrite app_nil_l in let_eval.
     unfold red in let_eval.
     rewrite SubstExprEqExprSubstituteVal in let_eval.
-    rewrite <- SubstituteExprEnvComm in let_eval.
-    ++ exact let_eval.
-    ++ admit. (* TODO always remove from env *)
-Admitted.
+    rewrite <- SubstituteExprEnvComm in let_eval; assumption.
+Qed.
 
 Lemma LetEvaluation : forall h class x e1 e2 confs hn res env CC,
    (JFIEvalInEnv h (JFLet class x e1 e2) confs hn res env) CC ->
@@ -2359,35 +2408,32 @@ Proof.
   intros let_eval.
   unfold JFIEvalInEnv, JFIEval in let_eval.
   unfold JFIExprSubstituteEnv in let_eval.
-    (* TODO always remove from env *)
-  destruct (StrMap.mem x env).
-  + admit.
-  + fold JFIExprSubstituteEnv in let_eval.
-    unfold JFIPartialEval in let_eval.
-    destruct confs.
-    ++ discriminate (proj2 let_eval).
-    ++ destruct p as (h0, st0).   
-       destruct let_eval as (h_eq_h0 & (let_eq_st0 & let_eval)).
-       fold JFIPartialEval in let_eval.
-       unfold red in let_eval.
-       assert (tmp := let_eval).
-       apply (LetInnerEvaluation confs []) in tmp as (confs_let_e1 & (h' & (e1_res & e1_eval))).
-       assert (e1_let_eval := e1_eval).
-       destruct e1_let_eval as (e1_let_eval & _).
-       apply LetE1Evaluation in e1_eval as (confs_e1 & e1_eval).
-       unfold LetCtxSt in e1_let_eval.
-       rewrite app_nil_l in e1_let_eval.
-       assert (outer_eval := EvaluationSplit _ _ _ _ _ _ _ _ _ let_eval e1_let_eval).
-       destruct outer_eval as (confs_let_e2 & e2_eval).
-       assert (let_go_step := LetGoEvaluationStep).
-       apply LetGoEvaluationStep in e2_eval as (confs_e2 & e2_eval).
-       exists confs_e1, confs_e2, h', e1_res.
-       split.
-       +++ unfold JFIEvalInEnv, JFIEval.
-           exact e1_eval.
-       +++ unfold JFIEvalInEnv, JFIEval.
-           assumption.
-Admitted.
+  fold JFIExprSubstituteEnv in let_eval.
+  unfold JFIPartialEval in let_eval.
+  destruct confs.
+  + discriminate (proj2 let_eval).
+  + destruct p as (h0, st0).
+    destruct let_eval as (h_eq_h0 & (let_eq_st0 & let_eval)).
+    fold JFIPartialEval in let_eval.
+    unfold red in let_eval.
+    assert (tmp := let_eval).
+    apply (LetInnerEvaluation confs []) in tmp as (confs_let_e1 & (h' & (e1_res & e1_eval))).
+    assert (e1_let_eval := e1_eval).
+    destruct e1_let_eval as (e1_let_eval & _).
+    apply LetE1Evaluation in e1_eval as (confs_e1 & e1_eval).
+    unfold LetCtxSt in e1_let_eval.
+    rewrite app_nil_l in e1_let_eval.
+    assert (outer_eval := EvaluationSplit _ _ _ _ _ _ _ _ _ let_eval e1_let_eval).
+    destruct outer_eval as (confs_let_e2 & e2_eval).
+    apply LetGoEvaluationStep in e2_eval as (confs_e2 & e2_eval); try apply StrMap.remove_1; try trivial.
+    exists confs_e1, confs_e2, h', e1_res.
+    split.
+    ++ unfold JFIEvalInEnv, JFIEval.
+       exact e1_eval.
+    ++ unfold JFIEvalInEnv, JFIEval.
+       rewrite RemoveSubstitutedVarFromEnv in e2_eval.
+       exact e2_eval.
+Qed.
 
 Lemma LetRuleE1Soundness : forall h' x e1_res q env CC,
   (JFIHeapSatisfiesInEnv h' q (StrMap.add x e1_res env) CC) ->

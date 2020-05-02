@@ -200,10 +200,7 @@ Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
   match e with
   | JFNew mu C vs => JFNew mu C (List.map (JFIValSubstituteEnv env) vs)
   | JFLet C x e1 e2 =>
-    if StrMap.mem x env then
       JFLet C x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv (StrMap.remove x env) e2)
-    else
-      JFLet C x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2)
   | JFIf v1 v2 e1 e2 =>
     JFIf (JFIValSubstituteEnv env v1) (JFIValSubstituteEnv env v2)
          (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2)
@@ -218,10 +215,7 @@ Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
   | JFThrow v1 =>
     JFThrow  (JFIValSubstituteEnv env v1)
   | JFTry e1 mu C x e2 =>
-    if StrMap.mem x env then
       JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) e2)
-    else
-      JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv env e2)
   end.
 
 (* Semantics *)
