@@ -916,13 +916,6 @@ Proof.
        exact h_is_union.
 Qed.
 
-Lemma StrMapKeyEqEquivalence : Equivalence (StrMap.eq_key_elt (elt:=Loc)).
-Proof.
-  unfold StrMap.eq_key_elt.
-  unfold StrMap.Raw.Proofs.PX.eqke.
-
-Admitted.
-
 Lemma SubstituteEnvXNotInEnv : forall x env,
   ~StrMap.In x env ->
   JFIValSubstituteEnv env (JFSyn (JFVar x)) = (JFSyn (JFVar x)).
