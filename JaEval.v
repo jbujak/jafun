@@ -885,12 +885,7 @@ Proof.
     exact red_is_some.
 Qed.
 
-
-
-
-
-
-
+(* ======================== Let evaluation ======================== *)
 
 Definition LetCtxSt ctxs class x e1 e2 :=
   [(ctxs ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ None].
@@ -898,87 +893,7 @@ Definition LetCtxSt ctxs class x e1 e2 :=
 Definition LetCtxStInEnv ctxs class x e1 e2 env :=
   LetCtxSt ctxs class x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2).
 
-Lemma LetInnerEvaluation : forall confs st ctxs h class x e1 e2 hn res CC,
-  (JFIPartialEval h (st ++ (LetCtxSt ctxs class x e1 e2)) confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
-   exists confs_e1 h' e1_res,
-     JFIPartialEval h (st ++ (LetCtxSt ctxs class x e1 e2)) confs_e1 h' (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) e2) CC /\
-     forall conf, In conf confs_e1 -> exists conf_h st' ctxs' e1', conf = (conf_h, (st' ++ LetCtxSt ctxs' class x e1' e2)).
-Proof.
-  intros confs.
-  induction confs.
-  + intros st ctxs h class x e1 e2 hn res CC.
-    intros let_eval.
-    simpl in let_eval.
-    unfold LetCtxSt in let_eval.
-    simpl in let_eval.
-    destruct ctxs.
-    ++ destruct let_eval as (_ & st_eq).
-       rewrite app_nil_l in st_eq.
-       rewrite <- app_nil_l in st_eq.
-       apply app_inj_tail in st_eq.
-       discriminate (proj2 st_eq).
-    ++ destruct let_eval as (_ & st_eq).
-       rewrite <- app_nil_l in st_eq.
-       apply app_inj_tail in st_eq.
-       discriminate (proj2 st_eq).
-  + intros st ctxs h class x e1 e2 hn res CC.
-    intros let_eval.
-    destruct (RedPreservesLetCtxUntilE2Evaluates h class x e1 e2(a :: confs) hn res CC st ctxs let_eval)
-        as [(st_empty & (ctxs_empty & (e1_res & is_val)))  | (st' & (ctx' & (h' & (e1' & red_to_let_ctx))))].
-    ++ rewrite is_val.
-       exists [], h, e1_res.
-       split.
-       +++ unfold JFIPartialEval.
-           rewrite st_empty, ctxs_empty.
-           split; try split; try trivial.
-       +++ intros conf conf_in_nil.
-           destruct conf_in_nil.
-    ++ unfold JFIPartialEval in let_eval.
-       destruct a.
-       destruct let_eval as (h_eq_h0 & (st_eq_f & let_red)).
-       rewrite st_eq_f in let_red.
-
-       replace (st ++ [(ctxs ++
-                     [JFCtxLet class x __ e2])
-                    [[ e1 ]]_ None]) with f in red_to_let_ctx.
-       replace (red CC (h, f) ) with (Some
-                   (h',
-                   (st' ++ [(ctx' ++
-                     [JFCtxLet class x __ e2])
-                    [[e1' ]]_ None]))) in let_red.
-       fold JFIPartialEval in let_red.
-
-       unfold LetCtxStInEnv, LetCtxSt in IHconfs.
-       apply IHconfs in let_red.
-
-       destruct let_red as
-          (confs_e1' & (hn_e1' & (e1_res & (eval_e1' & confs_e1'_let_ctx)))).
-       exists ((h, f)::confs_e1'), hn_e1', e1_res.
-       split.
-       +++ unfold JFIPartialEval, LetCtxSt.
-           split; try split; try assumption.
-           unfold LetCtxSt in st_eq_f.
-           rewrite st_eq_f.
-           replace (red CC (h, f) ) with (Some
-                   (h',
-                   (st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ None]))).
-           fold JFIPartialEval.
-           exact eval_e1'.
-       +++ intros conf conf_in_confs.
-           apply in_inv in conf_in_confs.
-           destruct conf_in_confs as [conf_eq_h_f | conf_in_confs].
-           - destruct conf as (conf_h, conf_f).
-             exists h, st, ctxs, e1.
-             rewrite st_eq_f.
-             symmetry.
-             exact conf_eq_h_f.
-           - assert (exists_conf_h := confs_e1'_let_ctx conf conf_in_confs).
-             destruct (confs_e1'_let_ctx conf conf_in_confs) as (conf_h & (st'' & (ctx'' & (e1'' & conf_h_st_l)))).
-             unfold LetCtxSt.
-             exists conf_h, st'', ctx'', e1''.
-             rewrite conf_h_st_l.
-             trivial.
-Qed.
+(* Evaluation with stripped last context *)
 
 Definition E1ConfIsStrippedLetConf (e1_conf conf : Heap * FrameStack) class x e2 :=
   fst e1_conf = fst conf /\ exists st ctxs e1, snd e1_conf = st ++ [ctxs [[ e1 ]]_ None] /\ snd conf = st ++ LetCtxSt ctxs class x e1 e2.
@@ -1235,6 +1150,91 @@ Proof.
              unfold E1ConfsAreStrippedLetConfs.
              split; assumption.
 Qed.
+
+(* Actual let evaluation lemmas *)
+
+Lemma LetInnerEvaluation : forall confs st ctxs h class x e1 e2 hn res CC,
+  (JFIPartialEval h (st ++ (LetCtxSt ctxs class x e1 e2)) confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
+   exists confs_e1 h' e1_res,
+     JFIPartialEval h (st ++ (LetCtxSt ctxs class x e1 e2)) confs_e1 h' (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) e2) CC /\
+     forall conf, In conf confs_e1 -> exists conf_h st' ctxs' e1', conf = (conf_h, (st' ++ LetCtxSt ctxs' class x e1' e2)).
+Proof.
+  intros confs.
+  induction confs.
+  + intros st ctxs h class x e1 e2 hn res CC.
+    intros let_eval.
+    simpl in let_eval.
+    unfold LetCtxSt in let_eval.
+    simpl in let_eval.
+    destruct ctxs.
+    ++ destruct let_eval as (_ & st_eq).
+       rewrite app_nil_l in st_eq.
+       rewrite <- app_nil_l in st_eq.
+       apply app_inj_tail in st_eq.
+       discriminate (proj2 st_eq).
+    ++ destruct let_eval as (_ & st_eq).
+       rewrite <- app_nil_l in st_eq.
+       apply app_inj_tail in st_eq.
+       discriminate (proj2 st_eq).
+  + intros st ctxs h class x e1 e2 hn res CC.
+    intros let_eval.
+    destruct (RedPreservesLetCtxUntilE2Evaluates h class x e1 e2(a :: confs) hn res CC st ctxs let_eval)
+        as [(st_empty & (ctxs_empty & (e1_res & is_val)))  | (st' & (ctx' & (h' & (e1' & red_to_let_ctx))))].
+    ++ rewrite is_val.
+       exists [], h, e1_res.
+       split.
+       +++ unfold JFIPartialEval.
+           rewrite st_empty, ctxs_empty.
+           split; try split; try trivial.
+       +++ intros conf conf_in_nil.
+           destruct conf_in_nil.
+    ++ unfold JFIPartialEval in let_eval.
+       destruct a.
+       destruct let_eval as (h_eq_h0 & (st_eq_f & let_red)).
+       rewrite st_eq_f in let_red.
+
+       replace (st ++ [(ctxs ++
+                     [JFCtxLet class x __ e2])
+                    [[ e1 ]]_ None]) with f in red_to_let_ctx.
+       replace (red CC (h, f) ) with (Some
+                   (h',
+                   (st' ++ [(ctx' ++
+                     [JFCtxLet class x __ e2])
+                    [[e1' ]]_ None]))) in let_red.
+       fold JFIPartialEval in let_red.
+
+       unfold LetCtxStInEnv, LetCtxSt in IHconfs.
+       apply IHconfs in let_red.
+
+       destruct let_red as
+          (confs_e1' & (hn_e1' & (e1_res & (eval_e1' & confs_e1'_let_ctx)))).
+       exists ((h, f)::confs_e1'), hn_e1', e1_res.
+       split.
+       +++ unfold JFIPartialEval, LetCtxSt.
+           split; try split; try assumption.
+           unfold LetCtxSt in st_eq_f.
+           rewrite st_eq_f.
+           replace (red CC (h, f) ) with (Some
+                   (h',
+                   (st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ None]))).
+           fold JFIPartialEval.
+           exact eval_e1'.
+       +++ intros conf conf_in_confs.
+           apply in_inv in conf_in_confs.
+           destruct conf_in_confs as [conf_eq_h_f | conf_in_confs].
+           - destruct conf as (conf_h, conf_f).
+             exists h, st, ctxs, e1.
+             rewrite st_eq_f.
+             symmetry.
+             exact conf_eq_h_f.
+           - assert (exists_conf_h := confs_e1'_let_ctx conf conf_in_confs).
+             destruct (confs_e1'_let_ctx conf conf_in_confs) as (conf_h & (st'' & (ctx'' & (e1'' & conf_h_st_l)))).
+             unfold LetCtxSt.
+             exists conf_h, st'', ctx'', e1''.
+             rewrite conf_h_st_l.
+             trivial.
+Qed.
+
 
 Lemma LetE1Evaluation : forall h class x e1 e1_res e2 confs hn CC,
   (JFIPartialEval h (LetCtxSt [] class x e1 e2) confs hn (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) e2) CC /\
