@@ -133,13 +133,43 @@ Proof.
   split; try split; assumption.
 Qed.
 
-Lemma EvaluationSplit : forall h st confs hn confs1 res h' st' CC,
+Lemma EvaluationSplit : forall confs_part confs_full h st hn res h' st' CC,
   let stn := [ [] [[JFVal1 (JFVLoc res) ]]_ None] in
-  (JFIPartialEval h st confs hn stn CC) ->
-  (JFIPartialEval h st confs1 h' st' CC) ->
-   exists confs2, JFIPartialEval h' st' confs2 hn stn CC.
+  (JFIPartialEval h st confs_full hn stn CC) ->
+  (JFIPartialEval h st confs_part h' st' CC) ->
+   exists confs_rest, JFIPartialEval h' st' confs_rest hn stn CC.
 Proof.
-Admitted.
+  intros confs_part.
+  induction confs_part.
+  + intros confs_full h st hn res h' st' CC.
+    intros stn eval_full eval_part.
+    exists confs_full.
+    destruct eval_part as (h_eq_h' & st_eq_st').
+    rewrite <-h_eq_h', <-st_eq_st'.
+    exact eval_full.
+  + intros confs_full h st hn res h' st' CC.
+    intros stn eval_full eval_part.
+    destruct confs_full.
+    ++ exfalso.
+       unfold stn in eval_full.
+       unfold JFIPartialEval in eval_full, eval_part.
+       destruct a.
+       destruct eval_full as (h_eq_hn & st_is_res).
+       destruct eval_part as (_ & _ & red2).
+       rewrite st_is_res in red2.
+       unfold red in red2.
+       destruct red2.
+    ++ unfold JFIPartialEval in eval_full, eval_part.
+       destruct p, a.
+       destruct eval_full as (h_eq_h0 & st_eq_f & red_full).
+       destruct eval_part as (h_eq_h1 & st_eq_f0 & red_part).
+       destruct (red CC (h, st)); try destruct red_full.
+       destruct p as (red_h & red_st).
+       fold JFIPartialEval in *.
+       apply IHconfs_part with (h' := h') (st' := st') in red_full as (confs_rest & eval_rest); try apply red_part.
+       exists confs_rest.
+       exact eval_rest.
+Qed.
 
 (* =================== Reduction step preserves context at the bottom until inner expression fully evaluates ================ *)
 
@@ -159,7 +189,7 @@ Definition OuterExprRedPreservesLetCtx expr := forall h0 st ctx let_ctx class x 
     red CC (h0, [ctx [[ expr ]]_ A] ++ st ++ [(let_ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ None]) =
       Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ None]).
 
-Lemma concatNonemptyHasHead : forall A l (el : A),  exists (h : A) l', (l ++ [el]) = h::l'.
+Lemma AppNonemptyHasHead : forall A l (el : A),  exists (h : A) l', (l ++ [el]) = h::l'.
 Proof.
   intros A l el.
   destruct l.
@@ -168,15 +198,22 @@ Proof.
   + exists a, (l ++ [el]).
     auto.
 Qed.
+Arguments AppNonemptyHasHead {_} l el.
 
 Lemma SinglAppIsCons : forall A l (x : A), [x] ++ l = x::l.
 Proof.
-Admitted.
+  intros A l x.
+  unfold app.
+  trivial.
+Qed.
 
 Lemma app_split : forall T (a : T) l b,
 (a :: l) ++ [b] = [a] ++ l ++ [b].
 Proof.
-Admitted.
+  intros T a l b.
+  unfold app.
+  trivial.
+Qed.
 
 Lemma NewInnerRedPreservesLetCtx : forall mu cn vs, InnerExprRedPreservesLetCtx (JFNew mu cn vs).
 Proof.
@@ -191,7 +228,7 @@ Proof.
   destruct let_eval as (_ & (_ & let_eval)).
   unfold red in *.
 
-  assert (ctx_has_head := concatNonemptyHasHead JFContextNode ctx (JFCtxLet class x __ e2)).
+  assert (ctx_has_head := AppNonemptyHasHead ctx (JFCtxLet class x __ e2)).
   destruct ctx_has_head as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
   rewrite <- ctx_concat in *.
@@ -250,7 +287,7 @@ Proof.
   destruct let_eval as (_ & (_ & let_eval)).
   unfold red in *.
 
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat.
   rewrite <- ctx_concat.
@@ -295,7 +332,7 @@ Proof.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
   unfold red in *.
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
 
@@ -344,7 +381,7 @@ Proof.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
   unfold red in *.
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
 
@@ -436,7 +473,7 @@ Proof.
   fold JFIPartialEval in let_eval.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
 
@@ -624,7 +661,7 @@ Proof.
   fold JFIPartialEval in let_eval.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
 
@@ -708,7 +745,7 @@ Proof.
   fold JFIPartialEval in let_eval.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
 
@@ -777,7 +814,7 @@ Proof.
   fold JFIPartialEval in let_eval.
   destruct p.
   destruct let_eval as (_ & (_ & let_eval)).
-  destruct (concatNonemptyHasHead JFContextNode ctx (JFCtxLet outer_class outer_x __ outer_e2))
+  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
    as (ctx_h & (ctx_l & ctx_concat)).
   rewrite ctx_concat in *.
   unfold red in *.
@@ -1025,12 +1062,456 @@ Proof.
     ++ exact e1_confs_stripped.
 Qed.
 
+Lemma CtxInjection : forall (h : Heap) h' st st' ctx ctx' class x e2 e1 e1' A A',
+  Some (h, st ++ [(ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) =
+    Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']) ->
+  Some (h, st ++ [ctx [[ e1 ]]_ A]) =
+    Some (h', st' ++ [ctx' [[ e1' ]]_ A']).
+Proof.
+  intros h h' st st' ctx ctx' class x e2 e1 e1' A A'.
+  intros conf_eq.
+  injection conf_eq.
+  intros ctx_eq h_eq.
+  rewrite h_eq.
+  apply app_inj_tail in ctx_eq.
+  destruct ctx_eq as (st_eq_st' & ctx_eq).
+  rewrite st_eq_st'.
+  injection ctx_eq.
+  intros A_eq_A' e1_eq_e1' let_eq.
+  rewrite e1_eq_e1', A_eq_A'.
+  apply app_inj_tail in let_eq.
+  destruct let_eq as (ctx_eq_ctx' & let_eq).
+  rewrite ctx_eq_ctx'.
+  trivial.
+Qed.
+
+Lemma StrippedRedExistsInnerRedex : forall h h' st' ctx ctx' class x e2 e1 e1' A A' CC,
+  red CC (h , [(ctx  ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) =
+    Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']) ->
+  red CC (h , [ctx  [[ e1 ]]_ A]) =
+    Some (h', st' ++ [ctx' [[ e1' ]]_ A']).
+Proof.
+  intros h h' st' ctx ctx' class x e2 e1 e1' A A' CC.
+  intros red_let.
+
+  unfold red in *.
+  destruct e1.
+  + destruct ctx.
+    ++ destruct A; try discriminate red_let.
+       rewrite app_nil_l in red_let.
+       destruct (list_map_opt loc_of_val vs); try discriminate red_let.
+       destruct (alloc_init CC h cn l ); try discriminate red_let.
+       destruct p.
+       apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2).
+       exact red_let.
+    ++ rewrite <- app_comm_cons in red_let.
+       destruct j; 
+         destruct A; try discriminate red_let;
+         destruct (list_map_opt loc_of_val vs); try discriminate red_let;
+         destruct (alloc_init CC h cn l ); try discriminate red_let;
+         destruct p;
+         apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+         exact red_let.
+  + destruct ctx; try destruct j; destruct A; try discriminate red_let;
+     try rewrite app_nil_l in red_let;
+     apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+     exact red_let.
+  + destruct ctx; try destruct j; destruct A; try discriminate red_let;
+     destruct v1, v2; try discriminate red_let;
+     destruct (Loc_dec l l0);
+       apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+       exact red_let.
+  + destruct ctx.
+    ++ rewrite app_nil_l in red_let.
+       destruct v; try discriminate red_let.
+       destruct l, A; try discriminate red_let.
+       +++ apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ unfold getInvokeBody in *.
+           destruct (getClassName h n); try discriminate red_let.
+           destruct (methodLookup CC j m); try discriminate red_let.
+           destruct (substList (map JFVar (params_of_md j0)) vs
+                  (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+           apply CtxInjection with (ctx := []) (st := [ [] [[j1 ]]_ None]) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+    ++ rewrite <- app_comm_cons in red_let.
+       destruct j; destruct v; try discriminate red_let.
+       +++ destruct l, A; try discriminate red_let.
+           - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - unfold getInvokeBody in *.
+             destruct (getClassName h n); try discriminate red_let.
+             destruct (methodLookup CC j m); try discriminate red_let.
+             destruct (substList (map JFVar (params_of_md j0)) vs
+               (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+             apply CtxInjection with (st := [ [] [[j1 ]]_ None]) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+       +++ destruct l, A; try discriminate red_let.
+           - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - unfold getInvokeBody in *.
+             destruct (getClassName h n); try discriminate red_let.
+             destruct (methodLookup CC j m); try discriminate red_let.
+             destruct (substList (map JFVar (params_of_md j0)) vs
+               (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+             apply CtxInjection with (st := [ [] [[j1 ]]_ None]) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+  + destruct vx.
+    destruct ctx.
+    ++ destruct j; try discriminate red_let.
+       destruct l; try discriminate red_let.
+       +++ destruct v, A; try discriminate red_let.
+           apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct v, A; try discriminate red_let.
+           destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+           destruct o.
+           apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+    ++ destruct j1.
+       +++ destruct j; try discriminate red_let.
+           destruct l.
+           - destruct v, A; try discriminate red_let.
+             apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - destruct v, A, (Heap.find (elt:=Obj) n h); try discriminate red_let.
+             destruct o.
+             destruct (Heap.add n (JFXIdMap.add j0 l r, j) h); try discriminate red_let.
+             apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+       +++ destruct j; try (rewrite <- app_comm_cons in red_let; discriminate red_let).
+           destruct l, v, A; try discriminate red_let.
+           - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+             destruct o.
+             apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+               exact red_let.
+  + destruct ctx.
+    ++ exfalso.
+       rewrite app_nil_l in red_let.
+       destruct v; try discriminate red_let.
+       destruct A;
+        injection red_let;
+        intros st_eq _;
+        symmetry in st_eq;
+        rewrite <- app_nil_l in st_eq;
+        apply app_inj_tail in st_eq as (_ & ctx_eq);
+        injection ctx_eq;
+        intros _ _ ctx_is_nil;
+        apply app_eq_nil in ctx_is_nil as (_ & unit_is_nil);
+        discriminate unit_is_nil.
+    ++ rewrite <- app_comm_cons in red_let.
+       destruct j, v, A; try discriminate red_let;
+         try apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+         try exact red_let.
+       destruct (JaSubtype.subtype_bool CC (JFClass j) (JFClass C)); 
+         apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+         exact red_let.
+  + destruct vx.
+    destruct ctx.
+    ++ destruct j; try discriminate red_let.
+       destruct l, A; try discriminate red_let.
+       +++ apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+           destruct o.
+           destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+           apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+   ++ destruct j1.
+      +++ destruct j; try discriminate red_let.
+          destruct l, A; try discriminate red_let.
+          - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+            destruct o.
+            destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+            apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+      +++ destruct j; try discriminate red_let.
+          destruct l, A; try discriminate red_let.
+          - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+            destruct o.
+            destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+            apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+  + destruct ctx.
+    ++ destruct v; try discriminate red_let.
+       destruct l, A; try discriminate red_let.
+       +++ apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+           exact red_let.
+       +++ destruct (Jafun.class h n); try discriminate red_let.
+           apply CtxInjection with (ctx := []) (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+   ++ destruct j.
+      +++ destruct v; try discriminate red_let.
+          destruct l, A; try discriminate red_let.
+          - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Jafun.class h n); try discriminate red_let.
+            apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+      +++ destruct v; try discriminate red_let.
+          destruct l, A; try discriminate red_let.
+          - apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Jafun.class h n); try discriminate red_let.
+            apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+              exact red_let.
+  + destruct ctx as [ | j]; destruct A; try destruct j; try discriminate red_let;
+     apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+     exact red_let.
+Qed.
+
+
+
+Lemma StrippedRedExistsOuterRedex : forall h h' f st st' inner_ctx ctx' class x e2 e1 e1' A A' CC,
+  red CC (h , (f::st) ++ [(inner_ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) =
+    Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']) ->
+  red CC (h,  (f::st) ++ [inner_ctx [[ e1  ]]_ A]) =
+    Some (h', st' ++ [ctx' [[ e1' ]]_ A']).
+Proof.
+  intros h h' f st st' inner_ctx ctx' class x e2 e1 e1' A A' CC.
+  intros red_let.
+  rewrite <- app_comm_cons in *.
+  destruct f as (ctx, e, A0).
+  unfold red in *.
+  destruct e.
+  + destruct ctx.
+    ++ destruct A0; try discriminate red_let.
+       destruct (list_map_opt loc_of_val vs); try discriminate red_let.
+       destruct (alloc_init CC h cn l ); try discriminate red_let.
+       destruct p.
+       rewrite app_comm_cons.
+       apply CtxInjection with (class := class) (x := x) (e2 := e2).
+       exact red_let.
+    ++ destruct j; 
+         destruct A0; try discriminate red_let;
+         destruct (list_map_opt loc_of_val vs); try discriminate red_let;
+         destruct (alloc_init CC h cn l ); try discriminate red_let;
+         destruct p;
+         rewrite app_comm_cons;
+         apply CtxInjection with (class := class) (x := x) (e2 := e2);
+         exact red_let.
+  + destruct ctx; try destruct j; destruct A0; try discriminate red_let;
+     try rewrite app_nil_l in red_let;
+     rewrite app_comm_cons;
+     apply CtxInjection with (class := class) (x := x) (e2 := e2);
+     exact red_let.
+  + destruct ctx; try destruct j; destruct A0; try discriminate red_let;
+     destruct v1, v2; try discriminate red_let;
+     destruct (Loc_dec l l0);
+       rewrite app_comm_cons;
+       apply CtxInjection with (class := class) (x := x) (e2 := e2);
+       exact red_let.
+  + destruct ctx.
+    ++ destruct v; try discriminate red_let.
+       destruct l, A0; try discriminate red_let.
+       +++ rewrite app_comm_cons;
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ unfold getInvokeBody in *.
+           destruct (getClassName h n); try discriminate red_let.
+           destruct (methodLookup CC j m); try discriminate red_let.
+           destruct (substList (map JFVar (params_of_md j0)) vs
+                  (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+           rewrite 2!app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+    ++ destruct j; destruct v; try discriminate red_let.
+       +++ destruct l, A0; try discriminate red_let.
+           - rewrite app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - unfold getInvokeBody in *.
+             destruct (getClassName h n); try discriminate red_let.
+             destruct (methodLookup CC j m); try discriminate red_let.
+             destruct (substList (map JFVar (params_of_md j0)) vs
+               (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+             rewrite 2!app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+       +++ destruct l, A0; try discriminate red_let.
+           - rewrite app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - unfold getInvokeBody in *.
+             destruct (getClassName h n); try discriminate red_let.
+             destruct (methodLookup CC j m); try discriminate red_let.
+             destruct (substList (map JFVar (params_of_md j0)) vs
+               (substExpr JFThis (JFLoc n) (body_of_md j0))); try discriminate red_let.
+             rewrite 2!app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+  + destruct vx.
+    destruct ctx.
+    ++ destruct j; try discriminate red_let.
+       destruct l; try discriminate red_let.
+       +++ destruct v, A0; try discriminate red_let.
+           rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct v, A0; try discriminate red_let.
+           destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+           destruct o.
+           rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+    ++ destruct j1.
+       +++ destruct j; try discriminate red_let.
+           destruct l.
+           - destruct v, A0; try discriminate red_let.
+             rewrite app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - destruct v, A0, (Heap.find (elt:=Obj) n h); try discriminate red_let.
+             destruct o.
+             destruct (Heap.add n (JFXIdMap.add j0 l r, j) h); try discriminate red_let.
+             rewrite app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+       +++ destruct j; try discriminate red_let.
+           destruct l, v, A0; try discriminate red_let.
+           rewrite app_comm_cons.
+           - apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+           - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+             destruct o.
+             rewrite app_comm_cons.
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+               exact red_let.
+  + destruct st.
+    ++ destruct ctx.
+       +++ destruct v; try discriminate red_let.
+           destruct A0; rewrite app_nil_l in *; destruct e1, A; try discriminate red_let;
+             injection red_let;
+             intros st_eq _;
+             symmetry in st_eq; 
+             apply app_eq_unit in st_eq as [(_ & ctx_eq) | (_ & unit_is_nil)]; try discriminate unit_is_nil;
+             apply CtxInjection with (st := []) (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct j, v; try discriminate red_let.
+           - destruct A0;
+               rewrite app_comm_cons;
+               apply CtxInjection with (class := class) (x := x) (e2 := e2);
+                 exact red_let.
+           - destruct A0.
+             -- destruct (JaSubtype.subtype_bool CC (JFClass j) (JFClass C));
+                  rewrite app_comm_cons;
+                  apply CtxInjection with (class := class) (x := x) (e2 := e2);
+                  exact red_let.
+             -- rewrite app_comm_cons.
+                apply CtxInjection with (class := class) (x := x) (e2 := e2).
+                exact red_let.
+    ++ destruct ctx.
+       +++ destruct v; try discriminate red_let.
+           destruct f.
+           rewrite <- app_comm_cons in *.
+           destruct A0, E, A1; try discriminate red_let;
+            rewrite app_comm_cons;
+             apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct j, v; try discriminate red_let.
+           - destruct A0;
+               rewrite app_comm_cons;
+               apply CtxInjection with (class := class) (x := x) (e2 := e2);
+                 exact red_let.
+           - destruct A0.
+             -- destruct (JaSubtype.subtype_bool CC (JFClass j) (JFClass C));
+                  rewrite app_comm_cons;
+                  apply CtxInjection with (class := class) (x := x) (e2 := e2);
+                  exact red_let.
+             -- rewrite app_comm_cons.
+                apply CtxInjection with (class := class) (x := x) (e2 := e2).
+                exact red_let.
+  + destruct vx.
+    destruct ctx.
+    ++ destruct j; try discriminate red_let.
+       destruct l, A0; try discriminate red_let.
+       +++ rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+       +++ destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+           destruct o.
+           destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+           rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+   ++ destruct j1.
+      +++ destruct j; try discriminate red_let.
+          destruct l, A0; try discriminate red_let.
+          - rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+            destruct o.
+            destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+            rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+      +++ destruct j; try discriminate red_let.
+          destruct l, A0; try discriminate red_let.
+          - rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Heap.find (elt:=Obj) n h); try discriminate red_let.
+            destruct o.
+            destruct (JFXIdMap.find (elt:=Loc) j0 r); try discriminate red_let.
+            rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+  + destruct ctx.
+    ++ destruct v; try discriminate red_let.
+       destruct l, A0; try discriminate red_let.
+       +++ rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+           exact red_let.
+       +++ destruct (Jafun.class h n); try discriminate red_let.
+           rewrite app_comm_cons.
+           apply CtxInjection with (class := class) (x := x) (e2 := e2);
+             exact red_let.
+   ++ destruct j.
+      +++ destruct v; try discriminate red_let.
+          destruct l, A0; try discriminate red_let.
+          - rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Jafun.class h n); try discriminate red_let.
+            rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+      +++ destruct v; try discriminate red_let.
+          destruct l, A0; try discriminate red_let.
+          - rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+          - destruct (Jafun.class h n); try discriminate red_let.
+            rewrite app_comm_cons.
+            apply CtxInjection with (class := class) (x := x) (e2 := e2);
+              exact red_let.
+  + destruct ctx as [ | j]; destruct A0; try destruct j; try discriminate red_let;
+     rewrite app_comm_cons;
+     apply CtxInjection with (class := class) (x := x) (e2 := e2);
+     exact red_let.
+Qed.
+
 Lemma StrippedRedExists : forall h st ctx class x e1 e2 h' st' ctx' e1' CC,
   red CC (h, st ++ [(ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ None]) =
      Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ None]) ->
   red CC (h, st ++ [ctx [[ e1 ]]_ None]) =  Some (h', st' ++ [ctx' [[ e1' ]]_ None]).
 Proof.
-Admitted.
+  intros h st ctx class x e1 e2 h' st' ctx' e1' CC.
+  intros red_let.
+  destruct st.
+  + rewrite app_nil_l in *.
+    apply StrippedRedExistsInnerRedex with (class := class) (x := x) (e2 := e2).
+    exact red_let.
+ + apply StrippedRedExistsOuterRedex with (class := class) (x := x) (e2 := e2).
+   exact red_let.
+Qed.
 
 Lemma rewrite_red : forall h st hn st' CC,
   red CC (h, st) = Some (hn, st') ->
@@ -1077,9 +1558,23 @@ Proof.
     ++ destruct H.
 Qed.
 
-Lemma SubstExprEqExprSubstituteVal : forall x l e,
-  substExpr (JFVar x) l e = JFIExprSubstituteVal x (JFVLoc l) e.
+Lemma SubstExprEqExprSubstituteVal : forall e from to,
+  substExpr (JFVar from) to e = JFIExprSubstituteVal from (JFVLoc to) e.
 Proof.
+  admit. (* TODO *)
+Admitted.
+
+Lemma SubstituteValEnvComm : forall x l v env,
+  ~StrMap.In x env ->
+  (JFIValSubstituteEnv env (JFIValSubstituteVal x (JFVLoc l) v)) =
+  (JFIValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env v)).
+Proof.
+  intros x l v env.
+  intros x_not_in_env.
+  destruct v.
+  + unfold JFIValSubstituteVal.
+    rewrite ValEnvSubstitutionPreservesVLoc.
+    
 Admitted.
 
 Lemma SubstituteExprEnvComm : forall x l e env,
@@ -1091,7 +1586,15 @@ Proof.
   intros not_x_in_env.
   induction e.
   + simpl.
-    admit.
+    induction vs.
+    ++ auto.
+    ++ unfold map.
+       rewrite SubstituteValEnvComm; try apply not_x_in_env.
+       injection IHvs as map_eq.
+       unfold map in map_eq.
+       rewrite map_eq.
+       trivial.
+  + 
 Admitted.
 
 Lemma RemoveSubstitutedVarFromEnv : forall env x v e,

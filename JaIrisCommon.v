@@ -12,6 +12,7 @@ Require Import JaProgram.
 Require Import JaEnvs.
 Require Import Jafun.
 Require Import Bool.
+Require Import Classical_Prop.
 
 Require Export FMapAVL.
 Require Export Coq.Structures.OrderedTypeEx.
@@ -151,3 +152,193 @@ Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
   | JFTry e1 mu C x e2 =>
       JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) e2)
   end.
+
+
+Lemma ValEnvSubstitutionPreservesVLoc : forall env loc,
+  JFIValSubstituteEnv env (JFVLoc loc) = JFVLoc loc.
+Proof.
+  intros env loc.
+  unfold JFIValSubstituteEnv.
+  rewrite StrMap.fold_1.
+  induction (StrMap.elements (elt:=Loc) env); auto.
+Qed.
+
+Lemma ValEnvSubstitutionPreservesThis : forall env,
+  JFIValSubstituteEnv env (JFSyn JFThis) = JFSyn JFThis.
+Proof.
+  intros env.
+  unfold JFIValSubstituteEnv.
+  rewrite StrMap.fold_1.
+  induction (StrMap.elements (elt:=Loc) env); auto.
+Qed.
+
+Lemma ValEnvSubstitutionPreservesVarNotInEnv : forall env x,
+  ~StrMap.In x env ->
+  JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFSyn (JFVar x).
+Proof.
+  intros env x x_not_in_env.
+  unfold JFIValSubstituteEnv.
+  rewrite StrMap.fold_1.
+  induction (StrMap.elements (elt:=Loc) env); auto.
+  unfold fold_left.
+Admitted.
+
+Lemma ValEnvSubstitutionReplacesVarInEnv : forall env x l,
+  StrMap.MapsTo x l env ->
+  JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFVLoc l.
+Proof.
+Admitted.
+
+Lemma ExprEnvSubstitutionPreservesVLoc : forall env loc,
+  JFIExprSubstituteEnv env (JFVal1 (JFVLoc loc)) = JFVal1 (JFVLoc loc).
+Proof.
+  intros env loc.
+  unfold JFIExprSubstituteEnv.
+  rewrite ValEnvSubstitutionPreservesVLoc.
+  trivial.
+Qed.
+
+Lemma ValSubstituteIdentity : forall x v,
+  JFIValSubstituteVal x (JFSyn (JFVar x)) v = v.
+Proof.
+  intros x v.
+  unfold JFIValSubstituteVal.
+  destruct v; try trivial.
+  destruct x0; try trivial.
+  destruct (Classical_Prop.classic (x0 = x)).
+  + apply String.eqb_eq in H as H1.
+    rewrite H1.
+    rewrite H.
+    trivial.
+  + apply String.eqb_neq in H.
+    rewrite H.
+    trivial.
+Qed.
+
+Lemma ValMapSubstituteIdentity : forall x vs,
+  map (JFIValSubstituteVal x (JFSyn (JFVar x))) vs = vs.
+Proof.
+  intros x vs.
+  induction vs; try trivial.
+  rewrite List.map_cons.
+  rewrite IHvs.
+  rewrite ValSubstituteIdentity.
+  trivial.
+Qed.
+
+Lemma ExprSubstituteIdentity : forall x e,
+  JFIExprSubstituteVal x (JFSyn (JFVar x)) e = e.
+Proof.
+  intros x e.
+  unfold JFIExprSubstituteVal.
+  induction e; fold JFIExprSubstituteVal in *.
+  + rewrite ValMapSubstituteIdentity.
+    trivial.
+  + destruct (String.eqb x0 x);
+    try rewrite IHe1;
+    try rewrite IHe2;
+    trivial.
+  + rewrite IHe1; rewrite IHe2.
+    rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValMapSubstituteIdentity.
+    rewrite ValSubstituteIdentity.
+    trivial.
+  + destruct vx.
+    rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValSubstituteIdentity; trivial.
+  + destruct vx.
+    rewrite ValSubstituteIdentity.
+    trivial.
+  + rewrite ValSubstituteIdentity; trivial.
+  + rewrite IHe1; rewrite IHe2.
+    destruct (String.eqb x0 x); trivial.
+Qed.
+
+Lemma TermSubstituteIdentity : forall x q,
+  JFITermSubstituteVal x (JFSyn (JFVar x)) q = q.
+Proof.
+  intros x q.
+  unfold JFITermSubstituteVal.
+  induction q; fold JFITermSubstituteVal in *.
+  + trivial.
+  + trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + destruct (String.eqb name x); try trivial.
+    rewrite IHq; trivial.
+  + destruct (String.eqb name x); try trivial.
+    rewrite IHq; trivial.
+  + rewrite IHq1; rewrite IHq2; rewrite ExprSubstituteIdentity; trivial.
+  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
+  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+  + rewrite IHq1; rewrite IHq2; trivial.
+Qed.
+
+Lemma ValSubstitutePreservesDifferentVar : forall x y v,
+  x <> y -> JFIValSubstituteVal x v (JFSyn (JFVar y)) = (JFSyn (JFVar y)).
+Proof.
+Admitted.
+
+Lemma SubstExprEqExprSubstituteVal : forall e from to,
+  substExpr (JFVar from) to e = JFIExprSubstituteVal from (JFVLoc to) e.
+Proof.
+  admit. (* TODO *)
+Admitted.
+
+Lemma SubstituteValEnvComm : forall x l v env,
+  ~StrMap.In x env ->
+  (JFIValSubstituteEnv env (JFIValSubstituteVal x (JFVLoc l) v)) =
+  (JFIValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env v)).
+Proof.
+  intros x l v env.
+  intros x_not_in_env.
+  destruct v.
+  + unfold JFIValSubstituteVal.
+    rewrite ValEnvSubstitutionPreservesVLoc.
+    trivial.
+  + destruct x0.
+    ++ destruct (Classical_Prop.classic (x = x0)) as [x_eq_x0 | x_ne_x0].
+       +++ rewrite <- x_eq_x0 in *.
+           rewrite ValEnvSubstitutionPreservesVarNotInEnv; try assumption.
+           unfold JFIValSubstituteVal.
+           destruct (String.eqb x x).
+           - rewrite ValEnvSubstitutionPreservesVLoc.
+             trivial.
+           - rewrite ValEnvSubstitutionPreservesVarNotInEnv; try assumption.
+             trivial.
+       +++ rewrite ValSubstitutePreservesDifferentVar; try assumption.
+           admit.
+    ++ unfold JFIValSubstituteVal.
+       rewrite ValEnvSubstitutionPreservesThis.
+       trivial.
+Admitted.
+
+Lemma SubstituteExprEnvComm : forall x l e env,
+  ~StrMap.In x env ->
+  JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc l) e) =
+  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv env e).
+Proof.
+  intros x l e env.
+  intros not_x_in_env.
+  induction e.
+  + simpl.
+    induction vs.
+    ++ auto.
+    ++ unfold map.
+       rewrite SubstituteValEnvComm; try apply not_x_in_env.
+       injection IHvs as map_eq.
+       unfold map in map_eq.
+       rewrite map_eq.
+       trivial.
+  + 
+Admitted.
+
+Lemma RemoveSubstitutedVarFromEnv : forall env x v e,
+  JFIExprSubstituteEnv (StrMap.remove (elt:=Loc) x env) (JFIExprSubstituteVal x v e) =
+  JFIExprSubstituteEnv env (JFIExprSubstituteVal x v e).
+Proof.
+Admitted.
