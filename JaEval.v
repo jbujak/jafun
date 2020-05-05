@@ -44,38 +44,73 @@ Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack
 
 (* ======================= Evalution is deterministic ======================= *)
 
-Lemma EvaluationFirstStepIsDeterministic : forall h0 e h1 h1' st1 st1' confs confs' hn hn' res res' CC,
- (JFIEval h0 e ((h1, st1) :: confs) hn res CC) ->
- (JFIEval h0 e ((h1', st1') :: confs') hn' res' CC) ->
-  h1 = h1' /\ st1 = st1' /\ exists e', JFIEval h1 e' confs hn res CC /\ JFIEval h1 e' confs' hn' res' CC.
+Lemma EvaluationFirstStepIsDeterministic : forall h0 st0 h1 h1' st1 st1' confs confs' hn hn' stn stn' CC,
+ (JFIPartialEval h0 st0 ((h1, st1) :: confs) hn stn CC) ->
+ (JFIPartialEval h0 st0 ((h1', st1') :: confs') hn' stn' CC) ->
+  h1 = h1' /\ st1 = st1' /\ exists h' st', JFIPartialEval h' st' confs hn stn CC /\ JFIPartialEval h' st' confs' hn' stn' CC.
 Proof.
-Admitted.
+  intros h0 st0 h1 h1' st1 st1' confs confs' hn hn' stn stn' CC.
+  intros eval1 eval2.
+  unfold JFIEval, JFIPartialEval in eval1, eval2.
+  destruct eval1 as (h0_eq_h1 & st0_eq_st1 & red1).
+  destruct eval2 as (h0_eq_h2 & st0_eq_st1' & red2).
+  rewrite <- h0_eq_h1, h0_eq_h2.
+  rewrite <- st0_eq_st1, st0_eq_st1'.
+  split; try split; trivial.
 
-Lemma EvaluationLastStepIsDeterministic : forall confs h0 e hn hn' res res' CC,
- (JFIEval h0 e [] hn res CC) ->
- (JFIEval h0 e confs hn' res' CC) ->
-  [] = confs /\ hn = hn' /\ res = res'.
+  fold JFIPartialEval in *.
+  unfold JFIEval.
+
+  rewrite st0_eq_st1 in red1, red2.
+
+  destruct (red CC (h0, st1)); try destruct red1.
+  destruct p.
+  exists h, f.
+  split; assumption.
+Qed.
+
+Lemma EvaluationLastStepIsDeterministic : forall confs h0 st0 hn hn' res res' CC,
+ (JFIPartialEval h0 st0 []    hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ] CC) ->
+ (JFIPartialEval h0 st0 confs hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ None ] CC) ->
+ ([] = confs /\ hn = hn' /\ res = res').
 Proof.
-Admitted.
+  intros confs h0 st0 hn hn' res res' CC.
+  intros eval1 eval2.
+  unfold JFIPartialEval in *.
+  destruct eval1 as (h0_eq_hn & st0_is_res).
+  destruct confs.
+  + destruct eval2 as (h0_eq_hn' & st0_is_res').
+    rewrite st0_is_res' in st0_is_res.
+    injection st0_is_res as res_eq_res'.
+    rewrite <- h0_eq_hn, h0_eq_hn', res_eq_res'.
+    split; try split; trivial.
+  + exfalso.
+    destruct p.
+    destruct eval2 as (h0_eq_h & st0_eq_f & red2).
+    rewrite st0_is_res in red2.
+    unfold red in red2.
+    exact red2.
+Qed.
 
-Lemma EvaluationIsDeterministic : forall confs confs' h0 e hn hn' res res' CC,
-  (JFIEval h0 e confs  hn  res CC)  ->
-  (JFIEval h0 e confs' hn' res' CC) ->
+Lemma PartialEvaluationIsDeterministic : forall confs confs' h0 st0 hn hn' res res' CC,
+  (JFIPartialEval h0 st0 confs  hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ] CC)  ->
+  (JFIPartialEval h0 st0 confs' hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ None ] CC) ->
   (confs = confs' /\ hn = hn' /\ res = res').
 Proof.
   intros confs.
   induction confs as [ | (h, st)].
   + apply EvaluationLastStepIsDeterministic.
-  + intros confs' h0 e hn hn' res res' CC.
+  + intros confs' h0 st0 hn hn' res res' CC.
     intros e_eval_hs e_eval_hs'.
     destruct confs' as [ | (h', st')].
     ++ apply EvaluationLastStepIsDeterministic with (hn := hn') (res := res') in e_eval_hs.
        +++ destruct e_eval_hs as (false & _).
            discriminate false.
        +++ exact e_eval_hs'.
-    ++ set (exists_e' := EvaluationFirstStepIsDeterministic h0 e h h' st st' confs confs' hn hn' res res' CC e_eval_hs e_eval_hs').
-       destruct exists_e' as (h_eq_h' & (st_eq_st' & (e' & (e'_eval_hs & e'_eval_hs')))).
-       set (IH_applied := IHconfs confs' h e'  hn hn' res res' CC e'_eval_hs e'_eval_hs').
+    ++ destruct (EvaluationFirstStepIsDeterministic h0 st0 h h' st st' confs confs' hn hn'
+           [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ]  [ [] [[ JFVal1 (JFVLoc res')  ]]_ None ] CC e_eval_hs e_eval_hs')
+        as (h_eq_h' & (st_eq_st' & new_h & (e' & (e'_eval_hs & e'_eval_hs')))).
+       set (IH_applied := IHconfs confs' new_h e'  hn hn' res res' CC e'_eval_hs e'_eval_hs').
        destruct IH_applied as (confs_eq_confs' & (hn_eq_hn' & res_eq_res')).
        split; try split.
        +++ rewrite <- h_eq_h'.
@@ -84,6 +119,18 @@ Proof.
            trivial.
        +++ exact hn_eq_hn'.
        +++ exact res_eq_res'.
+Qed.
+
+Lemma EvaluationIsDeterministic : forall confs confs' h0 e hn hn' res res' CC,
+  (JFIEval h0 e confs  hn  res CC)  ->
+  (JFIEval h0 e confs' hn' res' CC) ->
+  (confs = confs' /\ hn = hn' /\ res = res').
+Proof.
+  intros confs confs' h0 e hn hn' res res' CC.
+  intros eval1 eval2.
+  destruct (PartialEvaluationIsDeterministic confs confs' h0 [ [] [[ e ]]_ None] hn hn' res res' CC)
+    as (confs_eq & res_eq & stn_eq); try assumption.
+  split; try split; assumption.
 Qed.
 
 Lemma EvaluationSplit : forall h st confs hn confs1 res h' st' CC,
