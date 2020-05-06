@@ -203,6 +203,19 @@ Definition JFIVarFreshInVal (x : string) (v : JFVal) :=
     | JFSyn JFThis => True
   end.
 
+Fixpoint JFIVarFreshInExpr (x : string) (e : JFExpr) :=
+  match e with
+    | JFNew mu C vs => True
+    | JFLet C x e1 e2 => True
+    | JFIf v1 v2 e1 e2 => True
+    | JFInvoke v1 m vs => True
+    | JFAssign (v1,fld) v2 => True
+    | JFVal1 v1 => True
+    | JFVal2 (v1, fld) => True
+    | JFThrow v1 => True
+    | JFTry e1 mu C x e2 => True
+  end.
+
 Fixpoint JFIVarFreshInTerm (x : string) (t : JFITerm) :=
   match t with
     | JFITrue => True
@@ -215,7 +228,8 @@ Fixpoint JFIVarFreshInTerm (x : string) (t : JFITerm) :=
     | JFIForall class name term => (* TODO maybe allow x = name *)
         if String.eqb name x then False else JFIVarFreshInTerm x term
     | JFIHoare t1 e name t2 => (* TODO maybe allow x = name *)
-        if String.eqb name x then False else (JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2)
+        if String.eqb name x then False else
+          (JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2 /\ JFIVarFreshInExpr x e)
     | JFIEq val1 val2 => JFIVarFreshInVal x val1 /\ JFIVarFreshInVal x val2
     | JFIFieldEq obj fieldName val => JFIVarFreshInVal x obj /\ JFIVarFreshInVal x val
     | JFISep t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2

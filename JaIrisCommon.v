@@ -128,7 +128,6 @@ Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFVal) (t : JFI
 Definition JFITermSubstituteVar (from : string) (to : string) (t : JFITerm) : JFITerm :=
     JFITermSubstituteVal from (JFSyn (JFVar to)) t.
 
-
 Definition JFIValSubstituteEnv (env : JFITermEnv) (val : JFVal)  :=
   StrMap.fold (fun k v a => JFIValSubstituteVal k (JFVLoc v) a) env val.
 

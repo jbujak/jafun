@@ -733,12 +733,133 @@ Proof.
   exact x1_neq_x2.
 Qed.
 
-Lemma AddingFreshVarPreservesHeapSatisfiying : forall h q x l CC env,
+Lemma FreshEnvOrderChangePreservesHeapSatisfiying : forall h t x1 l1 x2 l2 env CC,
+  (JFIVarFreshInTerm x1 t) ->
+  (JFIHeapSatisfiesInEnv h t (StrMap.add x1 l1 (StrMap.add x2 l2 env)) CC) <->
+  (JFIHeapSatisfiesInEnv h t (StrMap.add x2 l2 (StrMap.add x1 l1 env)) CC).
+Proof.
+Admitted.
+
+Definition FreshVarPreservesTermSatysfying t CC :=
+forall h x l env,
+        JFIVarFreshInTerm x t ->
+        JFIHeapSatisfiesInEnv h t env CC <->
+        JFIHeapSatisfiesInEnv h t (StrMap.add x l env) CC.
+
+Lemma FreshVarPreservesEval : forall h e confs hn res x l env CC,
+  JFIVarFreshInExpr x e ->
+  JFIEvalInEnv h e confs hn res env CC <->
+  JFIEvalInEnv h e confs hn res (StrMap.add x l env) CC.
+Proof.
+Admitted.
+
+Lemma FreshVarPreservesAndSatystying : forall t1 t2 CC,
+  FreshVarPreservesTermSatysfying t1 CC ->
+  FreshVarPreservesTermSatysfying t2 CC ->
+  FreshVarPreservesTermSatysfying (JFIAnd t1 t2) CC.
+Proof.
+  intros t1 t2 CC.
+  intros t1_preserves t2_preserves.
+  unfold FreshVarPreservesTermSatysfying.
+  intros h x l env and_fresh.
+  destruct and_fresh as (t1_fresh & t2_fresh).
+  split; intros h_satisfies_and; split;
+  destruct h_satisfies_and as (h_satisfies_t1 & h_satisfies_t2);
+  try apply (t1_preserves h x l env t1_fresh);
+  try apply (t2_preserves h x l env t2_fresh);
+  try assumption.
+Qed.
+
+Lemma FreshVarPreservesHoareSatystying : forall t1 e v t2 CC,
+  FreshVarPreservesTermSatysfying t1 CC ->
+  FreshVarPreservesTermSatysfying t2 CC ->
+  FreshVarPreservesTermSatysfying (JFIHoare t1 e v t2) CC.
+Proof.
+  intros t1 e v t2 CC.
+  intros IH_t1 IH_t2.
+  unfold FreshVarPreservesTermSatysfying.
+  intros h x l env x_fresh_in_hoare.
+  simpl in x_fresh_in_hoare.
+  destruct (String.eqb v x); destruct x_fresh_in_hoare.
+  destruct H0 as (x_fresh_in_t2 & x_fresh_in_e).
+  simpl.
+  split.
+  + intros h_satisfies_hoare_in_env.
+    intros confs hn res h_satisfies_t1_in_env_x e_eval_in_env_x.
+    apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
+    assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
+    apply (proj1 t2_preserves).
+    apply h_satisfies_hoare_in_env with (confs := confs).
+    ++ assert (t1_preserves := IH_t1 h x l env H).
+       apply ((proj2 t1_preserves) h_satisfies_t1_in_env_x).
+    ++ apply (FreshVarPreservesEval h e confs hn res x l env CC x_fresh_in_e).
+       exact e_eval_in_env_x.
+  + intros h_satisfies_hoare_in_env_x.
+    intros confs hn res h_satisfies_t1_in_env e_eval_in_env.
+    assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
+    apply (proj2 t2_preserves).
+    apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
+    apply h_satisfies_hoare_in_env_x with (confs := confs).
+    ++ assert (t1_preserves := IH_t1 h x l env H).
+       apply ((proj1 t1_preserves) h_satisfies_t1_in_env).
+    ++ apply (FreshVarPreservesEval h e confs hn res x l env CC x_fresh_in_e).
+       exact e_eval_in_env.
+Qed.
+
+Lemma FreshVarPreservesSepSatystying : forall t1 t2 CC,
+  FreshVarPreservesTermSatysfying t1 CC ->
+  FreshVarPreservesTermSatysfying t2 CC ->
+  FreshVarPreservesTermSatysfying (JFISep t1 t2) CC.
+Proof.
+  intros t1 t2 CC.
+  intros t1_preserves t2_preserves.
+  unfold FreshVarPreservesTermSatysfying.
+  intros h x l env (x_fresh_in_t1 & x_fresh_in_t2).
+  split.
+  + simpl.
+    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    exists h1, h2.
+    assert (h1_satisfies_t1_in_env_x := proj1 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
+    assert (h2_satisfies_t2_in_env_x := proj1 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
+    split; try assumption; split; assumption.
+  + simpl.
+    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    exists h1, h2.
+    assert (h1_satisfies_t1_in_env := proj2 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
+    assert (h2_satisfies_t2_in_env := proj2 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
+    split; try assumption; split; assumption.
+Qed.
+
+Lemma FreshVarPreservesWandSatystying : forall t1 t2 CC,
+  FreshVarPreservesTermSatysfying t1 CC ->
+  FreshVarPreservesTermSatysfying t2 CC ->
+  FreshVarPreservesTermSatysfying (JFIWand t1 t2) CC.
+Proof.
+  intros t1 t2 CC.
+  intros t1_preserves t2_preserves.
+  unfold FreshVarPreservesTermSatysfying.
+  intros h x l env (x_fresh_in_t1 & x_fresh_in_t2).
+  split.
+  + simpl.
+    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    exists h1, h2.
+    assert (h1_satisfies_t1_in_env_x := proj1 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
+    assert (h2_satisfies_t2_in_env_x := proj1 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
+    split; try assumption; split; assumption.
+  + simpl.
+    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    exists h1, h2.
+    assert (h1_satisfies_t1_in_env := proj2 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
+    assert (h2_satisfies_t2_in_env := proj2 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
+    split; try assumption; split; assumption.
+Qed.
+
+Lemma AddingFreshVarPreservesHeapSatisfiying : forall q CC h x l env,
   (JFIVarFreshInTerm x q) ->
     ((JFIHeapSatisfiesInEnv h q env CC) <->
       JFIHeapSatisfiesInEnv h q (StrMap.add x l env) CC).
 Proof.
-  intros h q x l CC.
+  intros q CC.
   induction q as
     [ | | t1 IH_t1 t2 IH_t2
     | t1 IH_t1 t2 IH_t2
@@ -750,7 +871,7 @@ Proof.
     | obj field val
     | t1 IH_t1 t2 IH_t2
     | t1 IH_t1 t2 IH_t2
-    ].
+    ];   intros h x l.
   (* JFITrue *)
   + simpl.
     split; trivial.
@@ -758,26 +879,20 @@ Proof.
   + simpl.
     split; trivial.
   (* JFIAnd t1 t2 *)
-  + simpl.
-    intros env x_fresh.
-    split; intros h_satisfies_q; split;
-    destruct x_fresh as (t1_fresh & t2_fresh);
-    try apply (IH_t1 env t1_fresh);
-    try apply (IH_t2 env t2_fresh);
-    try apply h_satisfies_q.
+  + apply FreshVarPreservesAndSatystying; assumption.
   (* JFIOr t1 t2 *)
   + simpl.
     intros env x_fresh.
     destruct x_fresh as (t1_fresh & t2_fresh).
     split; intros [ h_satisfies_t1 | h_satisfies_t2 ].
     ++ apply or_introl.
-       apply (IH_t1 env t1_fresh); exact h_satisfies_t1.
+       apply (IH_t1 h x l env t1_fresh); exact h_satisfies_t1.
     ++ apply or_intror.
-       apply (IH_t2 env t2_fresh); exact h_satisfies_t2.
+       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
     ++ apply or_introl.
-       apply (IH_t1 env t1_fresh); exact h_satisfies_t1.
+       apply (IH_t1 h x l env t1_fresh); exact h_satisfies_t1.
     ++ apply or_intror.
-       apply (IH_t2 env t2_fresh); exact h_satisfies_t2.
+       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
   (* JFIImplies t1 t2 *)
   + simpl.
     intros env x_fresh.
@@ -786,19 +901,43 @@ Proof.
     ++ apply or_introl.
        unfold not.
        intros h_satisfies_t1.
-       apply (IH_t1 env t1_fresh) in h_satisfies_t1.
+       apply (IH_t1 h x l env t1_fresh) in h_satisfies_t1.
        exact (not_h_satisfies_t1 h_satisfies_t1).
     ++ apply or_intror.
-       apply (IH_t2 env t2_fresh); exact h_satisfies_t2.
+       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
     ++ apply or_introl.
        unfold not.
        intros h_satisfies_t1.
-       apply (IH_t1 env t1_fresh) in h_satisfies_t1.
+       apply (IH_t1 h x l env t1_fresh) in h_satisfies_t1.
        exact (not_h_satisfies_t1 h_satisfies_t1).
     ++ apply or_intror.
-       apply (IH_t2 env t2_fresh); exact h_satisfies_t2.
+       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
   (* JFIExists *)
-  + admit.
+  + intros env x_fresh.
+    split.
+    ++ simpl.
+       intros (loc & loc_of_type & h_satisfies_t).
+       exists loc.
+       split; try assumption.
+       apply EnvOrderChangePreservesHeapSatisfiying.
+       +++ apply neq_symmetry.
+           apply FreshVarDifferentFromForallVar with (class := name) (t := t).
+           exact x_fresh.
+       +++ apply (IH_t h x l (StrMap.add name loc env)); try assumption.
+           simpl in x_fresh.
+           destruct (String.eqb name x); try assumption.
+           destruct x_fresh.
+    ++ simpl.
+       intros (loc & loc_of_type & h_satisfies_t).
+       exists loc.
+       split; try assumption.
+       apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t.
+       +++ apply (IH_t h x l (StrMap.add name loc env)) in h_satisfies_t; try assumption.
+           simpl in x_fresh.
+           destruct (String.eqb name x); try assumption.
+           destruct x_fresh.
+       +++ apply FreshVarDifferentFromForallVar with (class := name) (t := t).
+           exact x_fresh.
   (* JFIForall *)
   + intros env x_fresh.
     split.
@@ -808,26 +947,23 @@ Proof.
        +++ apply neq_symmetry.
            apply FreshVarDifferentFromForallVar with (class := name) (t := t).
            exact x_fresh.
-       +++ apply (IH_t (StrMap.add name loc env)).
+       +++ apply (IH_t h x l (StrMap.add name loc env)).
            - simpl in x_fresh.
-             destruct (String.eqb name x).
-             -- destruct x_fresh.
-             -- exact x_fresh.
+             destruct (String.eqb name x); try assumption.
+             destruct x_fresh.
            - exact (h_satisfies_t loc loc_of_type).
     ++ simpl.
        intros h_satisfies_t loc loc_of_type.
        set (h_satisfies_t' := h_satisfies_t loc loc_of_type).
        apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t'.
-       +++ apply (IH_t (StrMap.add name loc env)) in h_satisfies_t'.
-           - exact h_satisfies_t'.
-           - simpl in x_fresh.
-             destruct (String.eqb name x).
-             -- destruct x_fresh.
-             -- exact x_fresh.
+       +++ apply (IH_t h x l (StrMap.add name loc env)) in h_satisfies_t'; try assumption.
+           simpl in x_fresh.
+           destruct (String.eqb name x); try assumption.
+           destruct x_fresh.
        +++ apply FreshVarDifferentFromForallVar with (class := name) (t := t).
            exact x_fresh.
   (* JFIHoare *)
-  + admit.
+  + apply FreshVarPreservesHoareSatystying; assumption.
   (* JFIEq *)
   + intros env x_fresh.
     split;
@@ -839,10 +975,10 @@ Proof.
     apply AddingFreshVarPreservesHeapSatisfiyingFieldEq with (x := x) (l := l);
     exact x_fresh.
   (* JFISep*)
-  + admit.
+  + apply FreshVarPreservesSepSatystying; try assumption.
   (* JFIWand *)
-  + admit.
-Admitted.
+  + apply FreshVarPreservesWandSatystying; try assumption.
+Qed.
 
 Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env CC x0,
   (JFIVarFreshInTerm x0 p) ->
