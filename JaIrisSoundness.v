@@ -93,6 +93,7 @@ Proof.
     exact find_gives_e.
 Qed.
 
+
 (* =============== Heap Lemmas =============== *)
 
 Lemma JFIHeapsDisjointSym : forall h1 h2, JFIHeapsDisjoint h1 h2 -> JFIHeapsDisjoint h2 h1.
@@ -335,24 +336,19 @@ Lemma AddPreservesEnvEq : forall x l env1 env2,
 Proof.
   intros x l env1 env2.
   intros env1_eq_env2.
-  unfold EnvEq.
   intros y.
-  destruct (Classical_Prop.classic (x = y)) as [x_eq_y | x_neq_y].
-  + rewrite x_eq_y.
-    replace (StrMap.find y (StrMap.add y l env1)) with (Some l); symmetry.
-    ++ apply StrMapFacts.add_eq_o.
-       trivial.
-    ++ apply StrMapFacts.add_eq_o.
-       trivial.
-  + replace (StrMap.find y (StrMap.add x l env1)) with (StrMap.find y env1).
-    replace (StrMap.find y (StrMap.add x l env2)) with (StrMap.find y env2).
-    ++ apply env1_eq_env2.
-    ++ symmetry.
-       apply StrMapFacts.add_neq_o.
-       exact x_neq_y.
-    ++ symmetry.
-       apply StrMapFacts.add_neq_o.
-       exact x_neq_y.
+  rewrite 2!StrMapFacts.add_o.
+  destruct (StrMapFacts.eq_dec x y); trivial.
+Qed.
+
+Lemma RemovePreservesEnvEq : forall x env1 env2,
+  (EnvEq env1 env2) -> (EnvEq (StrMap.remove x env1) (StrMap.remove x env2)).
+Proof.
+  intros x env1 env2.
+  intros env_eq.
+  intros y.
+  rewrite 2!StrMapFacts.remove_o.
+  destruct (StrMapFacts.eq_dec x y); trivial.
 Qed.
 
 Lemma AddOrderChangePreservesEnvEq : forall x1 l1 x2 l2 env,
@@ -392,6 +388,94 @@ Proof.
        +++ exact x2_neq_x.
        +++ exact x2_neq_x.
        +++ exact x1_neq_x.
+Qed.
+
+Lemma EnvEqGivesValSubstEnvEq : forall env1 env2 v,
+  (EnvEq env1 env2) ->
+  (JFIValSubstituteEnv env1 v = JFIValSubstituteEnv env2 v).
+Proof.
+  intros env1 env2 v.
+  intros env_eq.
+  destruct v as [ | x]; try destruct x.
+  + rewrite 2!ValEnvSubstitutionPreservesVLoc.
+    trivial.
+  + destruct (Classical_Prop.classic (StrMap.In x env1)) as [x_in_env1 | x_not_in_env1].
+    ++ apply StrMap_in_find_iff in x_in_env1 as (l & x_l_in_env1).
+       assert (x_l_in_env2 := env_eq x).
+       rewrite x_l_in_env1 in x_l_in_env2.
+       symmetry in x_l_in_env2.
+       rewrite 2!ValEnvSubstitutionReplacesVarInEnv with (l := l); trivial.
+    ++ rewrite 2!(ValEnvSubstitutionPreservesVarNotInEnv); try assumption; trivial.
+       intros x_in_env2.
+       apply StrMapFacts.not_find_mapsto_iff in x_not_in_env1 as x_is_none.
+       apply StrMap_in_find_iff in x_in_env2 as (l & x_is_l).
+       rewrite <- (env_eq x) in x_is_l.
+       rewrite x_is_none in x_is_l.
+       discriminate x_is_l.
+  + rewrite 2!ValEnvSubstitutionPreservesThis.
+    trivial.
+Qed.
+
+Lemma EnvEqGivesMapValSubstEq : forall env1 env2 vs,
+  (EnvEq env1 env2) ->
+  (map (JFIValSubstituteEnv env1) vs = map (JFIValSubstituteEnv env2) vs).
+Proof.
+  intros env1 env2 vs.
+  intros env_eq.
+  induction vs; try trivial.
+  rewrite 2!List.map_cons.
+  rewrite IHvs.
+  rewrite EnvEqGivesValSubstEnvEq with (env2 := env2); trivial.
+Qed.
+
+Lemma EnvEqGivesExprSubstEnvEq : forall e env1 env2,
+  (EnvEq env1 env2) ->
+  (JFIExprSubstituteEnv env1 e =  JFIExprSubstituteEnv env2 e).
+Proof.
+  intros e.
+  induction e; intros env1 env2 env_eq; simpl;
+    try rewrite ?(EnvEqGivesValSubstEnvEq env1 env2);
+    try rewrite (EnvEqGivesMapValSubstEq env1 env2);
+    try assumption;
+    trivial.
+  + rewrite (IHe1 env1 env2); try assumption.
+    rewrite (IHe2 (StrMap.remove x env1) (StrMap.remove x env2)); trivial.
+    apply RemovePreservesEnvEq; try assumption.
+  + rewrite <- (IHe1 env1 env2), <- (IHe2 env1 env2); try assumption.
+    trivial.
+  + destruct vx.
+    rewrite (EnvEqGivesValSubstEnvEq env1 env2); try assumption.
+    trivial.
+  + destruct vx.
+    rewrite (EnvEqGivesValSubstEnvEq env1 env2); try assumption.
+    trivial.
+  + rewrite (IHe1 env1 env2); try assumption.
+    rewrite (IHe2 (StrMap.remove x env1) (StrMap.remove x env2)); trivial.
+    apply RemovePreservesEnvEq; try assumption.
+Qed.
+
+Lemma EnvEqGivesEvalEq : forall confs h e hn res env1 env2 CC,
+  (EnvEq env1 env2) ->
+  (JFIEvalInEnv h e confs hn res env1 CC) ->
+  (JFIEvalInEnv h e confs hn res env2 CC).
+Proof.
+  intros confs.
+  induction confs; intros h e hn res env1 env2 CC env_eq.
+  + unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
+    intros (h_eq & f_eq).
+    rewrite h_eq.
+    split; trivial.
+    rewrite <- f_eq.
+    symmetry.
+    rewrite EnvEqGivesExprSubstEnvEq with (env2 := env2); trivial.
+  + intros e_eval.
+    unfold JFIEvalInEnv, JFIEval, JFIPartialEval in *.
+    destruct a.
+    fold JFIPartialEval in *.
+    destruct e_eval as (h_eq & f_eq & red_is_some).
+    rewrite h_eq, <-f_eq in *.
+    apply EnvEqSymmetry in env_eq.
+    split; try split; try rewrite EnvEqGivesExprSubstEnvEq with (env2 := env1); try trivial.
 Qed.
 
 Lemma EnvEqGivesExistsImplication : forall h type x t env1 env2 CC,
@@ -488,6 +572,28 @@ Proof.
   + exact (h_satisfies_t loc loc_of_type).
 Qed.
 
+Lemma EnvEqGivesHoareImplication : forall h t1 e v t2 env1 env2 CC,
+  (EnvEq env1 env2) ->
+  (EqualEnvsEquivalentInTermForHeap t1 CC) ->
+  (EqualEnvsEquivalentInTermForHeap t2 CC) ->
+  (JFIHeapSatisfiesInEnv h (JFIHoare t1 e v t2) env1 CC) ->
+   JFIHeapSatisfiesInEnv h (JFIHoare t1 e v t2) env2 CC.
+Proof.
+  intros h t1 e v t2 env1 env2 CC.
+  intros env_eq t1_equivalence t2_equivalence.
+  simpl.
+  intros h_satisfies_hoare confs hn res h_satisfies_t1 e_eval.
+  apply (t2_equivalence hn (StrMap.add v res env1) (StrMap.add v res env2)).
+  + apply AddPreservesEnvEq.
+    exact env_eq.
+  + apply h_satisfies_hoare with (confs := confs).
+    ++ apply (t1_equivalence h env1 env2 env_eq).
+       exact  h_satisfies_t1.
+    ++ apply EnvEqGivesEvalEq with (env1 := env2); try assumption.
+       apply EnvEqSymmetry.
+       exact env_eq.
+Qed.
+
 Lemma EnvEqGivesEqualValToLoc : forall val env1 env2,
   (EnvEq env1 env2) ->
   (JFIValToLoc val env1) = (JFIValToLoc val env2).
@@ -577,61 +683,42 @@ Lemma EqualEnvsAreEquivalent : forall t CC h env1 env2,
     ((JFIHeapSatisfiesInEnv h t env1 CC) <-> (JFIHeapSatisfiesInEnv h t env2 CC)).
 Proof.
   intros t CC.
-  induction t as
-    [ | | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | type name t IH_t
-    | type name t IH_t
-    | t1 IH_t1 e v t2 IH_t2
-    | val1 val2
-    | obj field val
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    ]; intros h env1 env2 env1_eq_env2.
+  induction t; intros h env1 env2 env1_eq_env2.
   (* JFITrue *)
   + split; simpl; trivial.
   (* JFIFalse *)
   + split; simpl; trivial.
   (* JFIAnd t1 t2 *)
-  + split; apply EnvEqGivesAndImplication; try exact IH_t1; try exact IH_t2.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesAndImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIOr t1 t2 *)
-  + split; apply EnvEqGivesOrImplication; try exact IH_t1; try exact IH_t2.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesOrImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIImplies t1 t2 *)
-  + split; apply EnvEqGivesImpliesImplication; try exact IH_t1; try exact IH_t2.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesImpliesImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIExists *)
-  + split; apply EnvEqGivesExistsImplication; try exact IH_t.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesExistsImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIForall *)
-  + split; apply EnvEqGivesForallImplication; try exact IH_t.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesForallImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIHoare *)
-  + admit.
+ + split; apply EnvEqGivesHoareImplication; try assumption.
+   exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIEq *)
-  + split; apply EnvEqGivesEqImplication.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesEqImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIFieldEq *)
-  + split; apply EnvEqGivesFieldEqImplication.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesFieldEqImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFISep*)
-  + split; apply EnvEqGivesSepImplication; try exact IH_t1; try exact IH_t2.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  + split; apply EnvEqGivesSepImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIWand *)
-  + split; apply EnvEqGivesWandImplication; try exact IH_t1; try exact IH_t2.
-    ++ exact env1_eq_env2.
-    ++ exact (EnvEqSymmetry env1 env2 env1_eq_env2).
-Admitted.
+  + split; apply EnvEqGivesWandImplication; try assumption.
+    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+Qed.
 
 Lemma EnvOrderChangePreservesHeapSatisfiying : forall h t x1 l1 x2 l2 env CC,
   (x1 <> x2) ->
@@ -772,135 +859,135 @@ Admitted.
 
 (* =============== Substitution Lemmas =============== *)
 
-Definition JFISubstitutionImplies x v1 v2 t h env CC :=
-    JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 t) env CC ->
-    JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 t) env CC.
+Definition EqualValuesSubstitutionImpliesInTerm (t : JFITerm) (CC : JFProgram) :=
+  forall v1 v2 h x env,
+    JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC ->
+      (JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 t) env CC ->
+       JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 t) env CC).
 
-Definition JFISubstitutionsEquivalent x v1 v2 t h env CC :=
-  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 t) env CC <->
-  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 t) env CC.
+Definition EqualValuesAreEquivalentInTerm (t : JFITerm) (CC : JFProgram) :=
+  forall v1 v2 h x env,
+    JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC ->
+      (JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 t) env CC <->
+       JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 t) env CC).
 
-Lemma JFISubstitutionEquivalenceSymmetry : forall x v1 v2 t h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t h env CC) ->
-   JFISubstitutionsEquivalent x v2 v1 t h env CC.
+Lemma JFISubstitutionsEquivalenceGivesAndImplication : forall t1 t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIAnd t1 t2) CC.
 Proof.
-  intros x v1 v2 t h env CC.
-  unfold JFISubstitutionsEquivalent.
-  intros equivalence.
-  symmetry.
-  exact equivalence.
-Qed.
-
-Lemma JFISubstitutionsEquivalenceGivesAndImplication : forall v1 v2 x t1 t2 h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t1 h env CC) ->
-  (JFISubstitutionsEquivalent x v1 v2 t2 h env CC) ->
-   JFISubstitutionImplies x v1 v2 (JFIAnd t1 t2) h env CC.
-Proof.
-  intros v1 v2 x t1 t2 h env CC.
-  intros IH_t1 IH_t2.
-  simpl.
-  intros ( h_satisfies_subst_in_t1 & h_satisfies_subst_in_t2 ).
-  split.
-  + apply IH_t1.
-    exact h_satisfies_subst_in_t1.
-  + apply IH_t2.
-    exact h_satisfies_subst_in_t2.
-Qed.
-
-Lemma JFISubstitutionsEquivalenceGivesOrImplication : forall v1 v2 x t1 t2 h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t1 h env CC) ->
-  (JFISubstitutionsEquivalent x v1 v2 t2 h env CC) ->
-   JFISubstitutionImplies x v1 v2 (JFIOr t1 t2) h env CC.
-Proof.
-  intros v1 v2 x t1 t2 h env CC.
-  intros IH_t1 IH_t2.
-  intros [ h_satisfies_subst_in_t1 | h_satisfies_subst_in_t2 ]; simpl.
-  + apply or_introl.
-    apply IH_t1.
-    exact h_satisfies_subst_in_t1.
-  + apply or_intror.
-    apply IH_t2.
-    exact h_satisfies_subst_in_t2.
-Qed.
-
-Lemma JFISubstitutionsEquivalenceGivesImpliesImplication : forall v1 v2 x t1 t2 h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t1 h env CC) ->
-  (JFISubstitutionsEquivalent x v1 v2 t2 h env CC) ->
-   JFISubstitutionImplies x v1 v2 (JFIImplies t1 t2) h env CC.
-Proof.
-  intros v1 v2 x t1 t2 h env CC.
+  intros t1 t2 CC.
   intros t1_equivalence t2_equivalence.
-  intros h_satisfies_subst_in_implies; simpl; destruct h_satisfies_subst_in_implies as
-      [ not_h_satisfies_subst_v1_in_t1 | h_satisfies_subst_v1_in_t2].
-  + apply or_introl.
-    unfold not.
-    intros h_satisfies_subst_v2_in_t1.
-    apply not_h_satisfies_subst_v1_in_t1.
-    apply t1_equivalence.
-    exact h_satisfies_subst_v2_in_t1.
-  + apply or_intror.
-    apply t2_equivalence.
-    exact h_satisfies_subst_v1_in_t2.
+  intros v1 v2 h x env h_satisfies_eq subst_in_and.
+  simpl.
+  destruct subst_in_and as (subst_in_t1 & subst_in_t2).
+  split.
+  + apply (t1_equivalence v1 v2 h x env h_satisfies_eq).
+    exact subst_in_t1.
+  + apply (t2_equivalence v1 v2 h x env h_satisfies_eq).
+    exact subst_in_t2.
 Qed.
 
-Lemma SubheapPreservesEquivalence : forall h1 x v1 v2 t h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t h env CC) ->
-  (JFISubheap h1 h) ->
-   JFISubstitutionsEquivalent x v1 v2 t h1 env CC.
+Lemma JFISubstitutionsEquivalenceGivesOrImplication : forall t1 t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIOr t1 t2) CC.
 Proof.
-  intros h1 x v1 v2 t h env CC.
-  intros h_equivalence.
-  intros h1_subheap.
-  induction t as
-    [ | | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | type name t IH_t
-    | type name t IH_t
-    | t1 IH_t1 e v t2 IH_t2
-    | val1 val2
-    | obj field val
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    ].
-  (* JFITrue *)
-  + unfoldSubstitutions.
-    split; trivial.
-  (* JFIFalse *)
-  + split; intros h_satisfies_false; elim h_satisfies_false.
-  (* JFIAnd t1 t2 *)
-  + split.
-    ++ intros h1_satisfies_subst_v1_in_and.
-        admit.
+  intros t1 t2 CC.
+  intros t1_equivalence t2_equivalence.
+  intros v1 v2 h x env h_satisfies_eq subst_in_or.
+  destruct (t1_equivalence v1 v2 h x env h_satisfies_eq) as (t1_implication & _).
+  destruct (t2_equivalence v1 v2 h x env h_satisfies_eq) as (t2_implication & _).
+  simpl.
+  destruct subst_in_or as [subst_in_t1 | subst_in_t2].
+  + apply or_introl.
+    exact (t1_implication subst_in_t1).
+  + apply or_intror.
+    exact (t2_implication subst_in_t2).
+Qed.
+
+Lemma JFISubstitutionsEquivalenceGivesImpliesImplication : forall t1 t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIImplies t1 t2) CC.
+Proof.
+  intros t1 t2 CC.
+  intros t1_equivalence t2_equivalence.
+  intros v1 v2 h x env h_satisfies_eq subst_in_implies.
+  destruct (t1_equivalence v1 v2 h x env h_satisfies_eq) as (_ & t1_implication).
+  destruct (t2_equivalence v1 v2 h x env h_satisfies_eq) as (t2_implication & _).
+  simpl.
+  destruct subst_in_implies as [not_subst_in_t1 | subst_in_t2].
+  + apply or_introl.
+    intros subst_in_t1.
+    exact (not_subst_in_t1 (t1_implication subst_in_t1)).
+  + apply or_intror.
+    exact (t2_implication subst_in_t2).
+Qed.
+
+Lemma JFISubstitutionsEquivalenceGivesExistsImplication : forall type x t CC,
+  (EqualValuesAreEquivalentInTerm t CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIExists type x t) CC.
+Proof.
+  intros type x t CC.
+  intros t_equivalence.
+  intros v1 v2 h y env h_satisfies_eq subst_in_exists.
+  simpl; simpl in subst_in_exists.
+  destruct subst_in_exists as (l & l_of_type & subst_t).
+  exists l.
+  split; try assumption.
+  unfold JFIQuantifierTermSubstituteVal in *.
+  destruct v1 as [ | x_v1], v2 as [ | x_v2];
+    try destruct x_v1;
+    try destruct x_v2;
+    try destruct (String.eqb x y);
+    try assumption.
+  + simpl in h_satisfies_eq.
+    rewrite <- h_satisfies_eq.
+    trivial.
+  + destruct (String.eqb x x0).
 Admitted.
 
-Lemma JFISubstitutionsEquivalenceGivesSepImplication : forall v1 v2 x t1 t2 h env CC,
-  (JFISubstitutionsEquivalent x v1 v2 t1 h env CC) ->
-  (JFISubstitutionsEquivalent x v1 v2 t2 h env CC) ->
-   JFISubstitutionImplies x v1 v2 (JFISep t1 t2) h env CC.
+Lemma JFISubstitutionsEquivalenceGivesForallImplication : forall x type t CC,
+  (EqualValuesAreEquivalentInTerm t CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIForall x type t) CC.
 Proof.
-  intros v1 v2 x t1 t2 h env CC.
+Admitted.
+
+Lemma JFISubstitutionsEquivalenceGivesHoareImplication : forall t1 e v t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIHoare t1 e v t2) CC.
+Proof.
+Admitted.
+
+Lemma JFISubstitutionsEquivalenceGivesSepImplication : forall t1 t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFISep t1 t2) CC.
+Proof.
+  intros t1 t2 CC.
   intros t1_equivalence t2_equivalence.
-  intros h_satisfies_subst_in_sep; simpl.
-  destruct h_satisfies_subst_in_sep as
-    ( h1 & h2 & (h_is_union &  disjoint_h1_h2) & (h1_satisfies_subst_v1_in_t1 & h2_satisfies_subst_v1_in_t2) ).
-  exists h1.
-  exists h2.
-  split; split.
-  + exact h_is_union.
-  + exact disjoint_h1_h2.
-  + apply (SubheapPreservesEquivalence h1) in t1_equivalence.
-    ++ apply t1_equivalence.
-       exact h1_satisfies_subst_v1_in_t1.
-    ++ apply (SubheapOfUnion h1 h2 h).
-       exact h_is_union.
-  + apply (SubheapPreservesEquivalence h2) in t2_equivalence.
-    ++ apply t2_equivalence.
-       exact h2_satisfies_subst_v1_in_t2.
-    ++ apply (SubheapOfUnion h2 h1 h).
-       apply HeapsUnionSymmetry.
-       exact h_is_union.
+  intros v1 v2 h x env h_satisfies_eq subst_in_sep.
+
+  simpl.
+  simpl in subst_in_sep.
+  destruct subst_in_sep as (h1 & h2 & (union & disjoint) & (subst_in_t1 & subst_in_t2)).
+  destruct (t1_equivalence v1 v2 h1 x env h_satisfies_eq) as (t1_implication & _).
+  destruct (t2_equivalence v1 v2 h2 x env h_satisfies_eq) as (t2_implication & _).
+
+  exists h1, h2.
+  split; split; try assumption.
+  + exact (t1_implication subst_in_t1).
+  + exact (t2_implication subst_in_t2).
 Qed.
+
+Lemma JFISubstitutionsEquivalenceGivesWandImplication : forall t1 t2 CC,
+  (EqualValuesAreEquivalentInTerm t1 CC) ->
+  (EqualValuesAreEquivalentInTerm t2 CC) ->
+   EqualValuesSubstitutionImpliesInTerm (JFIWand t1 t2) CC.
+Proof.
+Admitted.
 
 (* =============== Equality Lemmas =============== *)
 
@@ -944,47 +1031,43 @@ Ltac replace_two_values x v1 v2 env value1 value2 :=
  [replace (JFIValToLoc (JFIValSubstituteVal x v2 value2) env)
      with (JFIValToLoc (JFIValSubstituteVal x v1 value2) env) |].
 
-Lemma EqualityGivesEqImplication : forall x v1 v2 val1 val2 h env CC,
-  (JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC) ->
-   JFISubstitutionImplies x v1 v2 (JFIEq val1 val2) h env CC.
+Lemma EqualityGivesEqImplication : forall h x v1 v2 val1 val2 env CC,
+  JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC ->
+  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 (JFIEq val1 val2)) env CC ->
+  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 (JFIEq val1 val2)) env CC.
 Proof.
-  intros x v1 v2 val1 val2 h env CC.
-  intros h_satisfies_v1_eq_v2.
-  intros h_satisfies_subst_v1_in_eq.
-  unfold JFITermSubstituteVal.
-  unfold JFIHeapSatisfiesInEnv.
-  unfold JFITermSubstituteVal in h_satisfies_subst_v1_in_eq.
-  unfold JFIHeapSatisfiesInEnv in h_satisfies_subst_v1_in_eq.
+  intros h x v1 v2 val1 val2 env CC.
+  simpl.
+  intros h_satisfies_eq subst_v1.
   destruct val1, val2.
-  + unfold JFIValSubstituteVal.
-    unfold JFIValSubstituteVal in h_satisfies_subst_v1_in_eq.
-    exact h_satisfies_subst_v1_in_eq.
-  + replace_two_values x v1 v2 env (JFVLoc l) (JFSyn x0).
-    ++ exact h_satisfies_subst_v1_in_eq.
+  + unfold JFIValSubstituteVal in *.
+    exact subst_v1.
+  +  replace_two_values x v1 v2 env (JFVLoc l) (JFSyn x0).
+    ++ exact subst_v1.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
   + replace_two_values x v1 v2 env (JFSyn x0) (JFVLoc l).
-    ++ exact h_satisfies_subst_v1_in_eq.
+    ++ exact subst_v1.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
   + replace_two_values x v1 v2 env (JFSyn x0) (JFSyn x1).
-    ++ exact h_satisfies_subst_v1_in_eq.
+    ++ exact subst_v1.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
     ++ apply EqualValuesGiveEqualLocationsAfterSubstitution with (h := h) (CC := CC).
-       exact h_satisfies_v1_eq_v2.
+       exact h_satisfies_eq.
 Qed.
 
-Ltac binop_equivalence_from_operands_implication lhs_implication rhs_implication binop_implication :=
-  split;
-  [
-    apply binop_implication; [apply lhs_implication | apply rhs_implication]
-  | apply binop_implication; apply JFISubstitutionEquivalenceSymmetry; [apply lhs_implication | apply rhs_implication]
-  ].
+Lemma EqualityGivesFieldEqImplication : forall h x v1 v2 obj field val env CC,
+  JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC ->
+  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v1 (JFIFieldEq obj field val)) env CC ->
+  JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x v2 (JFIFieldEq obj field val)) env CC.
+Proof.
+Admitted.
 
 Lemma EqSymmetry : forall h v1 v2 env CC,
   (JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC) -> 
@@ -1002,12 +1085,10 @@ Proof.
   + destruct v1_eq_v2.
 Qed.
 
-Lemma JFIEqualValuesAreEquivalent : forall v1 v2 h x q env CC,
-  (JFIHeapSatisfiesInEnv h (JFIEq v1 v2) env CC) ->
-  JFISubstitutionsEquivalent x v1 v2 q h env CC.
+Lemma EqualValuesAreEquivalent : forall q CC,
+  EqualValuesAreEquivalentInTerm q CC.
 Proof.
-  intros v1 v2 h x q env CC.
-  intros h_satisfies_v1_eq_v2.
+  intros q CC.
 
   induction q as
     [ | | t1 IH_t1 t2 IH_t2
@@ -1020,38 +1101,53 @@ Proof.
     | obj field val
     | t1 IH_t1 t2 IH_t2
     | t1 IH_t1 t2 IH_t2
-    ].
+    ]; intros v1 v2 h x env env_eq.
   (* JFITrue *)
   + unfoldSubstitutions.
     split; trivial.
   (* JFIFalse *)
   + split; intros h_satisfies_false; elim h_satisfies_false.
   (* JFIAnd t1 t2 *)
-  + binop_equivalence_from_operands_implication IH_t1 IH_t2 JFISubstitutionsEquivalenceGivesAndImplication.
+  + split; apply JFISubstitutionsEquivalenceGivesAndImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIOr t1 t2 *)
-  + binop_equivalence_from_operands_implication IH_t1 IH_t2 JFISubstitutionsEquivalenceGivesOrImplication.
+  + split; apply JFISubstitutionsEquivalenceGivesOrImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIImplies t1 t2 *)
-  + binop_equivalence_from_operands_implication IH_t1 IH_t2 JFISubstitutionsEquivalenceGivesImpliesImplication.
+  + split; apply JFISubstitutionsEquivalenceGivesImpliesImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIExists *)
-  + admit.
+  + split; apply JFISubstitutionsEquivalenceGivesExistsImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIForall *)
-  + admit.
+  + split; apply JFISubstitutionsEquivalenceGivesForallImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIHoare *)
-  + admit.
+  + split; apply JFISubstitutionsEquivalenceGivesHoareImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIEq *)
-  + split.
-    ++ apply EqualityGivesEqImplication.
-       exact h_satisfies_v1_eq_v2.
-    ++ apply EqualityGivesEqImplication.
-       apply EqSymmetry.
-       exact h_satisfies_v1_eq_v2.
+  + split; apply EqualityGivesEqImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIFieldEq *)
-  + admit.
+  + split; apply EqualityGivesFieldEqImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFISep*)
-  + binop_equivalence_from_operands_implication IH_t1 IH_t2 JFISubstitutionsEquivalenceGivesSepImplication.
+  + split; apply JFISubstitutionsEquivalenceGivesSepImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
   (* JFIWand *)
-  + admit.
-Admitted.
+  + split; apply JFISubstitutionsEquivalenceGivesWandImplication;
+      try assumption;
+      try (apply EqSymmetry; assumption).
+Qed.
 
 (* =============== Soundness of basic logical rules =============== *)
 
@@ -1087,13 +1183,10 @@ Proof.
   intros r_is_subst_v2 p_implies_subst_v1 p_implies_eq.
   intros env h gamma_match_env h_satisfies_p.
   rewrite r_is_subst_v2.
-  apply (JFIEqualValuesAreEquivalent v1 v2).
-  + apply p_implies_eq.
-    exact gamma_match_env.
-    exact h_satisfies_p.
-  + apply p_implies_subst_v1.
-    exact gamma_match_env.
-    exact h_satisfies_p.
+  assert (h_satisfies_eq := p_implies_eq env h gamma_match_env h_satisfies_p).
+  assert (h_satisfies_subst_v1 := p_implies_subst_v1 env h gamma_match_env h_satisfies_p).
+  apply (EqualValuesAreEquivalent q CC v1 v2 h x env h_satisfies_eq).
+  exact h_satisfies_subst_v1.
 Qed.
 
 Lemma EqReflRuleSoundness : forall gamma p v CC,
@@ -1102,6 +1195,7 @@ Proof.
   intros gamma p v CC.
   intros env h gamma_match_env h_satisfies_p.
   unfold JFIHeapSatisfiesInEnv.
+
   destruct (JFIValToLoc v env).
   + trivial.
   + admit. (* TODO zapewnic obecnosc zmiennej w srodowisku *)

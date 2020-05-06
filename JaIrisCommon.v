@@ -215,7 +215,7 @@ Proof.
 Qed.
 
 Lemma ValEnvSubstitutionReplacesVarInEnv : forall env x l,
-  StrMap.MapsTo x l env ->
+  StrMap.find x env = Some l ->
   JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFVLoc l.
 Proof.
 Admitted.
