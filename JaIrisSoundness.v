@@ -24,7 +24,7 @@ Require Import FMapFacts.
 
 
 Module HeapFacts := Facts Heap.
-Module StrMapFacts := Facts StrMap.
+Module StrMapFacts := JaIrisCommon.StrMapFacts.
 Module JFXIdMapFacts := Facts JFXIdMap.
 
 Definition JFISemanticallyImplies (gamma : JFITypeEnv) (s : JFITerm) (p : JFITerm) (CC : JFProgram) :=
@@ -158,48 +158,27 @@ Proof.
   unfold JFIGammaAdd.
   unfold JFIGammaMatchEnv.
   intros var_name var_loc var_type.
-  intros (same_vars & find_in_gamma_is_some) find_in_env_is_some.
-  destruct (Classical_Prop.classic (var_name = x)) as [ var_name_eq_x | var_name_ne_x ].
-  + replace (StrMap.find (elt:=Loc) var_name (StrMap.add x l env))
-     with (Some l) in find_in_env_is_some.
-    replace (StrMap.find (elt:=JFClassName) var_name (StrMap.add x type gamma))
-     with (Some type) in find_in_gamma_is_some.
-    ++ replace var_loc with l.
-       replace var_type with type.
-       +++ exact loc_of_type.
-       +++ injection find_in_gamma_is_some. trivial.
-       +++ injection find_in_env_is_some. trivial.
-    ++ symmetry. apply StrMapFacts.add_eq_o.
-       symmetry. exact var_name_eq_x.
-    ++ symmetry. apply StrMapFacts.add_eq_o.
-       symmetry. exact var_name_eq_x.
-  + replace (StrMap.find (elt:=Loc) var_name (StrMap.add x l env))
-     with (StrMap.find (elt:=Loc) var_name env) in find_in_env_is_some.
-    replace (StrMap.find (elt:=JFClassName) var_name (StrMap.add x type gamma))
-     with (StrMap.find (elt:=JFClassName) var_name gamma) in find_in_gamma_is_some.
-    ++ unfold JFIGammaMatchEnv in gamma_match_env.
-       apply (gamma_match_env var_name var_loc var_type).
-       split. split.
-       +++ intros var_name_in_gamma.
-           apply StrMap_in_find_iff.
-           exists var_loc.
-           exact find_in_env_is_some.
-       +++ intros var_name_in_env.
-           apply StrMap_in_find_iff.
-           exists var_type.
-           exact find_in_gamma_is_some.
-       +++ exact find_in_gamma_is_some.
-       +++ exact find_in_env_is_some.
-     ++ symmetry. apply StrMapFacts.add_neq_o.
-        unfold not.
-        intros x_eq_var_name.
-        symmetry in x_eq_var_name.
-        exact (var_name_ne_x x_eq_var_name).
-     ++ symmetry. apply StrMapFacts.add_neq_o.
-        unfold not.
-        intros x_eq_var_name.
-        symmetry in x_eq_var_name.
-        exact (var_name_ne_x x_eq_var_name).
+  split.
+  + split;
+      (intros x_in;
+       apply StrMapFacts.add_in_iff in x_in;
+       apply StrMapFacts.add_in_iff;
+       rewrite <- String.eqb_eq in *;
+       destruct (String.eqb x var_name); auto;
+       destruct x_in as [ false_eq_true | var_in]; try discriminate false_eq_true;
+       apply or_intror;
+       assert (in_iff := (proj1 (gamma_match_env var_name var_loc var_type)));
+       apply in_iff;
+       assumption).
+  + intros var_is_some_type.
+    intros var_is_some_loc.
+    rewrite StrMapFacts.add_o in var_is_some_type, var_is_some_loc.
+    destruct (StrMapFacts.eq_dec x var_name).
+    ++ injection var_is_some_type as type_eq_var_type.
+       injection var_is_some_loc as l_eq_var_loc.
+       rewrite <- type_eq_var_type, <- l_eq_var_loc.
+       assumption.
+    ++ apply (proj2 (gamma_match_env var_name var_loc var_type)); try assumption.
 Qed.
 
 Lemma StrictlyExtendedGammaMatchesExtendedEnv : forall x l type env gamma gamma_x h,
@@ -778,6 +757,13 @@ Proof.
   + admit.
 Admitted.
 
+Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env CC x0,
+  (JFIVarFreshInTerm x0 p) ->
+  (JFIHeapSatisfiesInEnv h p (StrMap.add x l env) CC) ->
+   JFIHeapSatisfiesInEnv h p (StrMap.add x l (StrMap.remove (elt:=Loc) x0 env)) CC.
+Proof.
+Admitted.
+
 Lemma VarNameChangePreservesHeapSatisfiying : forall h t u v l env CC,
   (JFIHeapSatisfiesInEnv h t (StrMap.add v l env) CC) <->
    JFIHeapSatisfiesInEnv h (JFITermSubstituteVar v u t) (StrMap.add u l env) CC.
@@ -1277,8 +1263,36 @@ Proof.
     ++ exact h_satisfies_q.
 Qed.
 
-(* =============== Jafun reduction Lemmas =============== *)
+Lemma ForallElimRuleSoundness : forall decls gamma q type x p r v CC,
+  (r = JFITermSubstituteVal x (JFSyn v) p) ->
+  (JFISemanticallyImplies gamma q (JFIForall type x p) CC) ->
+  (JFIRefType decls gamma v = Some type) ->
+  (JFIRefFreshInTerm v p) ->
+   JFISemanticallyImplies gamma q r CC.
+Proof.
+  intros decls gamma q type x p r v CC.
+  intros r_is_subst q_implies_forall type_of_v v_fresh.
+  intros env h gamma_match_env h_satisfies_q.
+  assert (h_satisfies_forall := q_implies_forall env h gamma_match_env h_satisfies_q).
+  simpl in h_satisfies_forall.
+  rewrite r_is_subst.
+  destruct v.
+  + unfold JFIRefType in type_of_v.
+    assert (x0_same_in_gamma_env := gamma_match_env x0). 
+    destruct (StrMap.find x0 env).
+    ++ apply EqualEnvsAreEquivalent with (env1 := env) (env2 := (StrMap.add x0 l (StrMap.remove x0 env))).
+       +++ admit. (* TODO remove and add same var is equivalent *)
+       +++ apply VarNameChangePreservesHeapSatisfiying.
+           unfold JFIRefFreshInTerm in v_fresh.
+           assert (l_of_type := (proj2 (x0_same_in_gamma_env l type) type_of_v) eq_refl).
+           apply (h_satisfies_forall l) in l_of_type as h_satisfies_p_in_env_x.
+           apply RemovingFreshVarPreservesHeapSatisfyig; assumption.
+    ++ admit. (* TODO zapewnic zmienna w srodowisku *)
+  + admit. (* TODO this *)
+Admitted.
+Hint Resolve ForallElimRuleSoundness : core.
 
+(* =============== Jafun reduction Lemmas =============== *)
 Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
   destruct Loc_dec as [_ | l1_neq_l2];
   [ | exfalso; apply l1_neq_l2; exact l1_eq_l2].
@@ -1290,7 +1304,7 @@ Ltac Loc_dec_neq l1 l2 l1_neq_l2 :=
 Lemma IfReductionEq : forall h l1 l2 e1 e2 Ctx Cc env CC,
   (l1 = l2) ->
    red CC (h, (Ctx[[ JFIExprSubstituteEnv env (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ]]_ None) :: Cc) = Some (h, Ctx[[JFIExprSubstituteEnv env e1]]_ None :: Cc).
-Proof.  
+Proof.
   intros h l1 l2 e1 e2 Ctx Cc env CC.
   intros l1_eq_l2.
   simpl.
@@ -2099,7 +2113,7 @@ Proof.
     ++ exact gamma_add_new_x.
     ++ exact IH_q_with_x_proves_p.
   (* JFIForallElimRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIExistsIntroRule *)
   + admit. (* TODO *)
   (* JFIExistsElimRule *)
