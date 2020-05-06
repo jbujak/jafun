@@ -916,48 +916,6 @@ Proof.
        exact h_is_union.
 Qed.
 
-Lemma SubstituteEnvXNotInEnv : forall x env,
-  ~StrMap.In x env ->
-  JFIValSubstituteEnv env (JFSyn (JFVar x)) = (JFSyn (JFVar x)).
-Proof.
-  intros x env x_not_in_env.
-  unfold JFIValSubstituteEnv.
-  assert (x_not_in_elements : forall a, List.In a (StrMap.elements (elt:=Loc) env) -> x <> (fst a)).
-  + intros (y, l) a_in_elements.
-    intros x_is_y.
-    simpl in x_is_y.
-    rewrite <- x_is_y in *.
-    assert (exists_element : exists e, InA (StrMap.eq_key_elt (elt:=Loc)) (x, e) (StrMap.elements (elt:=Loc) env)).
-    ++ exists l.
-       apply In_InA; try assumption.
-       exact StrMapKeyEqEquivalence.
-    ++ set (elements_in_iff := StrMapFacts.elements_in_iff env x).
-       destruct elements_in_iff as (_ & exists_elements_then_in_env).
-       set (x_in_env := exists_elements_then_in_env exists_element).
-       exact (x_not_in_env x_in_env).
-  + rewrite StrMap.fold_1.
-    induction (StrMap.elements (elt:=Loc) env).
-    ++ auto.
-    ++ simpl.
-       replace (String.eqb x (fst a)) with false.
-       +++ apply IHl.
-           intros a0 a0_in_l.
-           apply x_not_in_elements.
-           apply List.in_cons.
-           exact a0_in_l.
-      +++ symmetry.
-          apply String.eqb_neq.
-          apply x_not_in_elements.
-          apply List.in_eq.
-Qed.
-
-Lemma SubstituteEnvXInEnv : forall x env,
-  StrMap.In x env ->
-  exists l, StrMap.find x env = Some l /\
-    JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFVLoc l.
-Proof.
-Admitted.
-
 (* =============== Equality Lemmas =============== *)
 
 Lemma EqualValuesGiveEqualLocations : forall h v1 v2 env CC,
