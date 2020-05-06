@@ -244,14 +244,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*----------------*)
       JFIProves decls gamma p r
 
-| JFIEqRule :
-    forall q x v1 v2 r decls gamma p,
-      (r = JFITermSubstituteVal x v2 q) ->
-      (JFIProves decls gamma p (JFITermSubstituteVal x v1 q)) ->
-      (JFIProves decls gamma p (JFIEq v1 v2)) ->
-      (*------------------------------------------*)
-      JFIProves decls gamma p r
-
 | JFIEqReflRule :
     forall decls gamma p v,
       (*----------------------------------*)
