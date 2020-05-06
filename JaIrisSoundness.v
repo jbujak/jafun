@@ -1598,6 +1598,105 @@ Proof.
 Qed.
 Hint Resolve HTCsqRuleSoundness : core.
 
+Lemma HTDisjIntroRuleSoundness : forall gamma s p q e v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare p e v r) CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare q e v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC.
+Proof.
+  intros gamma s p q e v r CC.
+  intros hoare_p_r hoare_q_r.
+  intros env h gamma_match_env h_satisfies_s.
+  simpl.
+  intros confs hn res.
+  intros p_or_q e_eval.
+  destruct p_or_q.
+  + exact (hoare_p_r env h gamma_match_env h_satisfies_s confs hn res H e_eval).
+  + exact (hoare_q_r env h gamma_match_env h_satisfies_s confs hn res H e_eval).
+Qed.
+Hint Resolve HTDisjIntroRuleSoundness : core.
+
+Lemma HTDisjElimRuleSoundness : forall gamma s p q e v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
+    (JFISemanticallyImplies gamma s (JFIHoare p e v r) CC) /\
+    (JFISemanticallyImplies gamma s (JFIHoare q e v r) CC).
+Proof.
+  intros gamma s p q e v r CC.
+  intros hoare_pq_r.
+  split;
+    intros env h gamma_match_env h_satisfies_s confs hn res;
+    assert (asdf := hoare_pq_r env h gamma_match_env h_satisfies_s confs hn res);
+    fold JFIHeapSatisfiesInEnv in asdf;
+    simpl in *;
+    intros h_satisfies_pre e_eval.
+  + exact (asdf (or_introl h_satisfies_pre) e_eval).
+  + exact (asdf (or_intror h_satisfies_pre) e_eval).
+Qed.
+
+Lemma HTDisjElimLRuleSoundness : forall gamma s p q e v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e v r) CC.
+Proof.
+  intros.
+  apply HTDisjElimRuleSoundness with (q := q).
+  assumption.
+Qed.
+Hint Resolve HTDisjElimLRuleSoundness : core.
+
+Lemma HTDisjElimRRuleSoundness : forall gamma s p q e v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare q e v r) CC.
+Proof.
+  intros.
+  apply HTDisjElimRuleSoundness with (p := p).
+  assumption.
+Qed.
+Hint Resolve HTDisjElimRRuleSoundness : core.
+
+Lemma HTEqRule1Soundness : forall gamma s p v1 v2 e v q CC,
+  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e v q) CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e v q) CC).
+Proof.
+  intros gamma s p v1 v2 e v q CC.
+  intros p_eq_implies_hoare.
+  intros env h gamma_match_env h_satisfies_s confs hn res.
+  simpl.
+  destruct (EnsureValIsLoc v1) as (l1 & v1_is_l1).
+  destruct (EnsureValIsLoc v2) as (l2 & v2_is_l2).
+
+  assert (hoare_p_q := p_eq_implies_hoare env h gamma_match_env).
+  simpl in hoare_p_q.
+  rewrite v1_is_l1, v2_is_l2 in *.
+  unfold JFIValToLoc in *.
+  intros (h_satisfies_p & l1_eq_l2) e_eval.
+  exact (hoare_p_q (conj h_satisfies_s l1_eq_l2) confs hn res h_satisfies_p e_eval).
+Qed.
+Hint Resolve HTEqRule1Soundness : core.
+
+Lemma HTEqRule2Soundness : forall gamma s p v1 v2 e v q CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e v q) CC) ->
+  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e v q) CC).
+Proof.
+  intros gamma s p v1 v2 e v q CC.
+  intros hoare_peq_q.
+  intros env h gamma_match_env h_satisfies_s_eq confs hn res.
+  simpl.
+  intros h_satisfies_p e_eval.
+  simpl in h_satisfies_s_eq.
+  destruct h_satisfies_s_eq as (h_satisfies_s & l1_eq_l2).
+
+  assert (hn_satisfies_q := hoare_peq_q env h gamma_match_env h_satisfies_s confs hn res).
+  fold JFIHeapSatisfiesInEnv in hn_satisfies_q.
+  simpl in hn_satisfies_q.
+
+  destruct (EnsureValIsLoc v1) as (l1 & v1_is_l1).
+  destruct (EnsureValIsLoc v2) as (l2 & v2_is_l2).
+  rewrite v1_is_l1, v2_is_l2 in l1_eq_l2, hn_satisfies_q.
+  unfold JFIValToLoc in l1_eq_l2, hn_satisfies_q.
+
+  exact (hn_satisfies_q (conj h_satisfies_p l1_eq_l2) e_eval).
+Qed.
+Hint Resolve HTEqRule2Soundness : core.
+
 Lemma HTNewNotNullRuleSoundness : forall gamma s p mu cn vs v CC,
   JFISemanticallyImplies gamma s
     (JFIHoare p (JFNew mu cn vs) v
@@ -2034,15 +2133,15 @@ Proof.
   (* JFIHTCsqRule: *)
   + eauto.
   (* JFIHTDisjIntroRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTDisjElimLRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTDisjElimRRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTEqRule1 *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTEqRule2 *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTNewNotNullRule *)
   + eauto.
   (* JFIHTNewFieldRule *)
