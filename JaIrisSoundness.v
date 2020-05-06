@@ -158,7 +158,7 @@ Proof.
   intros gamma_match_env loc_of_type.
   unfold JFIGammaAdd.
   unfold JFIGammaMatchEnv.
-  intros var_name var_loc var_type.
+  intros var_name.
   split.
   + split;
       (intros x_in;
@@ -168,10 +168,10 @@ Proof.
        destruct (String.eqb x var_name); auto;
        destruct x_in as [ false_eq_true | var_in]; try discriminate false_eq_true;
        apply or_intror;
-       assert (in_iff := (proj1 (gamma_match_env var_name var_loc var_type)));
+       assert (in_iff := (proj1 (gamma_match_env var_name)));
        apply in_iff;
        assumption).
-  + intros var_is_some_type.
+  + intros var_loc var_type var_is_some_type.
     intros var_is_some_loc.
     rewrite StrMapFacts.add_o in var_is_some_type, var_is_some_loc.
     destruct (StrMapFacts.eq_dec x var_name).
@@ -179,7 +179,7 @@ Proof.
        injection var_is_some_loc as l_eq_var_loc.
        rewrite <- type_eq_var_type, <- l_eq_var_loc.
        assumption.
-    ++ apply (proj2 (gamma_match_env var_name var_loc var_type)); try assumption.
+    ++ apply (proj2 (gamma_match_env var_name)); try assumption.
 Qed.
 
 Lemma StrictlyExtendedGammaMatchesExtendedEnv : forall x l type env gamma gamma_x h,
@@ -993,6 +993,13 @@ Lemma VarNameChangePreservesHeapSatisfiying : forall h t u v l env CC,
 Proof.
 Admitted.
 
+Lemma HeapSatisfiesSubstIffVarMovedToEnv : forall h x v l p env CC,
+  (StrMap.find v env = Some l) ->
+  (JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x (JFSyn (JFVar v)) p) env CC <->
+   JFIHeapSatisfiesInEnv h p (StrMap.add x l env) CC).
+Proof.
+Admitted.
+
 (* =============== Equality Lemmas =============== *)
 
 Lemma EqSymmetry : forall h v1 v2 env CC,
@@ -1224,13 +1231,39 @@ Proof.
        +++ admit. (* TODO remove and add same var is equivalent *)
        +++ apply VarNameChangePreservesHeapSatisfiying.
            unfold JFIRefFreshInTerm in v_fresh.
-           assert (l_of_type := (proj2 (x0_same_in_gamma_env l type) type_of_v) eq_refl).
+           assert (l_of_type := (proj2 (x0_same_in_gamma_env) l type type_of_v) eq_refl).
            apply (h_satisfies_forall l) in l_of_type as h_satisfies_p_in_env_x.
            apply RemovingFreshVarPreservesHeapSatisfyig; assumption.
     ++ admit. (* TODO zapewnic zmienna w srodowisku *)
   + admit. (* TODO this *)
 Admitted.
 Hint Resolve ForallElimRuleSoundness : core.
+
+Lemma ExistsIntroRuleSoundness : forall x v type decls gamma p q CC,
+  (JFIRefType decls gamma (JFVar v) = Some type) ->
+  (JFISemanticallyImplies gamma q
+                (JFITermSubstituteVal x (JFSyn (JFVar v)) p) CC) ->
+   JFISemanticallyImplies gamma q (JFIExists type x p) CC.
+Proof.
+  intros x v type decls gamma p q CC.
+  intros type_of_v q_implies_p.
+  intros env h gamma_match_env h_satisfies_q.
+  simpl.
+  simpl in type_of_v.
+  destruct (proj1 (gamma_match_env v)) as (gamma_implies_env & _).
+  assert (v_in_gamma : StrMap.In v gamma);
+    try (apply StrMap_in_find_iff; exists type; assumption).
+  apply gamma_implies_env in v_in_gamma.
+  apply StrMap_in_find_iff in v_in_gamma.
+  destruct v_in_gamma as (l & v_is_l).
+  exists l.
+  split.
+  + exact (proj2 (gamma_match_env v) l type type_of_v v_is_l).
+  + unfold JFISemanticallyImplies in q_implies_p.
+    apply (HeapSatisfiesSubstIffVarMovedToEnv h x v l p env CC v_is_l).
+    apply q_implies_p; assumption.
+Qed.
+Hint Resolve ExistsIntroRuleSoundness : core.
 
 (* =============== Jafun reduction Lemmas =============== *)
 Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
@@ -2048,7 +2081,7 @@ Proof.
   (* JFIForallElimRule *)
   + eauto.
   (* JFIExistsIntroRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIExistsElimRule *)
   + admit. (* TODO *)
   (* JFITypeAddRule *)

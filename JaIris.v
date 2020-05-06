@@ -130,11 +130,12 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC :
   end.
 
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
-  forall var_name var_loc var_type,
+  forall var_name,
     (StrMap.In var_name gamma <-> StrMap.In var_name env) /\
-    ((StrMap.find var_name gamma = Some var_type) ->
-    (StrMap.find var_name env = Some var_loc) ->
-     JFILocOfType var_loc h var_type).
+    (forall var_loc var_type,
+      (StrMap.find var_name gamma = Some var_type) ->
+      (StrMap.find var_name env = Some var_loc) ->
+       JFILocOfType var_loc h var_type).
 
 Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) (CC : JFProgram) : Prop :=
   forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env CC.
@@ -351,7 +352,8 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIExistsIntroRule :
     forall decls gamma p q x v type,
-      (JFIProves decls (JFIGammaAdd v type gamma) q (JFITermSubstituteVal x (JFSyn (JFVar v)) p)) ->
+      (JFIRefType decls gamma (JFVar v) = Some type) ->
+      (JFIProves decls gamma q (JFITermSubstituteVal x (JFSyn (JFVar v)) p)) ->
       (*-----------------------------------*)
       JFIProves decls gamma q (JFIExists type x p)
 
