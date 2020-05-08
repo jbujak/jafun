@@ -373,11 +373,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 (* Rules for separation logic *)
 
-| JFISepWeakRule :
-    forall decls gamma p1 p2,
-      (*---------------------------------*)
-      JFIProves decls gamma (JFISep p1 p2) p1
-
 | JFISepAssoc1Rule :
     forall decls gamma p1 p2 p3,
       (*------------------------------------------------------------------*)

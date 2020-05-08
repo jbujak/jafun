@@ -1978,8 +1978,6 @@ Proof.
   |  decls gamma p q r x type
   (* JFITypeAddRule *)
   |  x cn gamma decls gamma' s p
-  (* JFISepWeakRule *)
-  |  decls gamma p1 p2
   (* JFISepAssoc1Rule *)
   |  decls gamma p1 p2 p3
   (* JFISepAssoc2Rule *)
@@ -2085,8 +2083,6 @@ Proof.
   (* JFIExistsElimRule *)
   + admit. (* TODO *)
   (* JFITypeAddRule *)
-  + admit. (* TODO *)
-  (* JFISepWeakRule *)
   + admit. (* TODO *)
   (* JFISepAssoc1Rule *)
   + admit. (* TODO *)
