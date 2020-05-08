@@ -2344,7 +2344,7 @@ Proof.
   (* JFIHTNewNotNullRule *)
   + eauto.
   (* JFIHTNewFieldRule *)
-  + eauto.
+  + apply HTNewFieldRuleSoundness with (decls := decls) (objflds := objflds) (n := n); assumption.
   (* JFIHTLetRule *)
   + eauto.
   (* JFIHTFieldSetRule *)
