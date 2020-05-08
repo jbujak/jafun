@@ -32,7 +32,7 @@ Inductive JFITerm : Set :=
 | JFIImplies (t1 : JFITerm) (t2 : JFITerm)
 | JFIExists (type : JFClassName) (name : string) (t : JFITerm)
 | JFIForall (type : JFClassName) (name : string) (t : JFITerm)
-| JFIHoare (t1 : JFITerm) (e : JFExpr) (value : string) (t2 : JFITerm)
+| JFIHoare (t1 : JFITerm) (e : JFExpr) (ex : JFEvMode)  (value : string) (t2 : JFITerm)
 | JFIEq (val1 : JFVal) (val2 : JFVal)
 | JFIFieldEq (obj : JFVal) (field : string) (v : JFVal)
 | JFISep (t1 : JFITerm) (t2 : JFITerm)
@@ -103,11 +103,12 @@ Fixpoint JFITermSubstituteVal (from : string) (to : JFVal) (t : JFITerm) : JFITe
     | JFIImplies t1 t2 => JFIImplies (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
     | JFIExists class name term => if String.eqb name from then t else JFIExists class name (JFITermSubstituteVal from to term)
     | JFIForall class name term => if String.eqb name from then t else JFIForall class name (JFITermSubstituteVal from to term)
-    | JFIHoare t1 e valueName t2 =>
+    | JFIHoare t1 e ex valueName t2 =>
         JFIHoare
           (JFITermSubstituteVal from to t1)
           (JFIExprSubstituteVal from to e)
-          valueName
+           ex
+           valueName
           (JFITermSubstituteVal from to t2)
     | JFIEq val1 val2 => JFIEq (JFIValSubstituteVal from to val1) (JFIValSubstituteVal from to val2)
     | JFIFieldEq obj fieldName val => JFIFieldEq (JFIValSubstituteVal from to obj) fieldName (JFIValSubstituteVal from to val)

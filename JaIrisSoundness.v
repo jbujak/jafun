@@ -454,13 +454,13 @@ Proof.
     apply RemovePreservesEnvEq; try assumption.
 Qed.
 
-Lemma EnvEqGivesEvalEq : forall confs h e hn res env1 env2 CC,
+Lemma EnvEqGivesEvalEq : forall confs h e hn ex res env1 env2 CC,
   (EnvEq env1 env2) ->
-  (JFIEvalInEnv h e confs hn res env1 CC) ->
-  (JFIEvalInEnv h e confs hn res env2 CC).
+  (JFIEvalInEnv h e confs hn ex res env1 CC) ->
+  (JFIEvalInEnv h e confs hn ex res env2 CC).
 Proof.
   intros confs.
-  induction confs; intros h e hn res env1 env2 CC env_eq.
+  induction confs; intros h e hn ex res env1 env2 CC env_eq.
   + unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
     intros (h_eq & f_eq).
     rewrite h_eq.
@@ -572,24 +572,30 @@ Proof.
   + exact (h_satisfies_t loc loc_of_type).
 Qed.
 
-Lemma EnvEqGivesHoareImplication : forall h t1 e v t2 env1 env2 CC,
+Lemma EnvEqGivesHoareImplication : forall h t1 e ex v t2 env1 env2 CC,
   (EnvEq env1 env2) ->
   (EqualEnvsEquivalentInTermForHeap t1 CC) ->
   (EqualEnvsEquivalentInTermForHeap t2 CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIHoare t1 e v t2) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIHoare t1 e v t2) env2 CC.
+  (JFIHeapSatisfiesInEnv h (JFIHoare t1 e ex v t2) env1 CC) ->
+   JFIHeapSatisfiesInEnv h (JFIHoare t1 e ex v t2) env2 CC.
 Proof.
-  intros h t1 e v t2 env1 env2 CC.
+  intros h t1 e ex v t2 env1 env2 CC.
   intros env_eq t1_equivalence t2_equivalence.
   simpl.
-  intros h_satisfies_hoare confs hn res h_satisfies_t1 e_eval.
-  apply (t2_equivalence hn (StrMap.add v res env1) (StrMap.add v res env2)).
-  + apply AddPreservesEnvEq.
+  intros h_satisfies_hoare confs hn ex' res h_satisfies_t1 e_eval.
+  assert (h_satisfies_t1_in_env1 := proj2 (t1_equivalence h env1 env2 env_eq) h_satisfies_t1).
+  split.
+  + eassert (ex'_eq_ex := h_satisfies_hoare confs hn ex' res h_satisfies_t1_in_env1).
+    apply ex'_eq_ex.
+    apply EnvEqGivesEvalEq with (env1 := env2); try assumption.
+    apply EnvEqSymmetry.
     exact env_eq.
-  + apply h_satisfies_hoare with (confs := confs).
-    ++ apply (t1_equivalence h env1 env2 env_eq).
-       exact  h_satisfies_t1.
-    ++ apply EnvEqGivesEvalEq with (env1 := env2); try assumption.
+  + apply (t2_equivalence hn (StrMap.add v res env1) (StrMap.add v res env2)).
+    ++ apply AddPreservesEnvEq.
+       exact env_eq.
+    ++ eassert (h_satisfies_t2 := h_satisfies_hoare confs hn ex' res h_satisfies_t1_in_env1).
+       apply h_satisfies_t2.
+       apply EnvEqGivesEvalEq with (env1 := env2); try assumption.
        apply EnvEqSymmetry.
        exact env_eq.
 Qed.
@@ -746,10 +752,10 @@ forall h x l env,
         JFIHeapSatisfiesInEnv h t env CC <->
         JFIHeapSatisfiesInEnv h t (StrMap.add x l env) CC.
 
-Lemma FreshVarPreservesEval : forall h e confs hn res x l env CC,
+Lemma FreshVarPreservesEval : forall h e confs hn ex res x l env CC,
   JFIVarFreshInExpr x e ->
-  JFIEvalInEnv h e confs hn res env CC <->
-  JFIEvalInEnv h e confs hn res (StrMap.add x l env) CC.
+  JFIEvalInEnv h e confs hn ex res env CC <->
+  JFIEvalInEnv h e confs hn ex res (StrMap.add x l env) CC.
 Proof.
 Admitted.
 
@@ -770,12 +776,12 @@ Proof.
   try assumption.
 Qed.
 
-Lemma FreshVarPreservesHoareSatystying : forall t1 e v t2 CC,
+Lemma FreshVarPreservesHoareSatystying : forall t1 e ex v t2 CC,
   FreshVarPreservesTermSatysfying t1 CC ->
   FreshVarPreservesTermSatysfying t2 CC ->
-  FreshVarPreservesTermSatysfying (JFIHoare t1 e v t2) CC.
+  FreshVarPreservesTermSatysfying (JFIHoare t1 e ex v t2) CC.
 Proof.
-  intros t1 e v t2 CC.
+  intros t1 e ex v t2 CC.
   intros IH_t1 IH_t2.
   unfold FreshVarPreservesTermSatysfying.
   intros h x l env x_fresh_in_hoare.
@@ -785,25 +791,33 @@ Proof.
   simpl.
   split.
   + intros h_satisfies_hoare_in_env.
-    intros confs hn res h_satisfies_t1_in_env_x e_eval_in_env_x.
-    apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
-    assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
-    apply (proj1 t2_preserves).
-    apply h_satisfies_hoare_in_env with (confs := confs).
-    ++ assert (t1_preserves := IH_t1 h x l env H).
-       apply ((proj2 t1_preserves) h_satisfies_t1_in_env_x).
-    ++ apply (FreshVarPreservesEval h e confs hn res x l env CC x_fresh_in_e).
-       exact e_eval_in_env_x.
+    intros confs hn res_ex res h_satisfies_t1_in_env_x e_eval_in_env_x.
+    assert (t1_preserves := IH_t1 h x l env H).
+    apply FreshVarPreservesEval in e_eval_in_env_x; try assumption.
+    split.
+    apply (h_satisfies_hoare_in_env confs hn res_ex res).
+    ++ apply t1_preserves; assumption.
+    ++ exact e_eval_in_env_x.
+    ++ apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
+       assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
+       apply (proj1 t2_preserves).
+       apply (h_satisfies_hoare_in_env confs hn res_ex res).
+       +++ apply t1_preserves; assumption.
+       +++ apply e_eval_in_env_x.
   + intros h_satisfies_hoare_in_env_x.
-    intros confs hn res h_satisfies_t1_in_env e_eval_in_env.
+    intros confs hn res_ex res h_satisfies_t1_in_env e_eval_in_env.
+    assert (t1_preserves := IH_t1 h x l env H).
     assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
-    apply (proj2 t2_preserves).
-    apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
-    apply h_satisfies_hoare_in_env_x with (confs := confs).
-    ++ assert (t1_preserves := IH_t1 h x l env H).
-       apply ((proj1 t1_preserves) h_satisfies_t1_in_env).
-    ++ apply (FreshVarPreservesEval h e confs hn res x l env CC x_fresh_in_e).
-       exact e_eval_in_env.
+    apply (FreshVarPreservesEval h e confs hn res_ex res x l env) in e_eval_in_env; try assumption.
+    split.
+    apply (h_satisfies_hoare_in_env_x confs hn res_ex res).
+    ++ apply t1_preserves; assumption.
+    ++ exact e_eval_in_env.
+    ++ apply (proj2 t2_preserves).
+       apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
+       apply (h_satisfies_hoare_in_env_x confs hn res_ex res).
+       +++ apply t1_preserves; assumption.
+       +++ exact e_eval_in_env.
 Qed.
 
 Lemma FreshVarPreservesSepSatystying : forall t1 t2 CC,
@@ -1326,28 +1340,27 @@ Admitted.
 
 (* =============== JFIEval Lemmas =============== *)
 
-Lemma CorrectEvaluationImpliesHoareTriple : forall h p e v q env CC,
+Lemma CorrectEvaluationImpliesHoareTriple : forall h p e ex v q env CC,
   (exists confs hn res,
-  (JFIHeapSatisfiesInEnv h p env CC) /\ (JFIEvalInEnv h e confs hn res env CC) /\ (JFIHeapSatisfiesInEnv hn q (StrMap.add v res env) CC)) ->
-   JFIHeapSatisfiesInEnv h (JFIHoare p e v q) env CC.
+  (JFIHeapSatisfiesInEnv h p env CC) /\ (JFIEvalInEnv h e confs hn ex res env CC) /\ (JFIHeapSatisfiesInEnv hn q (StrMap.add v res env) CC)) ->
+   JFIHeapSatisfiesInEnv h (JFIHoare p e ex v q) env CC.
 Proof.
-  intros h p e v q env CC.
+  intros h p e ex v q env CC.
   intros (confs & (hn & (res & (h_satisfies_p & (e_eval_hs & hn_satisfies_q))))).
   simpl.
-  intros confs' hn' res'.
+  intros confs' hn' ex' res'.
   intros _ e_eval_confs'.
-  set (deterministic := EvaluationIsDeterministic confs confs' h (JFIExprSubstituteEnv env e) hn hn' res res' CC e_eval_hs e_eval_confs').
-  destruct deterministic as (confs_eq_confs' & (hn_eq_hn' & res_eq_res')).
+  set (deterministic := EvaluationIsDeterministic confs confs' h (JFIExprSubstituteEnv env e) hn hn' ex res ex' res' CC e_eval_hs e_eval_confs').
+  destruct deterministic as (confs_eq_confs' & (hn_eq_hn' & ex_eq_ex' & res_eq_res')).
   symmetry in hn_eq_hn'.
   symmetry in res_eq_res'.
-  rewrite hn_eq_hn'.
-  rewrite res_eq_res'.
-  exact hn_satisfies_q.
+  rewrite hn_eq_hn', ex_eq_ex', res_eq_res'.
+  split; trivial.
 Qed.
 
-Lemma HeapSatisfyingWithPreconditionImpliesHoareTriple : forall h p e v q env CC,
-  ((JFIHeapSatisfiesInEnv h p env CC) -> JFIHeapSatisfiesInEnv h (JFIHoare p e v q) env CC) ->
-    JFIHeapSatisfiesInEnv h (JFIHoare p e v q) env CC.
+Lemma HeapSatisfyingWithPreconditionImpliesHoareTriple : forall h p e ex v q env CC,
+  ((JFIHeapSatisfiesInEnv h p env CC) -> JFIHeapSatisfiesInEnv h (JFIHoare p e ex v q) env CC) ->
+    JFIHeapSatisfiesInEnv h (JFIHoare p e ex v q) env CC.
 Proof.
   intros.
   destruct (Classical_Prop.classic (JFIHeapSatisfiesInEnv h p env CC)).
@@ -1358,12 +1371,12 @@ Proof.
     destruct (H0 H1).
 Qed.
 
-Lemma IfEvaluationStepEq : forall l1 l2 e1 e2 h h' st' confs hn res env CC,
+Lemma IfEvaluationStepEq : forall l1 l2 e1 e2 h h' st' confs hn ex res env CC,
   (l1 = l2) ->
-  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn res env CC) ->
-  (h = h' /\ JFIEvalInEnv h' e1 confs hn res env CC).
+  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn ex res env CC) ->
+  (h = h' /\ JFIEvalInEnv h' e1 confs hn ex res env CC).
 Proof.
-  intros l1 l2 e1 e2 h h' st' confs hn res env CC.
+  intros l1 l2 e1 e2 h h' st' confs hn ex res env CC.
   intros l1_eq_l2 if_eval.
   unfold JFIEvalInEnv, JFIEval, JFIPartialEval in if_eval.
   rewrite IfReductionEq in if_eval.
@@ -1375,12 +1388,12 @@ Proof.
   + exact l1_eq_l2.
 Qed.
 
-Lemma IfEvaluationStepNeq : forall l1 l2 e1 e2 h h' st' confs hn res env CC,
+Lemma IfEvaluationStepNeq : forall l1 l2 e1 e2 h h' st' confs hn ex res env CC,
   (l1 <> l2) ->
-  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn res env CC) ->
-  (h = h' /\ JFIEvalInEnv h' e2 confs hn res env CC).
+  (JFIEvalInEnv h (JFIf (JFVLoc l1) (JFVLoc l2) e1 e2) ((h', st')::confs) hn ex res env CC) ->
+  (h = h' /\ JFIEvalInEnv h' e2 confs hn ex res env CC).
 Proof.
-  intros l1 l2 e1 e2 h h' st' confs hn res env CC.
+  intros l1 l2 e1 e2 h h' st' confs hn ex res env CC.
   intros l1_eq_l2 if_eval.
   unfold JFIEvalInEnv, JFIEval, JFIPartialEval in if_eval.
   rewrite IfReductionNeq in if_eval.
@@ -1394,47 +1407,26 @@ Qed.
 
 Lemma NewEvaluationStep : forall prog h ls newloc newheap mu cn vs env CC,
   (alloc_init prog h cn ls = Some (newloc, newheap)) ->
-   JFIEvalInEnv h (JFNew mu cn vs) [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])] newheap newloc env CC.
+   JFIEvalInEnv h (JFNew mu cn vs) [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])] newheap None newloc env CC.
 Proof.
 Admitted.
-Hint Resolve NewEvaluationStep : core.
 
-Lemma EvaluationPreservesGammaMatching : forall gamma env h e confs hn res CC,
+Lemma EvaluationPreservesGammaMatching : forall gamma env h e confs hn ex res CC,
   (JFIGammaMatchEnv h gamma env) ->
-  (JFIEval h e confs hn res CC) ->
+  (JFIEval h e confs hn ex res CC) ->
   (JFIGammaMatchEnv hn gamma env).
 Proof.
 Admitted.
 
-Lemma EvaluationPreservesPersistentTerms : forall env s h e confs hn res CC,
+Lemma EvaluationPreservesPersistentTerms : forall env s h e confs hn ex res CC,
   (JFITermPersistent s) ->
   (JFIHeapSatisfiesInEnv h s env CC) ->
-  (JFIEval h e confs hn res CC) ->
+  (JFIEval h e confs hn ex res CC) ->
    JFIHeapSatisfiesInEnv hn s env CC.
 Proof.
 Admitted.
 
 (* =============== Soundness of Hoare triple rules =============== *)
-
-Lemma HTFalseRuleSoundness : forall gamma s e v q CC,
- JFISemanticallyImplies gamma s (JFIHoare JFIFalse e v q) CC.
-Proof.
-  intros gamma s e v q CC.
-  intros env h gamma_match_env h_satisfies_s.
-  simpl.
-  intros confs hn loc false.
-  destruct false.
-Qed.
-
-Lemma HTTrueRuleSoundness : forall gamma s p e v CC,
-  JFISemanticallyImplies gamma s (JFIHoare p e v JFITrue) CC.
-Proof.
-  intros.
-  intros env h gamma_match_env h_satisfies_s.
-  simpl.
-  intros.
-  trivial.
-Qed.
 
 Lemma EnsureValIsLoc : forall (v : JFVal),
   exists l, v = JFVLoc l.
@@ -1492,7 +1484,7 @@ Admitted.
 
 Lemma HTRetRuleSoundness : forall gamma s v w CC,
   JFISemanticallyImplies gamma s
-    (JFIHoare JFITrue (JFVal1 w) v (JFIEq (JFSyn (JFVar v)) w)) CC.
+    (JFIHoare JFITrue (JFVal1 w) None v (JFIEq (JFSyn (JFVar v)) w)) CC.
 Proof.
   intros gamma s v w CC.
   intros env h gamma_match_env h_satisfies_s.
@@ -1513,68 +1505,70 @@ Proof.
     trivial.
 Qed.
 
-Lemma HTPreconditionStrenghtenSoundness : forall gamma s p p' e v q CC,
+Lemma HTPreconditionStrenghtenSoundness : forall gamma s p p' e ex v q CC,
   (JFISemanticallyImplies gamma s (JFIImplies p p') CC) ->
-  (JFISemanticallyImplies gamma s (JFIHoare p' e v q) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e v q) CC.
+  (JFISemanticallyImplies gamma s (JFIHoare p' e ex v q) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
 Proof.
-  intros gamma s p p' e v q CC.
+  intros gamma s p p' e ex v q CC.
   intros p_implies_p' hoare_p'.
   intros env h gamma_match_env h_satisfies_s.
   simpl.
-  intros hs hn res.
+  intros hs hn res_ex res.
   intros h_satisfies_p eval_e.
   set (h_satisfies_hoare_p' := hoare_p' env h gamma_match_env h_satisfies_s).
   simpl in h_satisfies_hoare_p'.
-  apply (h_satisfies_hoare_p' hs hn res).
+  apply (h_satisfies_hoare_p' hs hn res_ex res).
   + destruct (p_implies_p' env h gamma_match_env h_satisfies_s) as [not_h_satisfies_p | h_satisfies_p'].
     ++ destruct (not_h_satisfies_p h_satisfies_p).
     ++ exact h_satisfies_p'.
   + exact eval_e.
 Qed.
 
-Lemma HTPostconditionWeakenSoundness : forall gamma s p e v q q' cn u CC,
+Lemma HTPostconditionWeakenSoundness : forall gamma s p e ex v q q' cn u CC,
   (JFITermPersistent s) ->
-  (JFISemanticallyImplies gamma s (JFIHoare p e v q') CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p e ex v q') CC) ->
   (JFISemanticallyImplies gamma s
     (JFIForall cn u
       (JFIImplies (JFITermSubstituteVar v u q')
         (JFITermSubstituteVar v u q))) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e v q) CC.
+   JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
 Proof.
-  intros gamma s p e v q q' cn u CC.
+  intros gamma s p e ex v q q' cn u CC.
   intros s_persistent hoare_q' q_implies_q'.
   intros env h gamma_match_env h_satisfies_s.
   simpl.
-  intros confs hn res.
+  intros confs hn res_ex res.
   intros h_satisfies_p eval_e.
-  set (h_satisfies_q' := hoare_q' env h gamma_match_env h_satisfies_s confs hn res h_satisfies_p eval_e);
+  assert (h_satisfies_q' := hoare_q' env h gamma_match_env h_satisfies_s confs hn res_ex res h_satisfies_p eval_e);
   fold JFIHeapSatisfiesInEnv in h_satisfies_q'.
-  set (gamma_match_env_in_hn := EvaluationPreservesGammaMatching gamma env h (JFIExprSubstituteEnv env e) confs hn res CC gamma_match_env eval_e).
-  set (hn_satisfies_s := EvaluationPreservesPersistentTerms env s h (JFIExprSubstituteEnv env e) confs hn res CC s_persistent h_satisfies_s eval_e).
-  set (h_satisfies_forall := q_implies_q' env hn gamma_match_env_in_hn hn_satisfies_s).
+  assert (gamma_match_env_in_hn := EvaluationPreservesGammaMatching gamma env h (JFIExprSubstituteEnv env e) confs hn res_ex res CC gamma_match_env eval_e).
+  assert (hn_satisfies_s := EvaluationPreservesPersistentTerms env s h (JFIExprSubstituteEnv env e) confs hn res_ex res CC s_persistent h_satisfies_s eval_e).
+  assert (h_satisfies_forall := q_implies_q' env hn gamma_match_env_in_hn hn_satisfies_s).
   simpl in h_satisfies_forall.
   destruct (h_satisfies_forall res) as [not_h_satisfies_q' | h_satisfies_q].
   + admit. (* TODO type of res *)
   + exfalso.
     apply not_h_satisfies_q'.
     apply VarNameChangePreservesHeapSatisfiying.
-    exact h_satisfies_q'.
-  + apply VarNameChangePreservesHeapSatisfiying with (u := u).
-    exact h_satisfies_q.
+    apply h_satisfies_q'.
+  + apply VarNameChangePreservesHeapSatisfiying with (u := u) in h_satisfies_q.
+    split.
+    ++ apply (proj1 h_satisfies_q').
+    ++ apply h_satisfies_q.
 Admitted.
 
-Lemma HTCsqRuleSoundness : forall gamma s p p' e v q q' cn u CC,
+Lemma HTCsqRuleSoundness : forall gamma s p p' e ex v q q' cn u CC,
   (JFITermPersistent s) ->
   (JFISemanticallyImplies gamma s (JFIImplies p p') CC) ->
-  (JFISemanticallyImplies gamma s (JFIHoare p' e v q') CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p' e ex v q') CC) ->
   (JFISemanticallyImplies gamma s
     (JFIForall cn u
       (JFIImplies (JFITermSubstituteVar v u q')
         (JFITermSubstituteVar v u q))) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e v q) CC.
+   JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
 Proof.
-  intros gamma s p p' e v q q' cn u CC.
+  intros gamma s p p' e ex v q q' cn u CC.
   intros s_persistent p_implies_p' hoare_p'q' q_implies_q'.
   apply HTPostconditionWeakenSoundness with (q':=q') (cn:=cn) (u:=u).
   + exact s_persistent.
@@ -1585,33 +1579,33 @@ Proof.
 Qed.
 Hint Resolve HTCsqRuleSoundness : core.
 
-Lemma HTDisjIntroRuleSoundness : forall gamma s p q e v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare p e v r) CC) ->
-  (JFISemanticallyImplies gamma s (JFIHoare q e v r) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC.
+Lemma HTDisjIntroRuleSoundness : forall gamma s p q e ex v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare p e ex v r) CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare q e ex v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC.
 Proof.
-  intros gamma s p q e v r CC.
+  intros gamma s p q e ex v r CC.
   intros hoare_p_r hoare_q_r.
   intros env h gamma_match_env h_satisfies_s.
   simpl.
-  intros confs hn res.
+  intros confs hn res_ex res.
   intros p_or_q e_eval.
   destruct p_or_q.
-  + exact (hoare_p_r env h gamma_match_env h_satisfies_s confs hn res H e_eval).
-  + exact (hoare_q_r env h gamma_match_env h_satisfies_s confs hn res H e_eval).
+  + exact (hoare_p_r env h gamma_match_env h_satisfies_s confs hn res_ex res H e_eval).
+  + exact (hoare_q_r env h gamma_match_env h_satisfies_s confs hn res_ex res H e_eval).
 Qed.
 Hint Resolve HTDisjIntroRuleSoundness : core.
 
-Lemma HTDisjElimRuleSoundness : forall gamma s p q e v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
-    (JFISemanticallyImplies gamma s (JFIHoare p e v r) CC) /\
-    (JFISemanticallyImplies gamma s (JFIHoare q e v r) CC).
+Lemma HTDisjElimRuleSoundness : forall gamma s p q e ex v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
+    (JFISemanticallyImplies gamma s (JFIHoare p e ex v r) CC) /\
+    (JFISemanticallyImplies gamma s (JFIHoare q e ex v r) CC).
 Proof.
-  intros gamma s p q e v r CC.
+  intros gamma s p q e ex v r CC.
   intros hoare_pq_r.
   split;
-    intros env h gamma_match_env h_satisfies_s confs hn res;
-    assert (asdf := hoare_pq_r env h gamma_match_env h_satisfies_s confs hn res);
+    intros env h gamma_match_env h_satisfies_s confs hn res_ex res;
+    assert (asdf := hoare_pq_r env h gamma_match_env h_satisfies_s confs hn res_ex res);
     fold JFIHeapSatisfiesInEnv in asdf;
     simpl in *;
     intros h_satisfies_pre e_eval.
@@ -1619,9 +1613,9 @@ Proof.
   + exact (asdf (or_intror h_satisfies_pre) e_eval).
 Qed.
 
-Lemma HTDisjElimLRuleSoundness : forall gamma s p q e v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e v r) CC.
+Lemma HTDisjElimLRuleSoundness : forall gamma s p q e ex v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e ex v r) CC.
 Proof.
   intros.
   apply HTDisjElimRuleSoundness with (q := q).
@@ -1629,9 +1623,9 @@ Proof.
 Qed.
 Hint Resolve HTDisjElimLRuleSoundness : core.
 
-Lemma HTDisjElimRRuleSoundness : forall gamma s p q e v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e v r) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare q e v r) CC.
+Lemma HTDisjElimRRuleSoundness : forall gamma s p q e ex v r CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
+   JFISemanticallyImplies gamma s (JFIHoare q e ex v r) CC.
 Proof.
   intros.
   apply HTDisjElimRuleSoundness with (p := p).
@@ -1639,13 +1633,13 @@ Proof.
 Qed.
 Hint Resolve HTDisjElimRRuleSoundness : core.
 
-Lemma HTEqRule1Soundness : forall gamma s p v1 v2 e v q CC,
-  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e v q) CC) ->
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e v q) CC).
+Lemma HTEqRule1Soundness : forall gamma s p v1 v2 e ex v q CC,
+  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e ex v q) CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e ex v q) CC).
 Proof.
-  intros gamma s p v1 v2 e v q CC.
+  intros gamma s p v1 v2 e ex v q CC.
   intros p_eq_implies_hoare.
-  intros env h gamma_match_env h_satisfies_s confs hn res.
+  intros env h gamma_match_env h_satisfies_s confs hn res_ex res.
   simpl.
   destruct (EnsureValIsLoc v1) as (l1 & v1_is_l1).
   destruct (EnsureValIsLoc v2) as (l2 & v2_is_l2).
@@ -1655,23 +1649,23 @@ Proof.
   rewrite v1_is_l1, v2_is_l2 in *.
   unfold JFIValToLoc in *.
   intros (h_satisfies_p & l1_eq_l2) e_eval.
-  exact (hoare_p_q (conj h_satisfies_s l1_eq_l2) confs hn res h_satisfies_p e_eval).
+  exact (hoare_p_q (conj h_satisfies_s l1_eq_l2) confs hn res_ex res h_satisfies_p e_eval).
 Qed.
 Hint Resolve HTEqRule1Soundness : core.
 
-Lemma HTEqRule2Soundness : forall gamma s p v1 v2 e v q CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e v q) CC) ->
-  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e v q) CC).
+Lemma HTEqRule2Soundness : forall gamma s p v1 v2 e ex v q CC,
+  (JFISemanticallyImplies gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e ex v q) CC) ->
+  (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e ex v q) CC).
 Proof.
-  intros gamma s p v1 v2 e v q CC.
+  intros gamma s p v1 v2 e ex v q CC.
   intros hoare_peq_q.
-  intros env h gamma_match_env h_satisfies_s_eq confs hn res.
+  intros env h gamma_match_env h_satisfies_s_eq confs hn res_ex res.
   simpl.
   intros h_satisfies_p e_eval.
   simpl in h_satisfies_s_eq.
   destruct h_satisfies_s_eq as (h_satisfies_s & l1_eq_l2).
 
-  assert (hn_satisfies_q := hoare_peq_q env h gamma_match_env h_satisfies_s confs hn res).
+  assert (hn_satisfies_q := hoare_peq_q env h gamma_match_env h_satisfies_s confs hn res_ex res).
   fold JFIHeapSatisfiesInEnv in hn_satisfies_q.
   simpl in hn_satisfies_q.
 
@@ -1686,7 +1680,7 @@ Hint Resolve HTEqRule2Soundness : core.
 
 Lemma HTNewNotNullRuleSoundness : forall gamma s p mu cn vs v CC,
   JFISemanticallyImplies gamma s
-    (JFIHoare p (JFNew mu cn vs) v
+    (JFIHoare p (JFNew mu cn vs) None v
      (JFIImplies (JFIEq (JFSyn (JFVar v)) JFnull) JFIFalse)) CC.
 Proof.
   intros gamma s p mu cn vs v CC.
@@ -1700,7 +1694,7 @@ Proof.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])], newheap, newloc.
   split; [ | split].
   + exact h_satisfies_p.
-  + eauto.
+  + apply NewEvaluationStep with (prog := CC) (ls := ls); assumption.
   + simpl.
     apply or_introl.
     rewrite StrMapFacts.add_eq_o.
@@ -1714,7 +1708,7 @@ Lemma HTNewFieldRuleSoundness : forall decls gamma cn objflds vs n field value s
   (nth_error objflds n = Some field) ->
   (nth_error vs n = Some value) ->
     JFISemanticallyImplies gamma s
-      (JFIHoare p (JFNew mu cn vs) v (JFIFieldEq (JFSyn (JFVar v)) field value)) CC.
+      (JFIHoare p (JFNew mu cn vs) None v (JFIFieldEq (JFSyn (JFVar v)) field value)) CC.
 Proof.
   intros decls gamma cn objflds vs n field value s p mu v CC.
   intros fdls_of_cn nth_field nth_value.
@@ -1729,7 +1723,7 @@ Proof.
   apply CorrectEvaluationImpliesHoareTriple.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env (JFNew mu cn vs) ]]_ None])], newheap, newloc.
   split; [assumption | split].
-  + eauto.
+  + apply NewEvaluationStep with (prog := JFIDeclsProg decls) (ls := ls); assumption.
   + simpl.
     unfold JFIValToLoc.
     rewrite value_is_l.
@@ -1776,67 +1770,77 @@ Proof.
     exact h'_satisfies_q.
 Qed.
 
-Lemma LetRuleE2Soundness : forall h' x e1_res e2 confs_e2 hn res class v q u r env CC,
+Lemma LetRuleE2Soundness : forall h' x e1_res e2 confs_e2 hn res_ex res class v q ex u r env CC,
   (JFILocOfType e1_res h' class) ->
   (JFIVarFreshInTerm v r) ->
-  (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_e2 hn res env CC) ->
+  (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_e2 hn res_ex res env CC) ->
   (JFIHeapSatisfiesInEnv h' (JFITermSubstituteVal x (JFVLoc e1_res) q) env CC) ->
-  (JFIHeapSatisfiesInEnv h' (JFIForall class v (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) u r)) env CC) ->
-   JFIHeapSatisfiesInEnv hn r (StrMap.add u res env) CC
-.
+  (JFIHeapSatisfiesInEnv h' (JFIForall class v (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex u r)) env CC) ->
+  (res_ex = ex /\ JFIHeapSatisfiesInEnv hn r (StrMap.add u res env) CC).
 Proof.
-  intros h' x e1_res e2 confs_e2 hn res class v q u r env CC.
+  intros h' x e1_res e2 confs_e2 hn res_ex res class v q ex u r env CC.
   intros e1_res_type v_fresh_in_r e2_eval h'_satisfies_q h'_satisfies_forall.
-  set (tmp := h'_satisfies_forall e1_res e1_res_type confs_e2 hn res).
+  assert (tmp := h'_satisfies_forall e1_res e1_res_type confs_e2 hn res_ex res).
   fold JFIHeapSatisfiesInEnv in tmp.
   simpl in tmp.
-  apply AddingFreshVarInsidePreservesHeapSatisfiying with (x2 := v) (l2 := e1_res); try assumption.
-  apply tmp.
-  + apply SubstituteLocIffSubstituteVarInEnv.
-    assumption.
-  + unfold JFIEvalInEnv.
-    rewrite SubstituteEnvVarElim.
-    assumption.
+  split.
+  + apply tmp.
+    ++ apply SubstituteLocIffSubstituteVarInEnv.
+       assumption.
+    ++ unfold JFIEvalInEnv.
+       rewrite SubstituteEnvVarElim.
+       assumption.
+  + apply AddingFreshVarInsidePreservesHeapSatisfiying with (x2 := v) (l2 := e1_res); try assumption.
+    apply tmp.
+    ++ apply SubstituteLocIffSubstituteVarInEnv.
+       assumption.
+    ++ unfold JFIEvalInEnv.
+       rewrite SubstituteEnvVarElim.
+       assumption.
 Qed.
 
-Lemma HTLetRuleSoundness : forall gamma s p e1 e2 class x q v u r CC,
+Lemma HTLetRuleSoundness : forall gamma s p e1 e2 class x q v ex u r CC,
   (JFITermPersistent s) ->
   (JFIVarFreshInTerm v r) ->
-  (JFISemanticallyImplies gamma s (JFIHoare p e1 x q) CC) ->
+  (JFISemanticallyImplies gamma s (JFIHoare p e1 None x q) CC) ->
   (JFISemanticallyImplies gamma s
           (JFIForall class v
              (JFIHoare
                 (JFITermSubstituteVar x v q)
-                (JFIExprSubstituteVar x v e2) u r)) CC) ->
-  JFISemanticallyImplies gamma s (JFIHoare p (JFLet class x e1 e2) u r) CC.
+                (JFIExprSubstituteVar x v e2) ex u r)) CC) ->
+  JFISemanticallyImplies gamma s (JFIHoare p (JFLet class x e1 e2) ex u r) CC.
 Proof.
-  intros gamma s p e1 e2 class x q v u r CC.
+  intros gamma s p e1 e2 class x q v ex u r CC.
   intros s_persistent v_fresh_in_r IH_e1 IH_e2.
   intros env h gamma_match_env.
-  intros h_satisfies_s confs hn res new_env h_satisfies_p let_eval.
+  intros h_satisfies_s confs hn res_ex res new_env h_satisfies_p let_eval.
 
-  set (let_evaluation := LetEvaluation h class x e1 e2 confs hn res env CC let_eval).
-  destruct let_evaluation as (confs_e1 & (confs_e2 & (h' & (e1_res & (e1_eval & e2_eval))))).
-
-  apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
-    (confs_e2 := confs_e2) (class := class) (v := v) (q := q).
-  + admit. (* e1_res type *)
-  + assumption.
-  + assumption.
-  + apply LetRuleE1Soundness.
-    apply (IH_e1 env h gamma_match_env h_satisfies_s confs_e1); assumption.
-  + apply IH_e2.
-    ++ apply EvaluationPreservesGammaMatching with (h := h) (e := (JFIExprSubstituteEnv env e1))
-          (confs := confs_e1) (res := e1_res) (CC := CC); assumption.
-    ++ apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
-          (confs := confs_e1) (res := e1_res); assumption.
+  set (let_evaluation := LetEvaluationEx h class x e1 e2 confs hn res_ex res env CC let_eval).
+  destruct let_evaluation as [(confs_e1 & e1_ex & e1_res & ex_eq & e1_eval) |
+                              (confs_e1 & confs_e2 & h' & e1_res & e1_eval & e2_eval)].
+  + rewrite ex_eq in e1_eval.
+    destruct (IH_e1 env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) e1_res h_satisfies_p e1_eval)
+      as (false_eq & _).
+    discriminate false_eq.
+  + apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
+      (confs_e2 := confs_e2) (class := class) (ex := ex) (v := v) (q := q).
+    ++ admit. (* e1_res type *)
+    ++ assumption.
+    ++ assumption.
+    ++ apply LetRuleE1Soundness.
+       apply (IH_e1 env h gamma_match_env h_satisfies_s confs_e1 h' None e1_res); assumption.
+    ++ apply IH_e2.
+       +++ apply EvaluationPreservesGammaMatching with (h := h) (e := (JFIExprSubstituteEnv env e1))
+             (confs := confs_e1) (ex := None) (res := e1_res) (CC := CC); assumption.
+       +++ apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
+          (confs := confs_e1) (ex := None) (res := e1_res); assumption.
 Admitted.
 Hint Resolve HTLetRuleSoundness : core.
 
 Lemma HTFieldSetRuleSoundness : forall gamma s x field loc v CC,
   JFISemanticallyImplies gamma s
     (JFIHoare (JFIImplies (JFIEq x JFnull) JFIFalse) (JFAssign (x, field) (JFVLoc loc))
-       v (JFIFieldEq x field (JFVLoc loc))) CC.
+     None v (JFIFieldEq x field (JFVLoc loc))) CC.
 Proof.
   intros gamma s x field loc v CC.
   intros env h gamma_match_env h_satisfies_s.
@@ -1882,15 +1886,15 @@ Proof.
 Qed.
 Hint Resolve HTFieldSetRuleSoundness : core.
 
-Lemma HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s u CC,
+Lemma HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s ex u CC,
   (JFISemanticallyImplies gamma s 
-    (JFIHoare (JFIAnd p (JFIEq v1 v2)) e1 u q) CC) ->
+    (JFIHoare (JFIAnd p (JFIEq v1 v2)) e1 ex u q) CC) ->
   (JFISemanticallyImplies gamma s
-    (JFIHoare (JFIAnd p (JFIImplies (JFIEq v1 v2) JFIFalse)) e2 u q) CC) ->
+    (JFIHoare (JFIAnd p (JFIImplies (JFIEq v1 v2) JFIFalse)) e2 ex u q) CC) ->
    JFISemanticallyImplies gamma s
-    (JFIHoare p (JFIf v1 v2 e1 e2) u q) CC.
+    (JFIHoare p (JFIf v1 v2 e1 e2) ex u q) CC.
 Proof.
-  intros gamma v1 v2 e1 e2 p q s u CC.
+  intros gamma v1 v2 e1 e2 p q s ex u CC.
   intros IH_if_eq IH_if_neq.
   intros env h gamma_match_env h_satisfies_s.
 
@@ -1898,14 +1902,14 @@ Proof.
   destruct (EnsureValIsLoc v2) as (l2 & v2_is_l2).
   rewrite v1_is_l1.
   rewrite v2_is_l2.
-  intros confs hn res env_res.
+  intros confs hn res_ex res env_res.
   intros h_satisfies_p eval_if.
 
-  destruct confs as [ | (h', st') confs];  [destruct eval_if as (H & H0); discriminate H0 | ].
+  destruct confs as [ | (h', st') confs]; [destruct eval_if as (H & H0); discriminate H0 | ].
   destruct (Classical_Prop.classic (l1 = l2)) as [l1_eq_l2 | l1_neq_l2].
   + apply IfEvaluationStepEq in eval_if as (h_eq_h' & eval_e1).
     rewrite <- h_eq_h' in eval_e1.
-    ++ set (if_eq_then_eval_e1_satisfies_q := IH_if_eq env h gamma_match_env h_satisfies_s confs hn res);
+    ++ set (if_eq_then_eval_e1_satisfies_q := IH_if_eq env h gamma_match_env h_satisfies_s confs hn res_ex res);
        fold JFIHeapSatisfiesInEnv in if_eq_then_eval_e1_satisfies_q;
        fold JFIPartialEval in if_eq_then_eval_e1_satisfies_q.
        apply if_eq_then_eval_e1_satisfies_q.
@@ -1917,7 +1921,7 @@ Proof.
     ++ exact l1_eq_l2.
   + apply IfEvaluationStepNeq in eval_if as (h_eq_h' & eval_e2).
     rewrite <- h_eq_h' in eval_e2.
-    ++ set (if_neq_then_eval_e2_satisfies_q := IH_if_neq env h gamma_match_env h_satisfies_s confs hn res);
+    ++ set (if_neq_then_eval_e2_satisfies_q := IH_if_neq env h gamma_match_env h_satisfies_s confs hn res_ex res);
        fold JFIHeapSatisfiesInEnv in if_neq_then_eval_e2_satisfies_q;
        fold JFIPartialEval in if_neq_then_eval_e2_satisfies_q.
        apply if_neq_then_eval_e2_satisfies_q.
@@ -1993,35 +1997,31 @@ Proof.
   (* JFIWandElimRule *)
   |  decls gamma p q r1 r2
   (* JFIHTFrameRule *)
-  |  decls gamma p q r s e v
-  (* JFIHTFalseRule *)
-  |  decls gamma s q e v
-  (* JFIHTTrueRule *)
-  |  decls gamma s p e v
+  |  decls gamma p q r s e ex v
   (* JFIHTRetRule *)
   |  decls gamma s v w
   (* JFIHTCsqRule *)
-  |  p' q' cn u decls gamma s p q v e s_persistent _ IH_p_implies_p' _ IH_HT_p'evq' _ IH_q'_implies_q
+  |  p' q' cn u decls gamma s p q ex v e s_persistent _ IH_p_implies_p' _ IH_HT_p'evq' _ IH_q'_implies_q
   (* JFIHTDisjIntroRule *)
-  |  decls gamma s p q r e v
+  |  decls gamma s p q r e ex v
   (* JFIHTDisjElimLRule *)
-  |  decls gamma s p q r e v
+  |  decls gamma s p q r e ex v
   (* JFIHTDisjElimRRule *)
-  |  decls gamma s p q r e v
+  |  decls gamma s p q r e ex v
   (* JFIHTEqRule *)
-  |  decls gamma s v1 v2 p e v q
+  |  decls gamma s v1 v2 p e ex v q
   (* JFIHTEqRule *)
-  |  decls gamma s v1 v2 p e v q
+  |  decls gamma s v1 v2 p e ex v q
   (* JFIHTNewNotNullRule *)
   |  decls gamma s p mu cn vs v
   (* JFIHTNewFieldRule *)
   |  decls gamma s p mu cn vs v objflds n field value objflds_is_flds field_n value_n
   (* JFIHTLetRule *)
-  |  v q decls gamma p r s e1 e2 x u class s_persistent v_fresh_in_r _ IH_e1 _ IH_e2
+  |  v q decls gamma p r s e1 e2 x ex u class s_persistent v_fresh_in_r _ IH_e1 _ IH_e2
   (* JFIHTFieldSetRule *)
   |  decls gamma s x field v loc
   (* JFIHTIfRule *)
-  |  decls gamma p v1 v2 e1 e2 u q s _ IH_if_eq _ IH_if_neq
+  |  decls gamma p v1 v2 e1 e2 ex u q s _ IH_if_eq _ IH_if_neq
   (* JFIHTInvokeRetRule *)
   |  cn method rettypeCN p' w q' x decls gamma s p q u v vs mn
   (* JFIHTInvokeNoRetRule *)
@@ -2100,10 +2100,6 @@ Proof.
   + admit. (* TODO *)
   (* JFIHTFrameRule *)
   + admit. (* TODO *)
-  (* JFIHTFalseRule *)
-  + apply HTFalseRuleSoundness.
-  (* JFIHTTrueRule: *)
-  + apply HTTrueRuleSoundness.
   (* JFIHTRetRule *)
   + apply HTRetRuleSoundness.
   (* JFIHTCsqRule: *)

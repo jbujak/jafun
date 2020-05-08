@@ -35,12 +35,12 @@ Fixpoint JFIPartialEval (h0 : Heap) (st0 : FrameStack) (confs : list (Heap * Fra
       end 
   end.
 
-Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (CC : JFProgram) : Prop :=
+Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (ex : JFEvMode) (res : Loc) (CC : JFProgram) : Prop :=
   let EmptyCtx := []
-  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ None] CC.
+  in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ ex] CC.
 
-Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (res : Loc) (env : JFITermEnv) (CC : JFProgram) : Prop :=
-  JFIEval h (JFIExprSubstituteEnv env e) confs hn res CC.
+Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (ex : JFEvMode) (res : Loc) (env : JFITermEnv) (CC : JFProgram) : Prop :=
+  JFIEval h (JFIExprSubstituteEnv env e) confs hn ex res CC.
 
 (* ======================= Evalution is deterministic ======================= *)
 
@@ -69,48 +69,50 @@ Proof.
   split; assumption.
 Qed.
 
-Lemma EvaluationLastStepIsDeterministic : forall confs h0 st0 hn hn' res res' CC,
- (JFIPartialEval h0 st0 []    hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ] CC) ->
- (JFIPartialEval h0 st0 confs hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ None ] CC) ->
- ([] = confs /\ hn = hn' /\ res = res').
+Lemma EvaluationLastStepIsDeterministic : forall confs h0 st0 hn hn' ex res ex' res' CC,
+ (JFIPartialEval h0 st0 []    hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ ex ] CC) ->
+ (JFIPartialEval h0 st0 confs hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ ex' ] CC) ->
+ ([] = confs /\ hn = hn' /\ ex = ex' /\ res = res').
 Proof.
-  intros confs h0 st0 hn hn' res res' CC.
+  intros confs h0 st0 hn hn' ex res ex' res' CC.
   intros eval1 eval2.
   unfold JFIPartialEval in *.
   destruct eval1 as (h0_eq_hn & st0_is_res).
   destruct confs.
   + destruct eval2 as (h0_eq_hn' & st0_is_res').
     rewrite st0_is_res' in st0_is_res.
-    injection st0_is_res as res_eq_res'.
-    rewrite <- h0_eq_hn, h0_eq_hn', res_eq_res'.
-    split; try split; trivial.
+    injection st0_is_res.
+    intros ex_eq_ex' res_eq_res'.
+    rewrite <- h0_eq_hn, h0_eq_hn', res_eq_res', ex_eq_ex'.
+    split; try split; try split; trivial.
   + exfalso.
     destruct p.
     destruct eval2 as (h0_eq_h & st0_eq_f & red2).
     rewrite st0_is_res in red2.
     unfold red in red2.
+    destruct ex;
     exact red2.
 Qed.
 
-Lemma PartialEvaluationIsDeterministic : forall confs confs' h0 st0 hn hn' res res' CC,
-  (JFIPartialEval h0 st0 confs  hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ] CC)  ->
-  (JFIPartialEval h0 st0 confs' hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ None ] CC) ->
-  (confs = confs' /\ hn = hn' /\ res = res').
+Lemma PartialEvaluationIsDeterministic : forall confs confs' h0 st0 hn hn' ex res ex' res' CC,
+  (JFIPartialEval h0 st0 confs  hn  [ [] [[ JFVal1 (JFVLoc res)  ]]_ ex ] CC)  ->
+  (JFIPartialEval h0 st0 confs' hn' [ [] [[ JFVal1 (JFVLoc res') ]]_ ex' ] CC) ->
+  (confs = confs' /\ hn = hn' /\ ex = ex' /\ res = res').
 Proof.
   intros confs.
   induction confs as [ | (h, st)].
   + apply EvaluationLastStepIsDeterministic.
-  + intros confs' h0 st0 hn hn' res res' CC.
+  + intros confs' h0 st0 hn hn' ex res ex' res' CC.
     intros e_eval_hs e_eval_hs'.
     destruct confs' as [ | (h', st')].
-    ++ apply EvaluationLastStepIsDeterministic with (hn := hn') (res := res') in e_eval_hs.
+    ++ apply EvaluationLastStepIsDeterministic with (hn := hn') (ex := ex') (res := res') in e_eval_hs.
        +++ destruct e_eval_hs as (false & _).
            discriminate false.
        +++ exact e_eval_hs'.
     ++ destruct (EvaluationFirstStepIsDeterministic h0 st0 h h' st st' confs confs' hn hn'
-           [ [] [[ JFVal1 (JFVLoc res)  ]]_ None ]  [ [] [[ JFVal1 (JFVLoc res')  ]]_ None ] CC e_eval_hs e_eval_hs')
+           [ [] [[ JFVal1 (JFVLoc res)  ]]_ ex ]  [ [] [[ JFVal1 (JFVLoc res')  ]]_ ex' ] CC e_eval_hs e_eval_hs')
         as (h_eq_h' & (st_eq_st' & new_h & (e' & (e'_eval_hs & e'_eval_hs')))).
-       set (IH_applied := IHconfs confs' new_h e'  hn hn' res res' CC e'_eval_hs e'_eval_hs').
+       set (IH_applied := IHconfs confs' new_h e'  hn hn' ex res ex' res' CC e'_eval_hs e'_eval_hs').
        destruct IH_applied as (confs_eq_confs' & (hn_eq_hn' & res_eq_res')).
        split; try split.
        +++ rewrite <- h_eq_h'.
@@ -121,14 +123,14 @@ Proof.
        +++ exact res_eq_res'.
 Qed.
 
-Lemma EvaluationIsDeterministic : forall confs confs' h0 e hn hn' res res' CC,
-  (JFIEval h0 e confs  hn  res CC)  ->
-  (JFIEval h0 e confs' hn' res' CC) ->
-  (confs = confs' /\ hn = hn' /\ res = res').
+Lemma EvaluationIsDeterministic : forall confs confs' h0 e hn hn' ex res ex' res' CC,
+  (JFIEval h0 e confs  hn  ex  res CC)  ->
+  (JFIEval h0 e confs' hn' ex' res' CC) ->
+  (confs = confs' /\ hn = hn' /\ ex = ex' /\ res = res').
 Proof.
-  intros confs confs' h0 e hn hn' res res' CC.
+  intros confs confs' h0 e hn hn' ex res ex' res' CC.
   intros eval1 eval2.
-  destruct (PartialEvaluationIsDeterministic confs confs' h0 [ [] [[ e ]]_ None] hn hn' res res' CC)
+  destruct (PartialEvaluationIsDeterministic confs confs' h0 [ [] [[ e ]]_ None] hn hn' ex res ex' res' CC)
     as (confs_eq & res_eq & stn_eq); try assumption.
   split; try split; assumption.
 Qed.
@@ -1819,10 +1821,10 @@ Proof.
 Qed.
 
 Lemma LetEvaluation : forall h class x e1 e2 confs hn res env CC,
-   (JFIEvalInEnv h (JFLet class x e1 e2) confs hn res env) CC ->
+   (JFIEvalInEnv h (JFLet class x e1 e2) confs hn None res env) CC ->
     exists confs_let_e1 confs_let_e2 h' e1_res,
-      (JFIEvalInEnv h e1 confs_let_e1 h' e1_res env CC) /\
-      (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn res env CC).
+      (JFIEvalInEnv h e1 confs_let_e1 h' None e1_res env CC) /\
+      (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn None res env CC).
 Proof.
   intros h class x e1 e2 confs hn res env CC.
   intros let_eval.
@@ -1855,3 +1857,14 @@ Proof.
        rewrite RemoveSubstitutedVarFromEnv in e2_eval.
        exact e2_eval.
 Qed.
+
+Lemma LetEvaluationEx : forall h class x e1 e2 confs hn ex res env CC,
+   (JFIEvalInEnv h (JFLet class x e1 e2) confs hn ex res env) CC ->
+     ((exists confs_let_e1 e1_ex e1_res,
+       ex = Some e1_ex /\
+       JFIEvalInEnv h e1 confs_let_e1 hn ex e1_res env CC) \/
+      (exists confs_let_e1 confs_let_e2 h' e1_res,
+        (JFIEvalInEnv h e1 confs_let_e1 h' None e1_res env CC) /\
+        (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn ex res env CC))).
+Proof.
+Admitted.
