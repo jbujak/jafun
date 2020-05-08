@@ -83,9 +83,8 @@ Definition JFIValToLoc (val : JFVal) (env : JFITermEnv) : option Loc :=
   match val with
     | JFVLoc loc => Some loc
     | JFSyn (JFVar x) => StrMap.find x env
-    | JFSyn JFThis => Some null (* TODO *)
+    | JFSyn JFThis => Some (JFLoc 1) (* TODO *)
   end.
-
 
 (* Semantics *)
 
@@ -503,9 +502,23 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
           (JFAssign (x, field) (JFVLoc loc))
            None v (JFIFieldEq x field (JFVLoc loc)))
 
+| JFIHTNullFieldSetRule :
+    forall decls gamma s x field v loc,
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare (JFIEq x JFnull)
+          (JFAssign (x, field) (JFVLoc loc))
+           NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val))
+
 (* TODO JFIHTFieldGetRule *)
 
-(* TODO JFIHTNullFieldAccessRule *)
+| JFIHTNullFieldGetRule :
+    forall decls gamma s x field v,
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare (JFIEq x JFnull)
+          (JFVal2 (x, field))
+           NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val))
 
 | JFIHTIfRule :
     forall decls gamma p v1 v2 e1 e2 ex u q s,
@@ -540,9 +553,30 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFInvoke (JFSyn v) mn vs) ex u q) (* TODO null *)
 
-(* TODO JFIHTNullInvokeRule *)
+| JFIHTNullInvokeRule :
+    forall decls gamma s x mn vs v,
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare (JFIEq x JFnull)
+          (JFInvoke x mn vs)
+           NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val))
 
-(* TODO JFIHTThrowRule *)
+| JFIHTThrowRule :
+    forall decls gamma s cn x v,
+      (JFIRefType decls gamma x = Some cn) ->
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare (JFIImplies (JFIEq (JFSyn x) JFnull) JFIFalse)
+           (JFThrow (JFSyn x))
+           (Some cn) v (JFIEq (JFSyn (JFVar v)) (JFSyn x)))
+
+| JFIHTNullThrowRule :
+    forall decls gamma s x v,
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare (JFIEq (JFSyn x) JFnull)
+           (JFThrow (JFSyn x))
+            NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val))
 
 (* TODO JFIHTTryCathRule *)
 .

@@ -1886,6 +1886,113 @@ Proof.
 Qed.
 Hint Resolve HTFieldSetRuleSoundness : core.
 
+Lemma ValEval : forall h v ex confs hn v' ex' CC,
+  JFIPartialEval h [ [] [[JFVal1 v ]]_ ex] confs hn [ [] [[JFVal1 v' ]]_ ex'] CC ->
+  (ex = ex' /\ v = v').
+Proof.
+  intros h v ex confs hn v' ex' CC.
+  intros eval.
+  unfold JFIPartialEval in eval.
+  destruct confs.
+  + destruct eval as (_ & st_eq).
+    injection st_eq.
+    intros ex_eq v_eq.
+    rewrite ex_eq, v_eq.
+    split; trivial.
+  + destruct p.
+    destruct eval as (_ & _ & val_red).
+    fold JFIPartialEval in val_red.
+    unfold red in val_red.
+    destruct v, ex; destruct val_red.
+Qed.
+
+Lemma NPEEval : forall h confs hn res res_ex v env CC,
+  JFIPartialEval h [ [] [[JFVal1 NPE_val ]]_ NPE_mode] confs hn
+                   [ [] [[JFVal1 (JFVLoc res) ]]_ res_ex] CC ->
+  (res_ex = NPE_mode /\ JFIHeapSatisfiesInEnv hn (JFIEq (JFSyn (JFVar v)) NPE_val) (StrMap.add v res env) CC).
+Proof.
+  intros h confs hn res res_ex v env CC.
+  intros eval.
+  apply ValEval in eval as (ex_is_npe & res_is_npe).
+  split; try (symmetry; assumption).
+  simpl.
+  rewrite StrMapFacts.add_eq_o; trivial.
+  unfold NPE_val in res_is_npe.
+  injection res_is_npe as res_is_npe.
+  rewrite res_is_npe.
+  trivial.
+Qed.
+
+Lemma HTNullFieldSetRuleSoundness : forall gamma s x field loc v CC,
+  JFISemanticallyImplies gamma s
+    (JFIHoare (JFIEq x JFnull) (JFAssign (x, field) (JFVLoc loc))
+     NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val)) CC.
+Proof.
+  intros gamma s x field loc v CC.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv x_is_null eval.
+  unfold newEnv.
+  simpl in x_is_null.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval, JFIExprSubstituteEnv in eval.
+  destruct confs; try discriminate (proj2 eval).
+  fold JFIPartialEval in *.
+  destruct p in eval.
+  destruct eval as (h_eq & st_eq & assign_red).
+  destruct x as [ | x]; try destruct x.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite x_is_null in *.
+    rewrite ValEnvSubstitutionPreservesVLoc in assign_red.
+    unfold red in assign_red.
+    destruct (JFIValSubstituteEnv env (JFVLoc loc)); try destruct assign_red.
+    apply NPEEval with (v := v) (env := env) in assign_red.
+    exact assign_red.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite ValEnvSubstitutionReplacesVarInEnv with (l := null) in assign_red.
+    ++ unfold red in assign_red.
+       destruct (JFIValSubstituteEnv env (JFVLoc loc)); try destruct assign_red.
+       apply NPEEval with (v := v) (env := env) in assign_red.
+       exact assign_red.
+    ++ destruct (StrMap.find (elt:=Loc) x env); try destruct x_is_null.
+       trivial.
+  + unfold JFIValToLoc in x_is_null.
+    discriminate x_is_null.
+Qed.
+Hint Resolve HTNullFieldSetRuleSoundness : core.
+
+Lemma HTNullFieldGetRuleSoundness : forall gamma s x field v CC,
+  JFISemanticallyImplies gamma s
+    (JFIHoare (JFIEq x JFnull) (JFVal2 (x, field))
+     NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val)) CC.
+Proof.
+  intros gamma s x field v CC.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv x_is_null eval.
+  unfold newEnv.
+  simpl in x_is_null.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval, JFIExprSubstituteEnv in eval.
+  destruct confs; try discriminate (proj2 eval).
+  fold JFIPartialEval in *.
+  destruct p in eval.
+  destruct eval as (h_eq & st_eq & assign_red).
+  destruct x as [ | x]; try destruct x.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite x_is_null in *.
+    rewrite ValEnvSubstitutionPreservesVLoc in assign_red.
+    unfold red in assign_red.
+    apply NPEEval with (v := v) (env := env) in assign_red.
+    exact assign_red.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite ValEnvSubstitutionReplacesVarInEnv with (l := null) in assign_red.
+    ++ unfold red in assign_red.
+       apply NPEEval with (v := v) (env := env) in assign_red.
+       exact assign_red.
+    ++ destruct (StrMap.find (elt:=Loc) x env); try destruct x_is_null.
+       trivial.
+  + unfold JFIValToLoc in x_is_null.
+    discriminate x_is_null.
+Qed.
+Hint Resolve HTNullFieldGetRuleSoundness : core.
+
 Lemma HTIfRuleSoundness : forall gamma v1 v2 e1 e2 p q s ex u CC,
   (JFISemanticallyImplies gamma s 
     (JFIHoare (JFIAnd p (JFIEq v1 v2)) e1 ex u q) CC) ->
@@ -1933,6 +2040,116 @@ Proof.
        +++ exact eval_e2.
     ++ exact l1_neq_l2.
 Qed.
+
+Lemma HTNullInvokeSoundness : forall gamma s x mn vs v CC,
+  JFISemanticallyImplies gamma s
+    (JFIHoare (JFIEq x JFnull) (JFInvoke x mn vs)
+     NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val)) CC.
+Proof.
+  intros gamma s x mn vs v CC.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv x_is_null eval.
+  unfold newEnv.
+  simpl in x_is_null.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval, JFIExprSubstituteEnv in eval.
+  destruct confs; try discriminate (proj2 eval).
+  fold JFIPartialEval in *.
+  destruct p in eval.
+  destruct eval as (h_eq & st_eq & assign_red).
+  destruct x as [ | x]; try destruct x.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite x_is_null in *.
+    rewrite ValEnvSubstitutionPreservesVLoc in assign_red.
+    unfold red in assign_red.
+    apply NPEEval with (v := v) (env := env) in assign_red.
+    exact assign_red.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite ValEnvSubstitutionReplacesVarInEnv with (l := null) in assign_red.
+    ++ unfold red in assign_red.
+       apply NPEEval with (v := v) (env := env) in assign_red.
+       exact assign_red.
+    ++ destruct (StrMap.find (elt:=Loc) x env); try destruct x_is_null.
+       trivial.
+  + unfold JFIValToLoc in x_is_null.
+    discriminate x_is_null.
+Qed.
+Hint Resolve HTNullInvokeSoundness : core.
+
+Lemma HTThrowSoundness : forall decls gamma x cn s v CC,
+  JFIRefType decls gamma x = Some cn ->
+  JFISemanticallyImplies gamma s
+    (JFIHoare (JFIImplies (JFIEq (JFSyn x) JFnull) JFIFalse) (JFThrow (JFSyn x)) 
+     (Some cn) v (JFIEq (JFSyn (JFVar v)) (JFSyn x))) CC.
+Proof.
+  intros decls gamma x cn s v CC.
+  intros type_of_x.
+  intros env h gamma_match_env h_satifsies_s.
+  intros confs hn res_ex res newEnv x_not_null eval.
+  simpl in x_not_null.
+  destruct x_not_null as [x_not_null | x_null]; try destruct x_null.
+  unfold newEnv.
+  unfold JFIRefType in type_of_x.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval in eval.
+  destruct confs; try discriminate (proj2 eval).
+  fold JFIPartialEval in eval.
+  destruct p.
+  destruct eval as (h_eq & st_eq & throw_red).
+  unfold JFIExprSubstituteEnv in throw_red.
+  destruct x.
+  + destruct (Classical_Prop.classic (exists l, StrMap.find x env = Some l)).
+    ++ destruct H as (l & x_is_l).
+       rewrite x_is_l in x_not_null.
+       rewrite ValEnvSubstitutionReplacesVarInEnv with (l := l) in throw_red; try assumption.
+       unfold red in throw_red.
+       destruct l; try destruct (x_not_null (eq_refl null)).
+       unfold class in throw_red.
+       assert (type_of_n := (proj2 (gamma_match_env x)) (JFLoc n) cn type_of_x x_is_l).
+       unfold JFILocOfType in type_of_n.
+       destruct (NatMap.find (elt:=Obj) n h); try destruct throw_red.
+       destruct o.
+       rewrite <- type_of_n in throw_red.
+       apply ValEval in throw_red as (ex_is_cn & res_x).
+       split; try (symmetry; assumption).
+       simpl.
+       rewrite StrMapFacts.add_eq_o; trivial.
+       destruct (Classical_Prop.classic (x = v)).
+       +++ rewrite StrMapFacts.add_eq_o; trivial; symmetry; trivial.
+       +++ rewrite StrMapFacts.add_neq_o; try (intros v_eq_x; symmetry in v_eq_x; destruct (H v_eq_x)).
+           rewrite x_is_l.
+           injection res_x as res_x.
+           symmetry.
+           exact res_x.
+    ++ admit. (* TODO x in env *)
+  + admit. (* TODO this *)
+Admitted.
+Hint Resolve HTThrowSoundness : core.
+
+Lemma HTNullThrowSoundness : forall gamma x s v CC,
+  JFISemanticallyImplies gamma s
+    (JFIHoare (JFIEq (JFSyn x) JFnull) (JFThrow (JFSyn x))
+     NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val)) CC.
+Proof.
+  intros gamma x s v CC.
+  intros env h gamma_match_env h_satifsies_s.
+  intros confs hn res_ex res newEnv x_is_null eval.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval, JFIExprSubstituteEnv in eval.
+  destruct confs; try discriminate (proj2 eval).
+  fold JFIPartialEval in *.
+  destruct p in eval.
+  destruct eval as (h_eq & st_eq & assign_red).
+  destruct x.
+  + unfold JFIValToLoc in x_is_null.
+    rewrite ValEnvSubstitutionReplacesVarInEnv with (l := null) in assign_red.
+    ++ unfold red in assign_red.
+       apply NPEEval with (v := v) (env := env) in assign_red.
+       exact assign_red.
+    ++ simpl in x_is_null.
+       destruct (StrMap.find (elt:=Loc) x env); try destruct x_is_null.
+       trivial.
+  + unfold JFIValToLoc in x_is_null.
+    discriminate x_is_null.
+Qed.
+Hint Resolve HTNullThrowSoundness : core.
 
 (* =============== Main theorem =============== *)
 
@@ -2020,12 +2237,22 @@ Proof.
   |  v q decls gamma p r s e1 e2 x ex u class s_persistent v_fresh_in_r _ IH_e1 _ IH_e2
   (* JFIHTFieldSetRule *)
   |  decls gamma s x field v loc
+  (* JFIHTNullFieldSetRule *)
+  |  decls gamma s x field v loc
+  (* JFIHTNullFieldGetRule *)
+  |  decls gamma s x field v
   (* JFIHTIfRule *)
   |  decls gamma p v1 v2 e1 e2 ex u q s _ IH_if_eq _ IH_if_neq
   (* JFIHTInvokeRetRule *)
   |  cn method rettypeCN p' w q' x decls gamma s p q u v vs mn
   (* JFIHTInvokeNoRetRule *)
   |  cn method p' w q' decls gamma s p q u v vs mn
+  (* JFIHTNullInvokeRule *)
+  |  decls gamma s x mn vs v
+  (* JFIHTThrowRule *)
+  |  decls gamma s cn x v
+  (* JFIHTNullThrowRule *)
+  |  decls gamma s x v
   ].
   (* JFIAsmRule *)
   + apply AsmRuleSoundness.
@@ -2122,6 +2349,10 @@ Proof.
   + eauto.
   (* JFIHTFieldSetRule *)
   + eauto.
+  (* JFINullHTFieldSetRule *)
+  + eauto.
+  (* JFIHTNullFieldGetRule *)
+  + eauto.
   (* JFIHTIfRule *)
   + apply HTIfRuleSoundness.
     ++ exact IH_if_eq.
@@ -2130,5 +2361,11 @@ Proof.
   + admit. (* TODO *)
   (* JFIHTInvokeNoRetRule *)
   + admit. (* TODO *)
+  (* JFIHTNullInvokeRule *)
+  + eauto.
+  (* JFIHTThrowRule *)
+  + eauto.
+  (* JFIHTNullThrowRule *)
+  + eauto.
 Admitted.
 
