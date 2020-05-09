@@ -175,21 +175,21 @@ Qed.
 
 (* =================== Reduction step preserves context at the bottom until inner expression fully evaluates ================ *)
 
-Definition InnerExprRedPreservesLetCtx expr := forall h0 ctx class x e2 confs hn res A CC,
-  (JFIPartialEval h0
-     [(ctx ++ [JFCtxLet class x __ e2]) [[ expr ]]_ A]
-      confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
-  exists st' ctx' h' e1' A',
-    red CC (h0, [(ctx ++ [JFCtxLet class x __ e2]) [[ expr ]]_ A]) = 
-      Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']).
+Definition InnerExprRedPreservesCtx e1 := forall h0 ctxs ctx confs hn res A CC,
+  (JFIPartialEval h0 [ (ctxs ++ [ctx]) [[ e1 ]]_                 A] confs hn
+                     [ []              [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
+  exists st' ctxs' h' e1' A',
+    red CC (h0,        [(ctxs  ++ [ctx]) [[ e1 ]]_   A ]) = 
+      Some (h', st' ++ [(ctxs' ++ [ctx]) [[ e1' ]]_  A']).
 
-Definition OuterExprRedPreservesLetCtx expr := forall h0 st ctx let_ctx class x e1 e2 confs hn res A A0 CC,
+Definition OuterExprRedPreservesCtx expr := forall h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC,
+  let top_st := [ outer_ctxs [[ expr ]]_ A] ++ st in
   (JFIPartialEval h0
-     ([ctx [[ expr ]]_ A] ++ st ++ [(let_ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A0])
-      confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
-  exists st' ctx' h' e1' A',
-    red CC (h0, [ctx [[ expr ]]_ A] ++ st ++ [(let_ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A0]) =
-      Some (h', st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']).
+     (top_st ++ [ (ctxs ++ [ctx]) [[ e1 ]]_                 A0]) confs hn 
+                [ []              [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
+  exists st' ctxs' h' e1' A',
+    red CC (h0, top_st ++ [(ctxs  ++ [ctx]) [[ e1  ]]_ A0]) =
+      Some (h',    st' ++ [(ctxs' ++ [ctx]) [[ e1' ]]_ A']).
 
 Lemma AppNonemptyHasHead : forall A l (el : A),  exists (h : A) l', (l ++ [el]) = h::l'.
 Proof.
@@ -217,788 +217,815 @@ Proof.
   trivial.
 Qed.
 
-Lemma NewInnerRedPreservesLetCtx : forall mu cn vs, InnerExprRedPreservesLetCtx (JFNew mu cn vs).
+Lemma NewInnerRedPreservesCtx : forall mu cn vs, InnerExprRedPreservesCtx (JFNew mu cn vs).
 Proof.
-  intros mu cn vs h0 ctx class x e2 confs hn res A CC.
-  intros let_eval.
+  intros mu cn vs h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  exists [], ctx.
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  exists [], ctxs.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
   unfold red in *.
 
-  assert (ctx_has_head := AppNonemptyHasHead ctx (JFCtxLet class x __ e2)).
-  destruct ctx_has_head as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
-  rewrite <- ctx_concat in *.
+  assert (ctxs_has_head := AppNonemptyHasHead ctxs ctx).
+  destruct ctxs_has_head as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
+  rewrite <- ctxs_concat in *.
 
-  destruct ctx_h.
-  + destruct (list_map_opt loc_of_val vs), A; try destruct let_eval.
-    destruct (alloc_init CC h0 cn l); try destruct let_eval.
+  destruct ctxs_h.
+  + destruct (list_map_opt loc_of_val vs), A; try destruct eval.
+    destruct (alloc_init CC h0 cn l); try destruct eval.
     destruct p.
     exists h1, (JFVal1 (JFVLoc l0)), None.
     trivial.
-  + destruct (list_map_opt loc_of_val vs), A; try destruct let_eval.
-    destruct (alloc_init CC h0 cn l); try destruct let_eval.
+  + destruct (list_map_opt loc_of_val vs), A; try destruct eval.
+    destruct (alloc_init CC h0 cn l); try destruct eval.
     destruct p.
     exists h1, (JFVal1 (JFVLoc l0)), None.
     trivial.
 Qed.
 
-Lemma NewOuterRedPreservesLetCtx : forall mu cn vs, OuterExprRedPreservesLetCtx (JFNew mu cn vs).
+Lemma NewOuterRedPreservesCtx : forall mu cn vs, OuterExprRedPreservesCtx (JFNew mu cn vs).
 Proof.
-  intros mu cn vs h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros mu cn vs h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  unfold red in *.
-  rewrite SinglAppIsCons in *.
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
 
-  destruct ctx.
-  + destruct A; try destruct let_eval.
-    destruct (list_map_opt loc_of_val vs); try destruct let_eval.
-    destruct (alloc_init CC h0 cn l); try destruct let_eval.
+  unfold red in *.
+  destruct outer_ctxs.
+  + destruct A; try destruct eval.
+    destruct (list_map_opt loc_of_val vs); try destruct eval.
+    destruct (alloc_init CC h0 cn l); try destruct eval.
     destruct p.
-    exists (([] [[JFVal1 (JFVLoc l0) ]]_ None)::st), let_ctx, h1, e1, A_top.
+    exists (([] [[JFVal1 (JFVLoc l0) ]]_ None)::st), ctxs, h1, e1, A0.
     trivial.
-  + destruct A; try (destruct j; destruct let_eval).
-    destruct (list_map_opt loc_of_val vs); try (destruct j; destruct let_eval).
-    destruct (alloc_init CC h0 cn l); try (destruct j; destruct let_eval).
+  + destruct A; try (destruct j; destruct eval).
+    destruct (list_map_opt loc_of_val vs); try (destruct j; destruct eval).
+    destruct (alloc_init CC h0 cn l); try (destruct j; destruct eval).
     destruct p.
-    exists (ctx _[ j _[[_ JFVal1 (JFVLoc l0) _]]_ None ]_ :: st), let_ctx, h1, e1, A_top.
+    exists (outer_ctxs _[ j _[[_ JFVal1 (JFVLoc l0) _]]_ None ]_ :: st), ctxs, h1, e1, A0.
     destruct j; trivial.
 Qed.
 
-Lemma LetInnerRedPreservesLetCtx : forall cn x e1 e2, InnerExprRedPreservesLetCtx (JFLet cn x e1 e2).
+Lemma LetInnerRedPreservesCtx : forall cn x e1 e2, InnerExprRedPreservesCtx (JFLet cn x e1 e2).
 Proof.
-  intros cn x e1 e2 h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
-  exists [], ([JFCtxLet cn x __ e2] ++ ctx).
+  intros cn x e1 e2 h0 ctxs ctx confs hn res A CC.
+  intros eval.
+  exists [], ([JFCtxLet cn x __ e2] ++ ctxs).
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
   unfold red in *.
 
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat.
-  rewrite <- ctx_concat.
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat.
+  rewrite <- ctxs_concat.
   destruct A.
-  + destruct (ctx ++ [JFCtxLet outer_class outer_x __ outer_e2]) in let_eval; try destruct let_eval.
-    destruct j0 in let_eval; try destruct let_eval.
+  + destruct (ctxs ++ [ctx]) in eval; try destruct eval.
+    destruct j0 in eval; try destruct eval.
   + exists h0, e1, None.
-   destruct ctx_h; try destruct let_eval; trivial.
+   destruct ctxs_h; try destruct eval; trivial.
 Qed.
 
-Lemma LetOuterRedPreservesLetCtx : forall cn x e1 e2, OuterExprRedPreservesLetCtx (JFLet cn x e1 e2).
+Lemma LetOuterRedPreservesCtx : forall cn x e1 e2, OuterExprRedPreservesCtx (JFLet cn x e1 e2).
 Proof.
-  intros cn x e1 e2 h0 st ctx let_ctx outer_class outer_x outer_e1 outer_e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros cn x e1 e2 h0 st outer_ctxs ctxs ctx inner_e confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
   unfold red in *.
-  rewrite SinglAppIsCons in *.
 
-  destruct ctx.
-  + exists ([ [] _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ ] ++ st), let_ctx, h0, outer_e1, A_top.
-    destruct A; try destruct let_eval; try trivial.
-  + destruct j; destruct A; try destruct let_eval.
-    ++ exists ((JFCtxLet C x0 Ctx E2 :: ctx) _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ :: st),
-          let_ctx, h0, outer_e1, A_top.
+  destruct outer_ctxs.
+  + exists ([ [] _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ ] ++ st), ctxs, h0, inner_e, A0.
+    destruct A; try destruct eval; try trivial.
+  + destruct j; destruct A; try destruct eval.
+    ++ exists ((JFCtxLet C x0 Ctx E2 :: outer_ctxs) _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ :: st),
+          ctxs, h0, inner_e, A0.
        trivial.
-    ++ exists ((JFCtxTry Ctx mu C x0 E2 :: ctx) _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ :: st),
-          let_ctx, h0, outer_e1, A_top.
+    ++ exists ((JFCtxTry Ctx mu C x0 E2 :: outer_ctxs) _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ :: st),
+          ctxs, h0, inner_e, A0.
        trivial.
 Qed.
 
-Lemma IfInnerRedPreservesLetCtx : forall v1 v2 e1 e2, InnerExprRedPreservesLetCtx (JFIf v1 v2 e1 e2).
+Lemma IfInnerRedPreservesCtx : forall v1 v2 e1 e2, InnerExprRedPreservesCtx (JFIf v1 v2 e1 e2).
 Proof.
-  intros v1 v2 e1 e2 h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
-  exists [], ctx, h0.
+  intros v1 v2 e1 e2 h0 ctxs ctx confs hn res A CC.
+  intros eval.
+  exists [], ctxs, h0.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
   unfold red in *.
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
 
-  destruct v1, v2; try (destruct ctx_h; destruct let_eval).
+  destruct v1, v2; try (destruct ctxs_h; destruct eval).
 
   destruct (Loc_dec l l0).
   + exists e1, None.
-    destruct ctx_h, A; trivial; try destruct let_eval.
+    destruct ctxs_h, A; trivial; try destruct eval.
   + exists e2, None.
-    destruct ctx_h, A; trivial; try destruct let_eval.
+    destruct ctxs_h, A; trivial; try destruct eval.
 Qed.
 
-Lemma IfOuterRedPreservesLetCtx : forall v1 v2 e1 e2, OuterExprRedPreservesLetCtx (JFIf v1 v2 e1 e2).
+Lemma IfOuterRedPreservesCtx : forall v1 v2 e1 e2, OuterExprRedPreservesCtx (JFIf v1 v2 e1 e2).
 Proof.
-  intros v1 v2 e1 e2 h0 st ctx let_ctx outer_class outer_x outer_e1 outer_e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros v1 v2 e1 e2 h0 st outer_ctx ctxs ctx e confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
   unfold red in *.
-  rewrite SinglAppIsCons in *.
 
-  destruct v1, v2; try (destruct ctx as [ | j]; try destruct j; destruct let_eval).
+  destruct v1, v2; try (destruct outer_ctx as [ | j]; try destruct j; destruct eval).
   destruct A.
-  + destruct ctx as [ | j0]; try destruct j0; try destruct let_eval.
+  + destruct outer_ctx as [ | j0]; try destruct j0; try destruct eval.
   + destruct (Loc_dec l l0).
-    ++ exists ((ctx [[ e1 ]]_ None)::st), let_ctx, h0, outer_e1, A_top.
-       destruct ctx; trivial.
+    ++ exists ((outer_ctx [[ e1 ]]_ None)::st), ctxs, h0, e, A0.
+       destruct outer_ctx; trivial.
        destruct j; trivial.
-    ++ exists ((ctx [[ e2 ]]_ None)::st), let_ctx, h0, outer_e1, A_top.
-       destruct ctx; trivial.
+    ++ exists ((outer_ctx [[ e2 ]]_ None)::st), ctxs, h0, e, A0.
+       destruct outer_ctx; trivial.
        destruct j; trivial.
 Qed.
 
-Lemma InvokeInnerRedPreservesLetCtx : forall v m vs, InnerExprRedPreservesLetCtx (JFInvoke v m vs).
+Lemma InvokeInnerRedPreservesCtx : forall v m vs, InnerExprRedPreservesCtx (JFInvoke v m vs).
 Proof.
-  intros v m vs h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros v m vs h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
   unfold red in *.
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
 
-  destruct v; try (destruct ctx_h; destruct let_eval).
+  destruct v; try (destruct ctxs_h; destruct eval).
   destruct l.
-  + destruct ctx_h.
-    ++ destruct A; try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  + destruct ctxs_h.
+    ++ destruct A; try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-    ++ destruct A; try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+    ++ destruct A; try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-  + destruct ctx_h.
+  + destruct ctxs_h.
     ++ unfold getInvokeBody in *.
-       destruct A, getClassName; try destruct let_eval.
-       destruct methodLookup; try destruct let_eval.
-       destruct substList; try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists ([ [] [[j1 ]]_ None ]), ctx, h0, (JFInvoke (JFVLoc (JFLoc n)) m vs), None.
+       destruct A, getClassName; try destruct eval.
+       destruct methodLookup; try destruct eval.
+       destruct substList; try destruct eval.
+       rewrite <- ctxs_concat.
+       exists ([ [] [[j1 ]]_ None ]), ctxs, h0, (JFInvoke (JFVLoc (JFLoc n)) m vs), None.
        trivial.
     ++ unfold getInvokeBody in *.
-       destruct A, getClassName; try destruct let_eval.
-       destruct methodLookup; try destruct let_eval.
-       destruct substList; try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists ([ [] [[j1 ]]_ None ]), ctx, h0, (JFInvoke (JFVLoc (JFLoc n)) m vs), None.
+       destruct A, getClassName; try destruct eval.
+       destruct methodLookup; try destruct eval.
+       destruct substList; try destruct eval.
+       rewrite <- ctxs_concat.
+       exists ([ [] [[j1 ]]_ None ]), ctxs, h0, (JFInvoke (JFVLoc (JFLoc n)) m vs), None.
        trivial.
 Qed.
 
-Lemma InvokeOuterRedPreservesLetCtx : forall v m vs, OuterExprRedPreservesLetCtx (JFInvoke v m vs).
+Lemma InvokeOuterRedPreservesCtx : forall v m vs, OuterExprRedPreservesCtx (JFInvoke v m vs).
 Proof.
-  intros v m vs h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros v m vs h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
+  rewrite <- app_assoc, SinglAppIsCons in *.
   unfold red in *.
-  rewrite SinglAppIsCons in *.
 
   destruct A; try (
-   destruct ctx; destruct v as [ | l];
-   destruct l; try destruct j0; destruct let_eval).
+   destruct outer_ctxs; destruct v as [ | l];
+   destruct l; try destruct j0; destruct eval).
 
-  destruct ctx, v; try destruct let_eval.
+  destruct outer_ctxs, v; try destruct eval.
   + destruct l.
-    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), let_ctx, h0, e1, A_top.
+    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), ctxs, h0, e1, A0.
        trivial.
     ++ unfold getInvokeBody in *.
-       destruct getClassName; try destruct let_eval.
-       destruct methodLookup; try destruct let_eval.
-       destruct substList; try destruct let_eval.
+       destruct getClassName; try destruct eval.
+       destruct methodLookup; try destruct eval.
+       destruct substList; try destruct eval.
        exists (([] [[j1 ]]_ None)::([] [[JFInvoke (JFVLoc (JFLoc n)) m vs ]]_ None)::st),
-          let_ctx, h0, e1, A_top.
+          ctxs, h0, e1, A0.
        trivial.
   + destruct j.
     ++ destruct l.
-       +++ exists (ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st),
-              let_ctx, h0, e1, A_top.
+       +++ exists (outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st),
+              ctxs, h0, e1, A0.
            trivial.
        +++ unfold getInvokeBody in *.
-           destruct getClassName; try destruct let_eval.
-           destruct methodLookup; try destruct let_eval.
-           destruct substList; try destruct let_eval.
+           destruct getClassName; try destruct eval.
+           destruct methodLookup; try destruct eval.
+           destruct substList; try destruct eval.
             exists (([] [[j1 ]]_ None)
-              ::ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFInvoke (JFVLoc (JFLoc n)) m vs _]]_ None ]_ 
-              ::st), let_ctx, h0, e1, A_top.
+              ::outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFInvoke (JFVLoc (JFLoc n)) m vs _]]_ None ]_ 
+              ::st), ctxs, h0, e1, A0.
            trivial.
     ++ destruct l.
-       +++ exists (ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_ :: st),
-              let_ctx, h0, e1, A_top.
+       +++ exists (outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_ :: st),
+              ctxs, h0, e1, A0.
            trivial.
        +++ unfold getInvokeBody in *.
-           destruct getClassName; try destruct let_eval.
-           destruct methodLookup; try destruct let_eval.
-           destruct substList; try destruct let_eval.
+           destruct getClassName; try destruct eval.
+           destruct methodLookup; try destruct eval.
+           destruct substList; try destruct eval.
             exists (([] [[j1 ]]_ None)
-              ::ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFInvoke (JFVLoc (JFLoc n)) m vs _]]_ None ]_ 
+              ::outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFInvoke (JFVLoc (JFLoc n)) m vs _]]_ None ]_ 
               ::st),
-              let_ctx, h0, e1, A_top.
+              ctxs, h0, e1, A0.
            trivial.
-  + destruct j; destruct let_eval.
+  + destruct j; try destruct eval.
 Qed.
 
-Lemma AssignInnerRedPreservesLetCtx : forall vx v, InnerExprRedPreservesLetCtx (JFAssign vx v).
+Lemma AssignInnerRedPreservesCtx : forall vx v, InnerExprRedPreservesCtx (JFAssign vx v).
 Proof.
-  intros vx v h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros vx v h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct eval as (_ & (_ & eval)).
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
 
   unfold red in *.
   destruct vx.
   destruct v; try (
-    destruct ctx_h; destruct j as [ | l];
-    try destruct l; destruct let_eval
+    destruct ctxs_h; destruct j as [ | l];
+    try destruct l; destruct eval
   ).
   destruct j.
-  + destruct ctx_h.
-    ++ destruct l0, A; try destruct let_eval.
-       +++ rewrite <- ctx_concat.
-           exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  + destruct ctxs_h.
+    ++ destruct l0, A; try destruct eval.
+       +++ rewrite <- ctxs_concat.
+           exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
            trivial.
-       +++ destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+       +++ destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
            destruct o.
-           rewrite <- ctx_concat.
-           exists [], ctx, (Heap.add n (JFXIdMap.add j0 l r, j) h0), (JFVal1 (JFVLoc l)), None.
+           rewrite <- ctxs_concat.
+           exists [], ctxs, (Heap.add n (JFXIdMap.add j0 l r, j) h0), (JFVal1 (JFVLoc l)), None.
            trivial.
-    ++ destruct l0, A; try destruct let_eval.
-       +++ rewrite <- ctx_concat.
-           exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+    ++ destruct l0, A; try destruct eval.
+       +++ rewrite <- ctxs_concat.
+           exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
            trivial.
-       +++ destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+       +++ destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
            destruct o.
-           rewrite <- ctx_concat.
-           exists [], ctx, (Heap.add n (JFXIdMap.add j0 l r, j) h0), (JFVal1 (JFVLoc l)), None.
+           rewrite <- ctxs_concat.
+           exists [], ctxs, (Heap.add n (JFXIdMap.add j0 l r, j) h0), (JFVal1 (JFVLoc l)), None.
            trivial.
-  + destruct ctx_h; try destruct let_eval.
+  + destruct ctxs_h; try destruct eval.
 Qed.
 
-Lemma AssignOuterRedPreservesLetCtx : forall vx v, OuterExprRedPreservesLetCtx (JFAssign vx v).
+Lemma AssignOuterRedPreservesCtx : forall vx v, OuterExprRedPreservesCtx (JFAssign vx v).
 Proof.
-  intros vx v h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros vx v h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  rewrite SinglAppIsCons in *.
+  destruct eval as (_ & (_ & eval)).
+  rewrite <- app_assoc, SinglAppIsCons in *.
   unfold red in *.
 
   destruct vx.
-  destruct ctx.
-  + destruct j; try destruct let_eval.
+  destruct outer_ctxs.
+  + destruct j; try destruct eval.
     destruct l.
-    ++ destruct A, v; try destruct let_eval.
-       exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), let_ctx, h0, e1, A_top.
+    ++ destruct A, v; try destruct eval.
+       exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), ctxs, h0, e1, A0.
        trivial.
-    ++ destruct A, v; try destruct let_eval.
-       destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+    ++ destruct A, v; try destruct eval.
+       destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
        destruct o.
-       exists (([] [[JFVal1 (JFVLoc l) ]]_ None)::st), let_ctx, (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A_top.
+       exists (([] [[JFVal1 (JFVLoc l) ]]_ None)::st), ctxs,
+         (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A0.
        trivial.
-  + destruct j; try destruct let_eval.
+  + destruct j; try destruct eval.
     ++ destruct l.
-       +++ destruct A, v; try (destruct j1; destruct let_eval).
+       +++ destruct A, v; try (destruct j1; destruct eval).
            destruct j1.
-           - exists (ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st), let_ctx, h0, e1, A_top.
+           - exists (outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st),
+               ctxs, h0, e1, A0.
              trivial.
-           - exists (ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st), let_ctx, h0, e1, A_top.
+           - exists (outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_::st),
+               ctxs, h0, e1, A0.
              trivial.
-       +++ destruct A, v; try (destruct j1; destruct let_eval).
+       +++ destruct A, v; try (destruct j1; destruct eval).
            destruct j1.
-           - destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+           - destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
              destruct o.
-             exists (ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_::st), let_ctx,
-                (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A_top.
+             exists (outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_::st),
+               ctxs, (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A0.
              trivial.
-           - destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+           - destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
              destruct o.
-             exists (ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_::st), let_ctx,
-                (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A_top.
+             exists (outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_::st),
+               ctxs, (Heap.add n (JFXIdMap.add j0 l r, j) h0), e1, A0.
              trivial.
-    ++ destruct j1; try destruct let_eval.
+    ++ destruct j1; try destruct eval.
 Qed.
 
-Lemma Val1InnerRedPreservesLetCtx : forall v h0 ctx ctxs outer_class outer_x outer_e2 confs hn res A CC,
-  (JFIPartialEval h0 [((ctx::ctxs) ++ [JFCtxLet outer_class outer_x __ outer_e2]) [[ JFVal1 v ]]_ A] confs 
-                  hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
-  exists st' ctx' h' e1' A',
-    red CC (h0, [((ctx::ctxs) ++ [JFCtxLet outer_class outer_x __ outer_e2]) [[ JFVal1 v ]]_ A]) = 
-      Some (h', st' ++ [(ctx' ++ [JFCtxLet outer_class outer_x __ outer_e2]) [[ e1' ]]_ A']).
+Lemma Val1InnerRedPreservesCtx : forall v h0 outer_ctx outer_ctxs ctx confs hn res A CC,
+  (JFIPartialEval h0 [((outer_ctx::outer_ctxs) ++ [ctx]) [[ JFVal1 v ]]_           A] confs 
+                  hn [ []                                [[ JFVal1 (JFVLoc res) ]]_ None] CC) ->
+  exists ctx' h' e1' A',
+    red CC (h0, [((outer_ctx::outer_ctxs) ++ [ctx]) [[ JFVal1 v ]]_ A]) = 
+      Some (h', [ (ctx' ++                   [ctx]) [[ e1' ]]_      A']).
 Proof.
-  intros v h0 ctx ctxs outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros v h0 outer_ctx outer_ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
+  destruct eval as (_ & (_ & eval)).
 
-  unfold red in *.
   rewrite <- app_comm_cons in *.
-  destruct v; try (destruct ctx; destruct let_eval).
+  unfold red in *.
+  destruct v; try (destruct outer_ctx; destruct eval).
   destruct A.
-  + destruct ctx.
-    ++ exists [], ctxs, h0, (JFVal1 (JFVLoc l)), (Some j).
+  + destruct outer_ctx.
+    ++ exists outer_ctxs, h0, (JFVal1 (JFVLoc l)), (Some j).
        trivial.
     ++ destruct JaSubtype.subtype_bool.
-       +++ exists [], ctxs, h0, (substExpr (JFVar x) l E2), None.
+       +++ exists outer_ctxs, h0, (substExpr (JFVar x) l E2), None.
            trivial.
-       +++ exists [], ctxs, h0, (JFVal1 (JFVLoc l)), (Some j).
+       +++ exists outer_ctxs, h0, (JFVal1 (JFVLoc l)), (Some j).
            trivial.
-  + destruct ctx.
-    ++ exists [], ctxs, h0, (substExpr (JFVar x) l E2), None.
+  + destruct outer_ctx.
+    ++ exists outer_ctxs, h0, (substExpr (JFVar x) l E2), None.
        trivial.
-    ++ exists [], ctxs, h0, (JFVal1 (JFVLoc l)), None.
+    ++ exists outer_ctxs, h0, (JFVal1 (JFVLoc l)), None.
        trivial.
 Qed.
 
-Lemma Val1OuterRedPreservesLetCtx : forall v, OuterExprRedPreservesLetCtx (JFVal1 v).
+Lemma Val1InnerRedReturnsVal : forall h0 ctx v A confs hn res CC,
+  (JFIPartialEval h0 [ [ctx] [[ JFVal1 v ]]_ A] confs 
+                  hn [ []    [[ JFVal1 (JFVLoc res) ]]_ None] CC) ->
+   exists l, JFVal1 v = JFVal1 (JFVLoc l) /\ A = None.
 Proof.
-  intros v h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros h0 ctx v A confs hn res CC.
+  intros eval.
+  unfold JFIPartialEval in eval.
+  destruct confs; try discriminate (proj2 (eval)).
+  destruct p.
+  fold JFIPartialEval in eval.
+  destruct eval as (h_eq & f_eq & red_is_some).
+  destruct ctx.
+  + unfold red in red_is_some.
+    destruct v; try destruct red_is_some.
+    exists l; split; trivial.
+    destruct A; trivial.
+    unfold JFIPartialEval in red_is_some.
+    destruct confs. 
+    ++ discriminate (proj2 (red_is_some)).
+    ++ destruct p.
+       destruct red_is_some as (_ & _ & red_is_some).
+       unfold red in red_is_some.
+       destruct red_is_some.
+  + unfold red in red_is_some.
+    destruct v; try destruct red_is_some.
+    exists l; split; trivial.
+    destruct A; trivial.
+    unfold JFIPartialEval in red_is_some.
+    destruct confs, (JaSubtype.subtype_bool CC (JFClass j) (JFClass C)); admit. (* TODO A != None *)
+Admitted.
 
-  unfold JFIPartialEval in let_eval.
+Lemma Val1OuterRedPreservesCtx : forall v, OuterExprRedPreservesCtx (JFVal1 v).
+Proof.
+  intros v h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
+
+  unfold JFIPartialEval in eval.
   destruct confs.
-  + destruct let_eval as (h_eq & let_eval).
-    apply app_eq_unit in let_eval.
-    destruct let_eval.
+  + destruct eval as (h_eq & eval).
+    apply app_eq_unit in eval.
+    destruct eval.
     ++ discriminate (proj1 H).
     ++ destruct H as (_ & H).
-       apply app_eq_nil in H.
-       discriminate (proj2 H).
+       discriminate H.
   + destruct p.
-    fold JFIPartialEval in let_eval.
-    destruct let_eval as (h_eq & (ctx_eq & let_eval)).
-    rewrite SinglAppIsCons in *.
+    fold JFIPartialEval in eval.
+    destruct eval as (h_eq & (ctx_eq & eval)).
+    rewrite <-app_assoc, SinglAppIsCons in *.
     unfold red in *.
-   destruct v; try (destruct ctx as [ | j]; try destruct j; destruct let_eval).
-   destruct ctx.
-   ++ destruct A.
-      +++ destruct st.
-          - rewrite app_nil_l in *.
-            destruct e1; try destruct let_eval.
-            destruct A_top; try destruct let_eval.
-            exists [], let_ctx, h0, (JFVal1 (JFVLoc l)), (Some j).
-            trivial.
-          - rewrite <- app_comm_cons in *.
-            destruct f0; try destruct let_eval.
-            destruct E; try destruct let_eval.
-            destruct A; try destruct let_eval.
-            exists ((Ctx [[JFVal1 (JFVLoc l) ]]_ Some j)::st), let_ctx, h0, e1, A_top.
-            trivial.
-      +++ destruct st.
-          - rewrite app_nil_l in *.
-            destruct e1, A_top; try destruct let_eval.
-            exists [], let_ctx, h0, (JFVal1 (JFVLoc l)), None.
-            trivial.
-          - rewrite <- app_comm_cons in *.
-          destruct f0; try destruct let_eval.
-          destruct E; try destruct let_eval.
-          destruct A; try destruct let_eval.
-          exists ((Ctx [[JFVal1 (JFVLoc l) ]]_ None)::st), let_ctx, h0, e1, A_top.
-          trivial.
-   ++ destruct A.
-      +++ destruct st.
-          - rewrite app_nil_l in *.
-            destruct j.
-            -- exists [ctx [[JFVal1 (JFVLoc l) ]]_ Some j0], let_ctx, h0, e1, A_top.
-               trivial.
-            -- destruct (JaSubtype.subtype_bool CC (JFClass j0) (JFClass C)).
-               --- exists [ctx [[substExpr (JFVar x0) l E2 ]]_ None], let_ctx, h0, e1, A_top.
-                   trivial.
-               --- exists [ctx [[JFVal1 (JFVLoc l) ]]_ Some j0], let_ctx, h0, e1, A_top.
-                   trivial.
-          - destruct j.
-            -- exists ((ctx [[JFVal1 (JFVLoc l) ]]_ Some j0)::(f0 :: st)), let_ctx, h0, e1, A_top.
-               trivial.
-            -- destruct (JaSubtype.subtype_bool CC (JFClass j0) (JFClass C)).
-               --- exists ((ctx [[substExpr (JFVar x0) l E2 ]]_ None)::(f0 :: st)), let_ctx, h0, e1, A_top.
-                   trivial.
-               --- exists ((ctx [[JFVal1 (JFVLoc l) ]]_ Some j0)::(f0 :: st)), let_ctx, h0, e1, A_top.
-                   trivial.
-      +++ destruct st.
-          - destruct j.
-            -- exists [ctx [[substExpr (JFVar x0) l E2 ]]_ None], let_ctx, h0, e1, A_top.
-               trivial.
-            -- exists [ctx [[JFVal1 (JFVLoc l) ]]_ None], let_ctx, h0, e1, A_top.
-               trivial.
-          - destruct j.
-            -- exists ((ctx [[substExpr (JFVar x0) l E2 ]]_ None)::(f0::st)), let_ctx, h0, e1, A_top.
-               trivial.
-            -- exists ((ctx [[JFVal1 (JFVLoc l) ]]_ None)::(f0::st)), let_ctx, h0, e1, A_top.
-               trivial.
+    destruct v; try (destruct outer_ctxs as [ | j]; try destruct j; destruct eval).
+    destruct outer_ctxs.
+    ++ destruct A.
+       +++ destruct st.
+           - rewrite app_nil_l in *.
+             destruct e1; try destruct eval.
+             destruct A0; try destruct eval.
+             exists [], ctxs, h0, (JFVal1 (JFVLoc l)), (Some j).
+             trivial.
+           - rewrite <- app_comm_cons in *.
+             destruct f0; try destruct eval.
+             destruct E; try destruct eval.
+             destruct A; try destruct eval.
+             exists ((Ctx [[JFVal1 (JFVLoc l) ]]_ Some j)::st), ctxs, h0, e1, A0.
+             trivial.
+       +++ destruct st.
+           - rewrite app_nil_l in *.
+             destruct e1, A0; try destruct eval.
+             exists [], ctxs, h0, (JFVal1 (JFVLoc l)), None.
+             trivial.
+           - rewrite <- app_comm_cons in *.
+           destruct f0; try destruct eval.
+           destruct E; try destruct eval.
+           destruct A; try destruct eval.
+           exists ((Ctx [[JFVal1 (JFVLoc l) ]]_ None)::st), ctxs, h0, e1, A0.
+           trivial.
+    ++ destruct A.
+       +++ destruct st.
+           - rewrite app_nil_l in *.
+             destruct j.
+             -- exists [outer_ctxs [[JFVal1 (JFVLoc l) ]]_ Some j0], ctxs, h0, e1, A0.
+                trivial.
+             -- destruct (JaSubtype.subtype_bool CC (JFClass j0) (JFClass C)).
+                --- exists [outer_ctxs [[substExpr (JFVar x) l E2 ]]_ None], ctxs, h0, e1, A0.
+                    trivial.
+                --- exists [outer_ctxs [[JFVal1 (JFVLoc l) ]]_ Some j0], ctxs, h0, e1, A0.
+                    trivial.
+           - destruct j.
+             -- exists ((outer_ctxs [[JFVal1 (JFVLoc l) ]]_ Some j0)::(f0 :: st)), ctxs, h0, e1, A0.
+                trivial.
+             -- destruct (JaSubtype.subtype_bool CC (JFClass j0) (JFClass C)).
+                --- exists ((outer_ctxs [[substExpr (JFVar x) l E2 ]]_ None)::(f0 :: st)), ctxs, h0, e1, A0.
+                    trivial.
+                --- exists ((outer_ctxs [[JFVal1 (JFVLoc l) ]]_ Some j0)::(f0 :: st)), ctxs, h0, e1, A0.
+                    trivial.
+       +++ destruct st.
+           - destruct j.
+             -- exists [outer_ctxs [[substExpr (JFVar x) l E2 ]]_ None], ctxs, h0, e1, A0.
+                trivial.
+             -- exists [outer_ctxs [[JFVal1 (JFVLoc l) ]]_ None], ctxs, h0, e1, A0.
+                trivial.
+           - destruct j.
+             -- exists ((outer_ctxs [[substExpr (JFVar x) l E2 ]]_ None)::(f0::st)), ctxs, h0, e1, A0.
+                trivial.
+             -- exists ((outer_ctxs [[JFVal1 (JFVLoc l) ]]_ None)::(f0::st)), ctxs, h0, e1, A0.
+                trivial.
 Qed.
 
-Lemma Val2InnerRedPreservesLetCtx : forall vx, InnerExprRedPreservesLetCtx (JFVal2 vx).
+Lemma Val2InnerRedPreservesCtx : forall vx, InnerExprRedPreservesCtx (JFVal2 vx).
 Proof.
-  intros vx h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros vx h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct eval as (_ & (_ & eval)).
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
 
   unfold red in *.
   destruct vx.
-  destruct j as [ | l]; try (destruct l; destruct ctx_h; destruct let_eval).
-  destruct ctx_h.
-  + destruct l, A; try destruct let_eval.
-    ++ rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  destruct j as [ | l]; try (destruct l; destruct ctxs_h; destruct eval).
+  destruct ctxs_h.
+  + destruct l, A; try destruct eval.
+    ++ rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
        destruct o.
-       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 (JFVLoc l)), None.
+       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 (JFVLoc l)), None.
        trivial.
-  + destruct l, A; try destruct let_eval.
-    ++ rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  + destruct l, A; try destruct eval.
+    ++ rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
        destruct o.
-       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 (JFVLoc l)), None.
+       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 (JFVLoc l)), None.
        trivial.
 Qed.
 
-Lemma Val2OuterRedPreservesLetCtx : forall vx, OuterExprRedPreservesLetCtx (JFVal2 vx).
+Lemma Val2OuterRedPreservesCtx : forall vx, OuterExprRedPreservesCtx (JFVal2 vx).
 Proof.
-  intros vx h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros vx h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  rewrite SinglAppIsCons in *.
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
   unfold red in *.
 
   destruct vx.
   destruct A; try (
-    destruct ctx as [ | j2]; try destruct j2;
-    destruct j as [ | l]; try destruct l; destruct let_eval).
-  destruct ctx.
-  + destruct j; try destruct let_eval.
-    destruct l; try destruct let_eval.
-    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), let_ctx, h0, e1, A_top.
+    destruct outer_ctxs as [ | j2]; try destruct j2;
+    destruct j as [ | l]; try destruct l; destruct eval).
+  destruct outer_ctxs.
+  + destruct j; try destruct eval.
+    destruct l; try destruct eval.
+    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), ctxs, h0, e1, A0.
        trivial.
-    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+    ++ destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
        destruct o.
-       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct let_eval.
-       exists (([] [[JFVal1 (JFVLoc l) ]]_ None)::st), let_ctx, h0, e1, A_top.
+       destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct eval.
+       exists (([] [[JFVal1 (JFVLoc l) ]]_ None)::st), ctxs, h0, e1, A0.
        trivial.
   + destruct j.
     ++ destruct j1.
-       +++ destruct l; try destruct let_eval.
-           - exists ((ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), let_ctx, h0, e1, A_top.
+       +++ destruct l; try destruct eval.
+           - exists ((outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), ctxs, h0, e1, A0.
              trivial.
-           - destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+           - destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
              destruct o.
-             destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct let_eval.
-             exists ((ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_)::st), let_ctx, h0, e1, A_top.
+             destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct eval.
+             exists ((outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_)::st), ctxs, h0, e1, A0.
              trivial.
-       +++ destruct l; try destruct let_eval.
-           - exists ((ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), let_ctx, h0, e1, A_top.
+       +++ destruct l; try destruct eval.
+           - exists ((outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), ctxs, h0, e1, A0.
              trivial.
-           - destruct (Heap.find (elt:=Obj) n h0); try destruct let_eval.
+           - destruct (Heap.find (elt:=Obj) n h0); try destruct eval.
              destruct o.
-             destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct let_eval.
-             exists ((ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_)::st), let_ctx, h0, e1, A_top.
+             destruct (JFXIdMap.find (elt:=Loc) j0 r); try destruct eval.
+             exists ((outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 (JFVLoc l) _]]_ None ]_)::st), ctxs, h0, e1, A0.
              trivial.
-    ++ destruct j1; try destruct let_eval.
+    ++ destruct j1; try destruct eval.
 Qed.
 
-Lemma ThrowInnerRedPreservesLetCtx : forall v, InnerExprRedPreservesLetCtx (JFThrow v).
+Lemma ThrowInnerRedPreservesCtx : forall v, InnerExprRedPreservesCtx (JFThrow v).
 Proof.
-  intros v h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros v h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct eval as (_ & (_ & eval)).
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
 
   unfold red in *.
-  destruct v; try (destruct ctx_h; destruct let_eval).
-  destruct ctx_h.
-  + destruct l, A; try destruct let_eval.
-    ++ rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  destruct v; try (destruct ctxs_h; destruct eval).
+  destruct ctxs_h.
+  + destruct l, A; try destruct eval.
+    ++ rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-    ++ destruct (class h0 n); try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 (JFVLoc (JFLoc n))), (Some j).
+    ++ destruct (class h0 n); try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 (JFVLoc (JFLoc n))), (Some j).
        trivial.
-  + destruct l, A; try destruct let_eval.
-    ++ rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 NPE_val), NPE_mode.
+  + destruct l, A; try destruct eval.
+    ++ rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 NPE_val), NPE_mode.
        trivial.
-    ++ destruct (class h0 n); try destruct let_eval.
-       rewrite <- ctx_concat.
-       exists [], ctx, h0, (JFVal1 (JFVLoc (JFLoc n))), (Some j).
+    ++ destruct (class h0 n); try destruct eval.
+       rewrite <- ctxs_concat.
+       exists [], ctxs, h0, (JFVal1 (JFVLoc (JFLoc n))), (Some j).
        trivial.
 Qed.
 
-Lemma ThrowOuterRedPreservesLetCtx : forall v, OuterExprRedPreservesLetCtx (JFThrow v).
+Lemma ThrowOuterRedPreservesCtx : forall v, OuterExprRedPreservesCtx (JFThrow v).
 Proof.
-  intros v h0 st ctx let_ctx class x e1 e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros v h0 st outer_ctxs ctxs ctx e1 confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  rewrite SinglAppIsCons in *.
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
   unfold red in *.
   destruct A; try (
-    destruct ctx as [ | j0]; try destruct j0;
-    destruct v as [ | l]; try destruct l; destruct let_eval).
-  destruct ctx.
-  + destruct v; try destruct let_eval.
+    destruct outer_ctxs as [ | j0]; try destruct j0;
+    destruct v as [ | l]; try destruct l; destruct eval).
+  destruct outer_ctxs.
+  + destruct v; try destruct eval.
     destruct l.
-    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), let_ctx, h0, e1, A_top.
+    ++ exists (([] [[JFVal1 NPE_val ]]_ NPE_mode)::st), ctxs, h0, e1, A0.
        trivial.
-    ++ destruct (Jafun.class h0 n); try destruct let_eval.
-       exists (([] [[JFVal1 (JFVLoc (JFLoc n)) ]]_ Some j)::st), let_ctx, h0, e1, A_top.
+    ++ destruct (Jafun.class h0 n); try destruct eval.
+       exists (([] [[JFVal1 (JFVLoc (JFLoc n)) ]]_ Some j)::st), ctxs, h0, e1, A0.
        trivial.
   + destruct j.
-    ++ destruct v; try destruct let_eval.
+    ++ destruct v; try destruct eval.
        destruct l.
-       +++ exists (( ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), let_ctx, h0, e1, A_top.
+       +++ exists (( outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), ctxs, h0, e1, A0.
            trivial.
-       +++ destruct (Jafun.class h0 n); try destruct let_eval.
-           exists ((ctx _[ JFCtxLet C x0 Ctx E2 _[[_ JFVal1 (JFVLoc (JFLoc n)) _]]_ Some j ]_)::st), let_ctx, h0, e1, A_top.
+       +++ destruct (Jafun.class h0 n); try destruct eval.
+           exists ((outer_ctxs _[ JFCtxLet C x Ctx E2 _[[_ JFVal1 (JFVLoc (JFLoc n)) _]]_ Some j ]_)::st), ctxs, h0, e1, A0.
            trivial.
-    ++ destruct v; try destruct let_eval.
+    ++ destruct v; try destruct eval.
        destruct l.
-       +++ exists (( ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), let_ctx, h0, e1, A_top.
+       +++ exists (( outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 NPE_val _]]_ NPE_mode ]_)::st), ctxs, h0, e1, A0.
            trivial.
-       +++ destruct (Jafun.class h0 n); try destruct let_eval.
-           exists ((ctx _[ JFCtxTry Ctx mu C x0 E2 _[[_ JFVal1 (JFVLoc (JFLoc n)) _]]_ Some j ]_)::st), let_ctx, h0, e1, A_top.
+       +++ destruct (Jafun.class h0 n); try destruct eval.
+           exists ((outer_ctxs _[ JFCtxTry Ctx mu C x E2 _[[_ JFVal1 (JFVLoc (JFLoc n)) _]]_ Some j ]_)::st), ctxs, h0, e1, A0.
            trivial.
 Qed.
 
-Lemma TryInnerRedPreservesLetCtx : forall e1 mu cn x0 e2, InnerExprRedPreservesLetCtx (JFTry e1 mu cn x0 e2).
+Lemma TryInnerRedPreservesCtx : forall e1 mu cn x0 e2, InnerExprRedPreservesCtx (JFTry e1 mu cn x0 e2).
 Proof.
-  intros e1 mu cn x0 e2 h0 ctx outer_class outer_x outer_e2 confs hn res A CC.
-  intros let_eval.
+  intros e1 mu cn x0 e2 h0 ctxs ctx confs hn res A CC.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  destruct (AppNonemptyHasHead ctx (JFCtxLet outer_class outer_x __ outer_e2))
-   as (ctx_h & (ctx_l & ctx_concat)).
-  rewrite ctx_concat in *.
+  destruct eval as (_ & (_ & eval)).
+  destruct (AppNonemptyHasHead ctxs ctx)
+   as (ctxs_h & (ctxs_l & ctxs_concat)).
+  rewrite ctxs_concat in *.
   unfold red in *.
-  rewrite <- ctx_concat in *.
-  destruct ctx_h, A; try destruct let_eval.
-  + exists [], ((JFCtxTry __ mu cn x0 e2)::ctx), h0, e1, None.
+  rewrite <- ctxs_concat in *.
+  destruct ctxs_h, A; try destruct eval.
+  + exists [], ((JFCtxTry __ mu cn x0 e2)::ctxs), h0, e1, None.
     trivial.
-  + exists [], ((JFCtxTry __ mu cn x0 e2)::ctx), h0, e1, None.
+  + exists [], ((JFCtxTry __ mu cn x0 e2)::ctxs), h0, e1, None.
     trivial.
 Qed.
 
-Lemma TryOuterRedPreservesLetCtx : forall e1 mu cn x0 e2, OuterExprRedPreservesLetCtx (JFTry e1 mu cn x0 e2).
+Lemma TryOuterRedPreservesCtx : forall e1 mu cn x0 e2, OuterExprRedPreservesCtx (JFTry e1 mu cn x0 e2).
 Proof.
-  intros e1 mu cn x0 e2 h0 st ctx let_ctx outer_class outer_x outer_e1 outer_e2 confs hn res A A_top CC.
-  intros let_eval.
+  intros e1 mu cn x0 e2 h0 st outer_ctxs ctxs ctx e confs hn res A A0 CC.
+  intros top_st; unfold top_st.
+  intros eval.
 
-  unfold JFIPartialEval in let_eval;
-  destruct confs; try discriminate (proj2 let_eval);
-  fold JFIPartialEval in let_eval.
+  unfold JFIPartialEval in eval;
+  destruct confs; try discriminate (proj2 eval);
+  fold JFIPartialEval in eval.
   destruct p.
-  destruct let_eval as (_ & (_ & let_eval)).
-  rewrite SinglAppIsCons in *.
+  destruct eval as (_ & (_ & eval)).
+  rewrite <-app_assoc, SinglAppIsCons in *.
   unfold red in *.
-  destruct ctx.
-  + destruct A; try destruct let_eval.
-    exists (([] _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), let_ctx, h0, outer_e1, A_top.
+  destruct outer_ctxs.
+  + destruct A; try destruct eval.
+    exists (([] _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), ctxs, h0, e, A0.
     trivial.
-  + destruct A; try destruct let_eval.
-    destruct j; try destruct let_eval.
+  + destruct A; try destruct eval.
+    destruct j; try destruct eval.
     destruct j.
-    ++ exists (((JFCtxLet C x Ctx E2 :: ctx) _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), let_ctx, h0, outer_e1, A_top.
+    ++ exists (((JFCtxLet C x Ctx E2 :: outer_ctxs) _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), ctxs, h0, e, A0.
        trivial.
-    ++ exists (((JFCtxTry Ctx mu0 C x E2:: ctx) _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), let_ctx, h0, outer_e1, A_top.
+    ++ exists (((JFCtxTry Ctx mu0 C x E2:: outer_ctxs) _[ JFCtxTry __ mu cn x0 e2 _[[_ e1 _]]_ None ]_)::st), ctxs, h0, e, A0.
        trivial.
 Qed.
 
-Lemma OnlyFrameIsValOrRedPreservesLetCtx : forall h0 class x e1 e2 confs hn res A CC ctx,
-  let st0 := [ (ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A ] in
+Lemma OnlyFrameIsValOrRedPreservesCtx : forall h0 e1 confs hn res A CC ctxs ctx,
+  let st0 := [ (ctxs ++ [ctx]) [[ e1 ]]_ A ] in
   JFIPartialEval h0 st0 confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC ->
-   (ctx = [] /\ exists e1_res, e1 = JFVal1 (JFVLoc e1_res) /\ A = None) \/
-   (exists st' ctx' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A' ])).
+   (ctxs = [] /\ exists e1_res, e1 = JFVal1 (JFVLoc e1_res) /\ A = None) \/
+   (exists st' ctx' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctx' ++ [ctx]) [[ e1' ]]_ A' ])).
 Proof.
-  intros h0 class x e1 e2 confs hn res A CC ctx.
+  intros h0 e1 confs hn res A CC ctxs ctx.
   destruct e1;
-    intros st0 let_eval.
+    intros st0 eval.
   + apply or_intror.
-    apply NewInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply NewInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply LetInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply LetInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply IfInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply IfInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply InvokeInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply InvokeInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply AssignInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
-  + destruct ctx.
+    apply AssignInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
+  + destruct ctxs.
     ++ apply or_introl.
        split; trivial.
-       unfold st0 in let_eval.
-       rewrite app_nil_l in let_eval.
-       unfold JFIPartialEval in let_eval.
-       destruct confs; try discriminate (proj2 (let_eval)).
-       destruct p.
-       fold JFIPartialEval in let_eval.
-       destruct let_eval as (h_eq & f_eq & red_is_some).
-       unfold red in red_is_some.
-       destruct v; try destruct red_is_some.
-       exists l; split; trivial.
-       destruct A; trivial.
-       unfold JFIPartialEval in red_is_some.
-       destruct confs. 
-       +++ discriminate (proj2 (red_is_some)).
-       +++ destruct p.
-           destruct red_is_some as (_ & _ & red_is_some).
-           unfold red in red_is_some.
-           destruct red_is_some.
+       apply Val1InnerRedReturnsVal in eval.
+       exact eval.
     ++ apply or_intror.
-       apply Val1InnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-       exact let_eval.
+       exists [].
+       apply Val1InnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+       exact eval.
   + apply or_intror.
-    apply Val2InnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply Val2InnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply ThrowInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply ThrowInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
   + apply or_intror.
-    apply TryInnerRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
-    exact let_eval.
+    apply TryInnerRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
+    exact eval.
 Qed.
 
-Lemma TopFrameRedPreservesLetCtx : forall h0 f st let_ctx class x e2 e1 confs hn res A CC,
-  let st0 := [ f ] ++ st ++
-             [ (let_ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A ] in
+Lemma TopFrameRedPreservesCtx : forall h0 f st ctxs ctx e1 confs hn res A CC,
+  let st0 := [ f ] ++ st ++ [ (ctxs ++ [ctx]) [[ e1 ]]_ A ] in
   JFIPartialEval h0 st0 confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC ->
-   (exists st' ctx' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A' ])).
+   (exists st' ctxs' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctxs' ++ [ctx]) [[ e1' ]]_ A' ])).
 Proof.
-  intros h0 f st let_ctx class x e2 e1 confs hn res A CC.
+  intros h0 f st ctxs ctx e1 confs hn res A CC.
   intros st0 let_eval.
   destruct f.
   destruct E.
   + unfold st0 in *.
-    apply NewOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply NewOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply LetOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply LetOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply IfOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply IfOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply InvokeOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply InvokeOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply AssignOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply AssignOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply Val1OuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply Val1OuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply Val2OuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply Val2OuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply ThrowOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply ThrowOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
   + unfold st0 in *.
-    apply TryOuterRedPreservesLetCtx with (confs := confs) (hn := hn) (res := res).
+    apply TryOuterRedPreservesCtx with (confs := confs) (hn := hn) (res := res).
     exact let_eval.
 Qed.
 
-Lemma RedPreservesLetCtxUntilE2Evaluates : forall h0 class x e1 e2 confs hn res A CC st ctx,
-  let st0 := st ++ [ (ctx ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A ] in
+Lemma RedPreservesCtxUntilE1Evaluates : forall h0 e1 confs hn res A CC st ctxs ctx,
+  let st0 := st ++ [ (ctxs ++ [ctx]) [[ e1 ]]_ A ] in
   JFIPartialEval h0 st0 confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC ->
-   (st = [] /\ ctx = [] /\ exists e1_res, e1 = JFVal1 (JFVLoc e1_res) /\ A = None) \/
-   (exists st' ctx' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A' ])).
+   (st = [] /\ ctxs = [] /\ exists e1_res, e1 = JFVal1 (JFVLoc e1_res) /\ A = None) \/
+   (exists st' ctxs' h' e1' A', red CC (h0, st0) = Some (h', st' ++ [ (ctxs' ++ [ctx]) [[ e1' ]]_ A' ])).
 Proof.
-  intros h0 class x e1 e2 confs hn res A CC st ctx.
+  intros h0 e1 confs hn res A CC st ctxs ctx.
   intros st0 let_eval.
   destruct st.
   + unfold st0 in let_eval.
     rewrite app_nil_l in let_eval.
-    apply OnlyFrameIsValOrRedPreservesLetCtx in let_eval
-      as [(ctx_empty & exists_e1_res) | red_is_some].
+    apply OnlyFrameIsValOrRedPreservesCtx in let_eval
+      as [(ctxs_empty & exists_e1_res) | red_is_some].
     ++ apply or_introl.
        split; try split; try assumption.
     ++ apply or_intror.
@@ -1006,13 +1033,14 @@ Proof.
   + apply or_intror.
     unfold st0 in let_eval.
     rewrite app_split in let_eval.
-    assert (tmp := TopFrameRedPreservesLetCtx _ _ _ _ _ _ _ _ _ _ _ _ _ let_eval);
-    destruct tmp as (st' & ctx' & h' & e1' & red_is_some).
-    exists st', ctx', h', e1'.
+    assert (tmp := TopFrameRedPreservesCtx _ _ _ _ _ _ _ _ _ _ _ let_eval);
+    destruct tmp as (st' & ctxs' & h' & e1' & red_is_some).
+    exists st', ctxs', h', e1'.
     rewrite <- app_split in red_is_some.
     fold st0 in red_is_some.
     exact red_is_some.
 Qed.
+
 
 (* ======================== Let evaluation ======================== *)
 
@@ -1703,17 +1731,17 @@ Proof.
              split; assumption.
 Qed.
 
-(* Actual let evaluation lemmas *)
+(* Actual evaluation lemmas *)
 
-Lemma LetInnerEvaluation : forall confs st ctxs h class x e1 e2 hn res A CC,
-  (JFIPartialEval h (st ++ [(ctxs ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
+Lemma BlockInnerEvaluation : forall confs st ctxs ctx h e1 hn res A CC,
+  (JFIPartialEval h (st ++ [(ctxs ++ [ctx]) [[ e1 ]]_ A]) confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
    exists confs_e1 h' e1_res,
-     JFIPartialEval h (st ++ [(ctxs ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) confs_e1 h' (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) e2) CC /\
-     forall conf, In conf confs_e1 -> exists conf_h st' ctxs' e1' A', conf = (conf_h, (st' ++ [(ctxs' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A'])).
+     JFIPartialEval h (st ++ [(ctxs ++ [ctx]) [[ e1 ]]_ A]) confs_e1 h' [ [ctx] [[ JFVal1 (JFVLoc e1_res) ]]_ None ] CC /\
+     forall conf, In conf confs_e1 -> exists conf_h st' ctxs' e1' A', conf = (conf_h, (st' ++ [(ctxs' ++ [ctx]) [[ e1' ]]_ A'])).
 Proof.
   intros confs.
   induction confs.
-  + intros st ctxs h class x e1 e2 hn res A CC.
+  + intros st ctxs ctx h e1 hn res A CC.
     intros let_eval.
     simpl in let_eval.
     unfold LetCtxSt in let_eval.
@@ -1728,9 +1756,9 @@ Proof.
        rewrite <- app_nil_l in st_eq.
        apply app_inj_tail in st_eq.
        discriminate (proj2 st_eq).
-  + intros st ctxs h class x e1 e2 hn res A CC.
+  + intros st ctxs ctx h e1 hn res A CC.
     intros let_eval.
-    destruct (RedPreservesLetCtxUntilE2Evaluates h class x e1 e2 (a :: confs) hn res A CC st ctxs let_eval)
+    destruct (RedPreservesCtxUntilE1Evaluates h e1 (a :: confs) hn res A CC st ctxs ctx let_eval)
         as [(st_empty & (ctxs_empty & (e1_res & is_val & A_is_None)))  | (st' & (ctx' & (h' & (e1' & A' & red_to_let_ctx))))].
     ++ rewrite is_val.
        exists [], h, e1_res.
@@ -1745,11 +1773,9 @@ Proof.
        destruct let_eval as (h_eq_h0 & (st_eq_f & let_red)).
        rewrite st_eq_f in *.
 
-       replace (red CC (h, f)) with (Some
-                   (h',
-                   (st' ++ [(ctx' ++
-                     [JFCtxLet class x __ e2])
-                    [[e1' ]]_ A']))) in let_red.
+       replace (red CC (h, f)) 
+         with (Some (h', (st' ++ [(ctx' ++ [ctx]) [[e1' ]]_ A'])))
+         in let_red.
        fold JFIPartialEval in let_red.
 
        unfold LetCtxStInEnv, LetCtxSt in IHconfs.
@@ -1761,9 +1787,8 @@ Proof.
        split.
        +++ unfold JFIPartialEval, LetCtxSt.
            split; try split; trivial.
-           replace (red CC (h, f) ) with (Some
-                   (h',
-                   (st' ++ [(ctx' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A']))).
+           replace (red CC (h, f) ) 
+             with (Some (h', (st' ++ [(ctx' ++ [ctx]) [[ e1' ]]_ A']))).
            fold JFIPartialEval.
            exact eval_e1'.
        +++ intros conf conf_in_confs.
@@ -1780,6 +1805,18 @@ Proof.
              exists conf_h, st'', ctx'', e1'', A''.
              rewrite conf_h_st_l.
              trivial.
+Qed.
+
+(* TODO remove *)
+Lemma LetInnerEvaluation : forall confs st ctxs h class x e1 e2 hn res A CC,
+  (JFIPartialEval h (st ++ [(ctxs ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) confs hn [ [] [[JFVal1 (JFVLoc res) ]]_ None] CC) ->
+   exists confs_e1 h' e1_res,
+     JFIPartialEval h (st ++ [(ctxs ++ [JFCtxLet class x __ e2]) [[ e1 ]]_ A]) confs_e1 h' (LetCtxSt [] class x (JFVal1 (JFVLoc e1_res)) e2) CC /\
+     forall conf, In conf confs_e1 -> exists conf_h st' ctxs' e1' A', conf = (conf_h, (st' ++ [(ctxs' ++ [JFCtxLet class x __ e2]) [[ e1' ]]_ A'])).
+Proof.
+  intros.
+  apply BlockInnerEvaluation with (confs := confs) (hn := hn) (res := res).
+  assumption.
 Qed.
 
 Lemma LetE1Evaluation : forall h class x e1 e1_res e2 confs hn CC,
