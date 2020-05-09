@@ -1817,7 +1817,7 @@ Proof.
 
   set (let_evaluation := LetEvaluation h class x e1 e2 confs hn res res_ex env CC let_eval).
   destruct let_evaluation as
-    [(confs_e1 & confs_e2 & h' & e1_res & e1_eval & e2_eval) | (confs_e1 & h' & e1_res & e1_ex & e1_eval)].
+    [(confs_e1 & confs_e2 & h' & e1_res & e1_eval & e2_eval) | (confs_e1 & e1_ex & ex_eq & e1_eval)].
   + assert (asdf := IH_e2 env h gamma_match_env h_satisfies_s).
     simpl in asdf.
     apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
@@ -1832,11 +1832,36 @@ Proof.
              (confs := confs_e1) (ex := None) (res := e1_res) (CC := CC); assumption.
        +++ apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
              (confs := confs_e1) (ex := None) (res := e1_res); assumption.
-  + assert (some_is_none := IH_e1 env h gamma_match_env h_satisfies_s confs_e1 h' (Some e1_ex) e1_res h_satisfies_p e1_eval).
+  + rewrite ex_eq in *.
+    assert (some_is_none := IH_e1 env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) res h_satisfies_p e1_eval).
     fold JFIHeapSatisfiesInEnv in some_is_none.
     discriminate (proj1 some_is_none).
 Admitted.
 Hint Resolve HTLetRuleSoundness : core.
+
+Lemma HTLetExSoundness : forall gamma s p class x e1 e2 ex u q CC,
+  JFISemanticallyImplies gamma s (JFIHoare p e1 (Some ex) u q) CC ->
+  JFISemanticallyImplies gamma s (JFIHoare p (JFLet class x e1 e2) (Some ex) u q) CC.
+Proof.
+  intros gamma s p class x e1 e2 ex u q CC.
+  intros IH_e1.
+  intros env h gamma_match_env.
+  intros h_satisfies_s confs hn res_ex res new_env h_satisfies_p let_eval.
+
+  set (let_evaluation := LetEvaluation h class x e1 e2 confs hn res res_ex env CC let_eval).
+  destruct let_evaluation as
+    [(confs_e1 & confs_e2 & h' & e1_res & e1_eval & e2_eval) | (confs_e1 & e1_ex & ex_eq & e1_eval)].
+  + assert (some_is_none := IH_e1 env h gamma_match_env h_satisfies_s confs_e1 h' None e1_res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in some_is_none.
+    discriminate (proj1 some_is_none).
+  + rewrite ex_eq in *.
+    assert (e1_ex_eq_ex := IH_e1 env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in e1_ex_eq_ex.
+    unfold new_env.
+    destruct e1_ex_eq_ex as (e1_ex_eq_ex & asdf).
+    split; trivial.
+Qed.
+Hint Resolve HTLetExSoundness : core.
 
 Lemma HTFieldSetRuleSoundness : forall gamma s x field loc v CC,
   JFISemanticallyImplies gamma s
@@ -2357,7 +2382,7 @@ Proof.
   (* JFIHTLetRule *)
   + eauto.
   (* JFIHTLetExRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTFieldSetRule *)
   + eauto.
   (* JFINullHTFieldSetRule *)

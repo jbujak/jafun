@@ -1829,7 +1829,8 @@ Lemma LetEvaluation : forall h class x e1 e2 confs hn res A env CC,
      ((exists confs_let_e1 confs_let_e2 h' e1_res,
        (JFIEvalInEnv h e1 confs_let_e1 h' None e1_res env CC) /\
        (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn A res env CC)) \/
-      (exists confs_let_e1 h' e1_res e1_A, JFIEvalInEnv h e1 confs_let_e1 h' (Some e1_A) e1_res env CC)).
+      (exists confs_let_e1 e1_A, A = Some e1_A /\
+        JFIEvalInEnv h e1 confs_let_e1 hn A res env CC)).
 Proof.
   intros h class x e1 e2 confs hn res A env CC.
   intros let_eval.
@@ -1854,8 +1855,21 @@ Proof.
     destruct outer_eval as (confs_let_e2 & e2_eval).
     destruct e1_A.
     ++ apply or_intror.
-       exists confs_e1, h', e1_res, j.
-       exact e1_eval.
+       exists confs_e1, j.
+       unfold JFIPartialEval in e2_eval.
+       destruct confs_let_e2; try discriminate (proj2 e2_eval).
+       destruct p.
+       destruct e2_eval as (_ & _ & e2_eval).
+       unfold red in e2_eval.
+       destruct confs_let_e2; try discriminate (proj2 e2_eval).
+       +++ injection (proj2 e2_eval).
+           destruct e2_eval as (h'_eq_hn & _).
+           intros A_is_j res_eq.
+           rewrite <-A_is_j, <-h'_eq_hn, <-res_eq.
+           split; trivial.
+       +++ destruct p.
+           destruct e2_eval as (_ & _ & e2_eval).
+           destruct e2_eval.
     ++ apply or_introl.
        apply LetGoEvaluationStep in e2_eval as (confs_e2 & e2_eval); try apply StrMap.remove_1; try trivial.
        exists confs_e1, confs_e2, h', e1_res.
@@ -1865,13 +1879,3 @@ Proof.
        exact e2_eval.
 Qed.
 
-Lemma LetEvaluationEx : forall h class x e1 e2 confs hn ex res env CC,
-   (JFIEvalInEnv h (JFLet class x e1 e2) confs hn ex res env) CC ->
-     ((exists confs_let_e1 e1_ex e1_res,
-       ex = Some e1_ex /\
-       JFIEvalInEnv h e1 confs_let_e1 hn ex e1_res env CC) \/
-      (exists confs_let_e1 confs_let_e2 h' e1_res,
-        (JFIEvalInEnv h e1 confs_let_e1 h' None e1_res env CC) /\
-        (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn ex res env CC))).
-Proof.
-Admitted.
