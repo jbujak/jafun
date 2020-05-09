@@ -13,6 +13,7 @@ Require Import JaEnvs.
 Require Import Jafun.
 Require Import JaIrisCommon.
 Require Import JaEval.
+Require Import JaSubtype.
 Require Import Bool.
 
 Require Export FMapAVL.
@@ -493,6 +494,12 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFLet class x e1 e2) ex u r )
 
+| JFIHTLetExRule :
+    forall q decls gamma p s e1 e2 x ex u class,
+      (JFIProves decls gamma s (JFIHoare p e1 (Some ex) u q)) ->
+      (*------------------------------------------------------------*)
+      JFIProves decls gamma s (JFIHoare p (JFLet class x e1 e2) (Some ex) u q )
+
 | JFIHTFieldSetRule :
     forall decls gamma s x field v loc,
       (*--------------------------------------------------*)
@@ -578,7 +585,28 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
            (JFThrow (JFSyn x))
             NPE_mode v (JFIEq (JFSyn (JFVar v)) NPE_val))
 
-(* TODO JFIHTTryCathRule *)
-.
+| JFIHTCatchNormalRule :
+    forall decls gamma s p e1 mu x e2 u q ex,
+      (JFIProves decls gamma s (JFIHoare p e1 None u q)) ->
+      (*------------------------------------------------------------*)
+      JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) None u q )
 
+| JFIHTCatchExRule :
+    forall decls gamma s p r e1 mu x v e2 u q ex ex' ex'',
+      (JFITermPersistent s) ->
+      (JFIVarFreshInTerm v r) ->
+      (JFIProves decls gamma s (JFIHoare p e1 (Some ex') x q)) ->
+      (JFIProves decls gamma s (JFIForall ex' v
+          (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r))) ->
+       Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
+      (*------------------------------------------------------------*)
+      JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) ex'' u r )
+
+| JFIHTCatchPassExRule :
+    forall decls gamma s p e1 mu x e2 u q ex ex',
+      (JFIProves decls gamma s (JFIHoare p e1 (Some ex') u q)) ->
+       ~Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
+      (*------------------------------------------------------------*)
+      JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) (Some ex') u q )
+.
 

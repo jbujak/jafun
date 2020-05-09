@@ -2235,6 +2235,8 @@ Proof.
   |  decls gamma s p mu cn vs v objflds n field value objflds_is_flds field_n value_n
   (* JFIHTLetRule *)
   |  v q decls gamma p r s e1 e2 x ex u class s_persistent v_fresh_in_r _ IH_e1 _ IH_e2
+  (* JFIHTLetExRule *)
+  | q decls gamma p s e1 e2 x ex u class
   (* JFIHTFieldSetRule *)
   |  decls gamma s x field v loc
   (* JFIHTNullFieldSetRule *)
@@ -2253,6 +2255,12 @@ Proof.
   |  decls gamma s cn x v
   (* JFIHTNullThrowRule *)
   |  decls gamma s x v
+  (* JFIHTCatchNormalRule *)
+  | decls gamma s p e1 mu x e2 u q ex
+  (* JFIHTCatchExRule *)
+  | decls gamma s p r e1 mu x v e2 u q ex ex' ex''
+  (* JFIHTCatchPassExRule *)
+  | decls gamma s p e1 mu x e2 u q ex ex'
   ].
   (* JFIAsmRule *)
   + apply AsmRuleSoundness.
@@ -2347,6 +2355,8 @@ Proof.
   + apply HTNewFieldRuleSoundness with (decls := decls) (objflds := objflds) (n := n); assumption.
   (* JFIHTLetRule *)
   + eauto.
+  (* JFIHTLetExRule *)
+  + admit. (* TODO *)
   (* JFIHTFieldSetRule *)
   + eauto.
   (* JFINullHTFieldSetRule *)
@@ -2367,5 +2377,11 @@ Proof.
   + eauto.
   (* JFIHTNullThrowRule *)
   + eauto.
+  (* JFIHTCatchNormalRule *)
+  + admit. (* TODO *)
+  (* JFIHTCatchExRule *)
+  + admit. (* TODO *)
+  (* JFIHTCatchPassExRule *)
+  + admit. (* TODO *)
 Admitted.
 
