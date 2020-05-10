@@ -14,6 +14,7 @@ Require Import Jafun.
 Require Import JaIrisCommon.
 Require Import JaEval.
 Require Import JaIris.
+Require Import JaSubtype.
 Require Import Bool.
 Require Import Classical_Prop.
 Require Import Classical_Pred_Type.
@@ -1818,9 +1819,7 @@ Proof.
   set (let_evaluation := LetEvaluation h class x e1 e2 confs hn res res_ex env CC let_eval).
   destruct let_evaluation as
     [(confs_e1 & confs_e2 & h' & e1_res & e1_eval & e2_eval) | (confs_e1 & e1_ex & ex_eq & e1_eval)].
-  + assert (asdf := IH_e2 env h gamma_match_env h_satisfies_s).
-    simpl in asdf.
-    apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
+  + apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
       (confs_e2 := confs_e2) (class := class) (ex := ex) (v := v) (q := q).
     ++ admit. (* e1_res type *)
     ++ assumption.
@@ -2177,13 +2176,129 @@ Proof.
 Qed.
 Hint Resolve HTNullThrowSoundness : core.
 
+Lemma HTCatchNormalSoundness : forall gamma s p e1 mu ex x e2 u q CC,
+  JFISemanticallyImplies gamma s (JFIHoare p e1 None u q) CC ->
+  JFISemanticallyImplies gamma s (JFIHoare p (JFTry e1 mu ex x e2) None u q) CC.
+Proof.
+  intros gamma s p e1 mu ex x e2 u q CC.
+  intros hoare_p_q.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv h_satisfies_p try_eval.
+  destruct (TryEvaluation h e1 mu ex x e2 confs hn res_ex res env CC try_eval) as
+    [  (res_ex_is_none & confs_e1 & e1_eval)
+    | [(e1_ex & res_is_some & _ & confs_e1 & e1_eval)
+    |  (e1_ex & _ & confs_e1 & confs_e2  & h' & e1_res & e1_eval & e2_eval)]
+    ].
+  + rewrite res_ex_is_none.
+    split; trivial.
+    assert (h_satisfies_hoare := hoare_p_q env h gamma_match_env h_satisfies_s).
+    apply (h_satisfies_hoare confs_e1 hn None res h_satisfies_p e1_eval).
+  + exfalso.
+    assert (some_is_none := hoare_p_q env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in some_is_none.
+    discriminate (proj1 some_is_none).
+  + exfalso.
+    assert (some_is_none := hoare_p_q env h gamma_match_env h_satisfies_s confs_e1 h' (Some e1_ex) e1_res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in some_is_none.
+    discriminate (proj1 some_is_none).
+Qed.
+Hint Resolve HTCatchNormalSoundness : core.
+
+Lemma HTCatchExSoundness : forall decls gamma s p e1 mu ex ex' ex'' x e2 u v r q,
+  let CC := (JFIDeclsProg decls) in
+  JFITermPersistent s ->
+  JFIVarFreshInTerm v r ->
+  Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
+  JFISemanticallyImplies gamma s (JFIHoare p e1 (Some ex') x q) CC ->
+  JFISemanticallyImplies gamma s
+    (JFIForall ex' v 
+      (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r)) CC ->
+  JFISemanticallyImplies gamma s (JFIHoare p (JFTry e1 mu ex x e2) ex'' u r) CC.
+Proof.
+  intros decls gamma s p e1 mu ex ex' ex'' x e2 u v r q CC.
+  intros s_persistent v_fresh_in_r is_subtype hoare_e1 hoare_e2.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv h_satisfies_p try_eval.
+  destruct (TryEvaluation h e1 mu ex x e2 confs hn res_ex res env CC try_eval) as
+    [  (res_ex_is_none & confs_e1 & e1_eval)
+    | [(e1_ex & res_is_some & not_subtype & confs_e1 & e1_eval)
+    |  (e1_ex & _ & confs_e1 & confs_e2  & h' & e1_res & e1_eval & e2_eval)]
+    ].
+  + exfalso.
+    assert (some_is_none := hoare_e1 env h gamma_match_env h_satisfies_s confs_e1 hn None res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in some_is_none.
+    discriminate (proj1 some_is_none).
+  + exfalso.
+    unfold CC in is_subtype.
+    assert (hoare_p_q_res := hoare_e1 env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in hoare_p_q_res.
+    destruct hoare_p_q_res as (some_ex_eq & hn_satisfies_q).
+    injection some_ex_eq as ex_eq.
+    rewrite ex_eq in *.
+    exact (not_subtype is_subtype).
+  + assert (hoare_p_q_res := hoare_e1 env h gamma_match_env h_satisfies_s confs_e1 h' (Some e1_ex) e1_res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in hoare_p_q_res.
+    destruct hoare_p_q_res as (ex_eq & h'_satisfies_q).
+    unfold newEnv.
+    apply LetRuleE2Soundness with (h' := h') (x := x) (e1_res := e1_res) (e2 := e2)
+      (confs_e2 := confs_e2) (class := ex') (ex := ex'') (v := v) (q := q).
+    ++ admit. (* e1_res type *)
+    ++ assumption.
+    ++ assumption.
+    ++ apply LetRuleE1Soundness.
+       apply (hoare_e1 env h gamma_match_env h_satisfies_s confs_e1 h' (Some e1_ex) e1_res); assumption.
+    ++ apply hoare_e2.
+       +++ apply EvaluationPreservesGammaMatching with (h := h) (e := (JFIExprSubstituteEnv env e1))
+             (confs := confs_e1) (ex := (Some e1_ex)) (res := e1_res) (CC := CC); assumption.
+       +++ apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
+             (confs := confs_e1) (ex := (Some e1_ex)) (res := e1_res); assumption.
+Admitted.
+Hint Resolve HTCatchExSoundness : core.
+
+Lemma HTCatchPassExSoundness : forall decls gamma s p e1 mu ex ex' x e2 u q,
+   let CC := (JFIDeclsProg decls) in
+  ~Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
+   JFISemanticallyImplies gamma s (JFIHoare p e1 (Some ex') u q) CC ->
+   JFISemanticallyImplies gamma s (JFIHoare p (JFTry e1 mu ex x e2) (Some ex') u q) CC.
+Proof.
+  intros decls gamma s p e1 mu ex ex' x e2 u q CC.
+  intros not_subtype hoare_p_q.
+  intros env h gamma_match_env h_satisfies_s.
+  intros confs hn res_ex res newEnv h_satisfies_p try_eval.
+  destruct (TryEvaluation h e1 mu ex x e2 confs hn res_ex res env CC try_eval) as
+    [  (res_ex_is_none & confs_e1 & e1_eval)
+    | [(e1_ex & res_is_some & _ & confs_e1 & e1_eval)
+    |  (e1_ex & is_subtype & confs_e1 & confs_e2  & h' & e1_res & e1_eval & e2_eval)]
+    ].
+  + exfalso.
+    assert (some_is_none := hoare_p_q env h gamma_match_env h_satisfies_s confs_e1 hn None res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in some_is_none.
+    discriminate (proj1 some_is_none).
+  + assert (hoare_p_q_res := hoare_p_q env h gamma_match_env h_satisfies_s confs_e1 hn (Some e1_ex) res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in hoare_p_q_res.
+    destruct hoare_p_q_res as (ex_eq & hn_satisfies_q).
+    rewrite res_is_some, ex_eq.
+    split; trivial.
+  + exfalso.
+    unfold CC in is_subtype.
+    assert (hoare_p_q_res := hoare_p_q env h gamma_match_env h_satisfies_s confs_e1 h' (Some e1_ex) e1_res h_satisfies_p e1_eval).
+    fold JFIHeapSatisfiesInEnv in hoare_p_q_res.
+    destruct hoare_p_q_res as (some_ex_eq & hn_satisfies_q).
+    injection some_ex_eq as ex_eq.
+    rewrite ex_eq in *.
+    exact (not_subtype is_subtype).
+Qed.
+Hint Resolve HTCatchPassExSoundness : core.
+
 (* =============== Main theorem =============== *)
 
-Theorem JFISoundness : forall gamma decls p t CC,
+Theorem JFISoundness : forall gamma decls p t,
+  let CC := JFIDeclsProg decls in
   (JFIProves decls gamma p t) ->
    JFISemanticallyImplies gamma p t CC.
 Proof.
   intros gamma decls p t CC.
+  unfold CC in *.
   intros jfi_proof.
   induction jfi_proof as
   [
@@ -2404,10 +2519,10 @@ Proof.
   (* JFIHTNullThrowRule *)
   + eauto.
   (* JFIHTCatchNormalRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTCatchExRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTCatchPassExRule *)
-  + admit. (* TODO *)
+  + eauto.
 Admitted.
 

@@ -11,6 +11,7 @@ Require Import JaTypes.
 Require Import JaProgram.
 Require Import JaEnvs.
 Require Import Jafun.
+Require Import JaSubtype.
 Require Import Bool.
 Require Import JaIrisCommon.
 Require Import Classical_Prop.
@@ -1808,7 +1809,6 @@ Lemma E1Evaluation : forall h ctx e1 e1_res e1_A confs hn CC,
 Proof.
   intros h ctx e1 e1_res e1_A confs hn C.
   intros (inner_eval & confs_in_let_ctx).
-
   apply ExistsStrippedInnerCtxEvaluation in confs_in_let_ctx as (e1_confs & e1_confs_are_stripped_confs).
   exists e1_confs.
   apply StrippedInnerEvaluationIsE1Evaluation with (st := []) (ctx := ctx) (confs := confs); assumption.
@@ -1839,11 +1839,14 @@ Qed.
 
 Lemma LetEvaluation : forall h class x e1 e2 confs hn res A env CC,
    (JFIEvalInEnv h (JFLet class x e1 e2) confs hn A res env) CC ->
+    (* e1 normal *)
      ((exists confs_let_e1 confs_let_e2 h' e1_res,
        (JFIEvalInEnv h e1 confs_let_e1 h' None e1_res env CC) /\
-       (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn A res env CC)) \/
-      (exists confs_let_e1 e1_A, A = Some e1_A /\
-        JFIEvalInEnv h e1 confs_let_e1 hn A res env CC)).
+       (JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_let_e2 hn A res env CC))
+     \/
+    (* e1 exception *)
+     (exists confs_let_e1 e1_A, A = Some e1_A /\
+       JFIEvalInEnv h e1 confs_let_e1 hn A res env CC)).
 Proof.
   intros h class x e1 e2 confs hn res A env CC.
   intros let_eval.
@@ -1892,3 +1895,114 @@ Proof.
        exact e2_eval.
 Qed.
 
+Lemma CatchSubstitution: forall x y env e,
+  substExpr (JFVar x) y (JFIExprSubstituteEnv (JaIrisCommon.StrMap.remove (elt:=Loc) x env) e) =
+  JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc y) e).
+Proof.
+Admitted.
+
+Lemma TryEvaluation : forall h e1 mu catch_A x e2 confs hn A res env CC,
+  JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn A res env CC ->
+    (* Normal e1 *)
+    (A = None /\ (exists confs_try_e1,
+        JFIEvalInEnv h e1 confs_try_e1 hn None res env CC))
+    \/
+    (* e1 ex eval, no catch *)
+    (exists e1_A,
+         A = Some e1_A /\
+        ~Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) /\
+        (exists confs_try_e1, JFIEvalInEnv h e1 confs_try_e1 hn (Some e1_A) res env CC)
+    )
+    \/
+    (* e1 ex eval, catch *)
+    (exists e1_A,
+         Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) /\
+          (exists confs_try_e1 confs_try_e2 h' e1_res,
+               JFIEvalInEnv h e1 confs_try_e1 h' (Some e1_A) e1_res env CC /\
+               JFIEvalInEnv h' (JFIExprSubstituteVal x (JFVLoc e1_res) e2) confs_try_e2 hn A res env CC)
+    ).
+Proof.
+  intros h e1 mu catch_A x e2 confs hn A res env CC.
+  intros try_eval.
+
+  unfold JFIEvalInEnv, JFIEval in try_eval.
+  unfold JFIExprSubstituteEnv in try_eval.
+  fold JFIExprSubstituteEnv in try_eval.
+  unfold JFIPartialEval in try_eval.
+  destruct confs; try discriminate (proj2 try_eval).
+  destruct p as (h0, st0).
+  destruct try_eval as (h_eq_h0 & (try_eq_st0 & try_eval)).
+  fold JFIPartialEval in try_eval.
+  unfold red in try_eval.
+  assert (tmp := try_eval).
+  apply (BlockInnerEvaluation confs [] []) in tmp as (confs_try_e1 & h' & e1_res & e1_A & e1_eval).
+  assert (e1_try_eval := e1_eval).
+  destruct e1_try_eval as (e1_try_eval & _).
+  rewrite app_nil_l in e1_eval.
+  apply E1Evaluation in e1_eval as (confs_e1 & e1_eval); try assumption.
+  rewrite 2!app_nil_l in e1_try_eval.
+  assert (outer_eval := EvaluationSplit _ _ _ _ _ _ _ _ _ _ try_eval e1_try_eval).
+  destruct outer_eval as (confs_let_e2 & e2_eval).
+  unfold JFIPartialEval in e2_eval.
+  destruct confs_let_e2; try discriminate (proj2 e2_eval).
+  destruct p.
+  destruct e2_eval as (_ & _ & e2_eval).
+  fold JFIPartialEval in e2_eval.
+
+  destruct e1_A.
+  + unfold red in e2_eval.
+    destruct confs_let_e2.
+    ++ destruct (Classical_Prop.classic (Is_true (subtype_bool CC (JFClass j) (JFClass catch_A)))).
+       +++ apply or_intror, or_intror.
+           exists j.
+           destruct (subtype_bool CC (JFClass j) (JFClass catch_A)); try destruct H.
+           unfold Is_true.
+           split; trivial.
+           exists confs_e1, [], h', e1_res.
+           unfold JFIEvalInEnv, JFIEval.
+           split; trivial.
+           rewrite <- CatchSubstitution.
+           exact e2_eval.
+       +++ apply or_intror, or_introl.
+           exists j.
+           destruct (subtype_bool CC (JFClass j) (JFClass catch_A)); try destruct (H I).
+           unfold JFIPartialEval in e2_eval.
+           destruct e2_eval as (h'_eq_hn & st_eq).
+           injection st_eq.
+           intros A_eq res_eq.
+           rewrite A_eq, <-res_eq, <-h'_eq_hn in *.
+           split; try split; trivial.
+           exists confs_e1.
+           unfold JFIEvalInEnv, JFIEval.
+           exact e1_eval.
+   ++ apply or_intror, or_intror.
+      exists j.
+      destruct (subtype_bool CC (JFClass j) (JFClass catch_A)).
+      +++  unfold Is_true.
+           split; trivial.
+           exists confs_e1, (p :: confs_let_e2), h', e1_res.
+           unfold JFIEvalInEnv, JFIEval.
+           split; trivial.
+           rewrite <- CatchSubstitution.
+           exact e2_eval.
+       +++ exfalso.
+           unfold JFIPartialEval in e2_eval.
+           destruct p.
+           destruct e2_eval as (_ & _ & e2_eval).
+           unfold red in e2_eval.
+           destruct e2_eval.
+  + apply or_introl.
+    destruct confs_let_e2.
+    ++ destruct e2_eval as (h'_eq_hn & st_eq).
+       injection st_eq.
+       intros A_is_none res_eq.
+       symmetry in A_is_none.
+       split; trivial.
+       exists confs_e1.
+       rewrite <- h'_eq_hn, <-res_eq.
+       unfold JFIEvalInEnv, JFIEval.
+       exact e1_eval.
+    ++ destruct p.
+       destruct e2_eval as (_ & _ & e2_eval).
+       destruct e2_eval.
+Qed.
