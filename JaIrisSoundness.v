@@ -1280,6 +1280,124 @@ Proof.
 Qed.
 Hint Resolve ExistsIntroRuleSoundness : core.
 
+(* =============== Separation rules soundness ===============*)
+
+Lemma ExistsUnion : forall h1 h2,
+  exists h, JFIHeapsUnion h1 h2 h.
+Proof.
+Admitted.
+
+Lemma UnionAssoc : forall h1 h2 h3 h12 h23 h,
+  (JFIHeapsUnion h1 h23 h /\ JFIHeapsUnion h2 h3 h23) <->
+  (JFIHeapsUnion h1 h2 h12 /\ JFIHeapsUnion h12 h3 h).
+Proof.
+Admitted.
+
+Lemma UnionDisjoint : forall h1 h2 h12 h,
+  JFIHeapsUnion h1 h2 h12 ->
+  JFIHeapsDisjoint h1 h ->
+  JFIHeapsDisjoint h2 h ->
+  JFIHeapsDisjoint h12 h.
+Proof.
+Admitted.
+
+Lemma SubheapDisjoint : forall h1 h2 h12 h,
+  JFIHeapsUnion h1 h2 h12 ->
+  JFIHeapsDisjoint h12 h ->
+  JFIHeapsDisjoint h1 h.
+Proof.
+Admitted.
+
+Lemma DisjointSymmetry : forall h1 h2,
+  JFIHeapsDisjoint h1 h2 <-> JFIHeapsDisjoint h2 h1.
+Proof.
+Admitted.
+
+Lemma UnionSymmetry : forall h1 h2 h,
+  JFIHeapsUnion h1 h2 h <-> JFIHeapsUnion h2 h1 h.
+Proof.
+Admitted.
+
+Lemma SepAssoc1Soundness : forall decls gamma p1 p2 p3,
+  JFISemanticallyImplies gamma
+    (JFISep p1 (JFISep p2 p3))
+    (JFISep (JFISep p1 p2) p3) (JFIDeclsProg decls).
+Proof.
+  intros decls gamma p1 p2 p3.
+  intros env h gamma_match_env h_satisfies_q.
+  destruct h_satisfies_q as (h1 & h23 & (union_h1_h23 & disj_h1_h23) & h1_satisfies_p1 &
+          h2 & h3 & (union_h2_h3 & disj_h2_h3) & h_2_satisfies_p2 & h3_satisfies_p3).
+  simpl.
+  destruct (ExistsUnion h1 h2) as (h12, union_h1_h2).
+  exists h12, h3.
+  split; try split; try trivial.
+  + apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
+  + apply (UnionDisjoint h1 h2 h12 h3); try assumption.
+    apply DisjointSymmetry.
+    apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
+    apply UnionSymmetry.
+    assumption.
+  + exists h1, h2.
+    split; try split; trivial.
+    apply DisjointSymmetry.
+    apply (SubheapDisjoint h2 h3 h23 h1); try apply DisjointSymmetry; assumption.
+Qed.
+Hint Resolve SepAssoc1Soundness : core.
+
+Lemma SepAssoc2Soundness : forall decls gamma p1 p2 p3,
+  JFISemanticallyImplies gamma
+    (JFISep (JFISep p1 p2) p3)
+    (JFISep p1 (JFISep p2 p3)) (JFIDeclsProg decls).
+Proof.
+  intros decls gamma p1 p2 p3.
+  intros env h gamma_match_env h_satisfies_q.
+  destruct h_satisfies_q as (h12 & h3 & (union_h1_h23 & disj_h1_h23) &
+      ((h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & (h1_satisfies_p1 & h2_satisfies_p2)) &
+       h3_satisfies_p3)).
+  simpl.
+
+  destruct (ExistsUnion h2 h3) as (h23 & h2_h3_union).
+  exists h1, h23.
+  split; try split; try trivial.
+  + apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
+  + apply DisjointSymmetry.
+    apply (UnionDisjoint h2 h3 h23 h1); try assumption.
+    ++ apply DisjointSymmetry.
+       assumption.
+    ++ apply DisjointSymmetry.
+     apply (SubheapDisjoint h1 h2 h12 h3); try assumption.
+  + exists h2, h3.
+    split; try split; trivial.
+    apply (SubheapDisjoint h2 h1 h12 h3); try apply UnionSymmetry; assumption.
+Qed.
+Hint Resolve SepAssoc2Soundness : core.
+
+Lemma SepCommRuleSoundness : forall decls gamma p1 p2,
+  JFISemanticallyImplies gamma (JFISep p1 p2) (JFISep p2 p1) (JFIDeclsProg decls).
+Proof.
+  intros decls gamma p1 p2.
+  intros env h gamma_match_env h_satisfies_sep.
+  destruct h_satisfies_sep as (h1 & h2 & (union_h2_h2 & disjoint_h1_h2) & h_satisfies_p1 & h2_satisfies_p2).
+  exists h2, h1.
+  split; split; try assumption.
+  + apply UnionSymmetry.
+    assumption.
+  + apply DisjointSymmetry.
+    assumption.
+Qed.
+Hint Resolve SepCommRuleSoundness : core.
+
+Lemma SepIntroRuleSoundness : forall decls gamma p1 q1 p2 q2,
+  let CC := JFIDeclsProg decls in
+  JFISemanticallyImplies gamma p1 q1 CC ->
+  JFISemanticallyImplies gamma p2 q1 CC ->
+  JFISemanticallyImplies gamma (JFISep p1 p2) (JFISep q1 q2) CC.
+Proof.
+  intros decls gamma p1 q1 p2 q2 CC.
+  intros p1_implies_q1 p2_implies_q2.
+Admitted.
+Hint Resolve SepIntroRuleSoundness : core.
+
 (* =============== Jafun reduction Lemmas =============== *)
 Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
   destruct Loc_dec as [_ | l1_neq_l2];
@@ -2461,13 +2579,13 @@ Proof.
   (* JFITypeAddRule *)
   + admit. (* TODO *)
   (* JFISepAssoc1Rule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFISepAssoc2Rule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFISepCommRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFISepIntroRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFISepIntroPersistentRule *)
   + admit. (* TODO *)
   (* JFIWandIntroRule *)
