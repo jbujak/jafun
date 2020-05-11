@@ -391,7 +391,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFISepIntroRule :
     forall decls gamma p1 p2 q1 q2,
       (JFIProves decls gamma p1 q1) ->
-      (JFIProves decls gamma p2 q1) ->
+      (JFIProves decls gamma p2 q2) ->
       (*------------------------------------------*)
       JFIProves decls gamma (JFISep p1 p2) (JFISep q1 q2)
 

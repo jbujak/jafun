@@ -1301,6 +1301,11 @@ Lemma UnionDisjoint : forall h1 h2 h12 h,
 Proof.
 Admitted.
 
+Lemma UnionIdentity : forall h,
+  JFIHeapsUnion (Heap.empty Obj) h h.
+Proof.
+Admitted.
+
 Lemma SubheapDisjoint : forall h1 h2 h12 h,
   JFIHeapsUnion h1 h2 h12 ->
   JFIHeapsDisjoint h12 h ->
@@ -1315,6 +1320,34 @@ Admitted.
 
 Lemma UnionSymmetry : forall h1 h2 h,
   JFIHeapsUnion h1 h2 h <-> JFIHeapsUnion h2 h1 h.
+Proof.
+Admitted.
+
+Definition EnvRestrictedToHeap (env : JFITermEnv) (h' : Heap)  (env' : JFITermEnv):=
+  forall x n, StrMap.MapsTo x (JFLoc n) env' -> Heap.In n h'.
+
+Lemma RestrictEnvToHeap : forall env h', exists env', EnvRestrictedToHeap env h' env'.
+Proof.
+Admitted.
+
+Lemma RestrictedEnvMatchesGamma : forall gamma env h env' h',
+  JFIGammaMatchEnv h gamma env ->
+  JFISubheap h' h ->
+  EnvRestrictedToHeap env h' env' ->
+  JFIGammaMatchEnv h' gamma env'.
+Proof.
+Admitted.
+
+Lemma RestrictedEnvPreservesHeapSatisfying : forall h p env env' CC,
+  EnvRestrictedToHeap env h env' ->
+  (JFIHeapSatisfiesInEnv h p env CC <-> JFIHeapSatisfiesInEnv h p env' CC).
+Proof.
+Admitted.
+
+Lemma EmptyHeapSatisfiesPersistentTerm : forall h p env CC,
+  JFITermPersistent p ->
+  JFIHeapSatisfiesInEnv h p env CC ->
+  JFIHeapSatisfiesInEnv (Heap.empty Obj) p env CC.
 Proof.
 Admitted.
 
@@ -1387,16 +1420,60 @@ Proof.
 Qed.
 Hint Resolve SepCommRuleSoundness : core.
 
-Lemma SepIntroRuleSoundness : forall decls gamma p1 q1 p2 q2,
+Lemma ImplicationToRestrictedImplication : forall gamma env h h' p q CC,
+  JFISubheap h' h ->
+  JFIGammaMatchEnv h gamma env ->
+  JFISemanticallyImplies gamma p q CC ->
+  JFIHeapSatisfiesInEnv h' p env CC ->
+  JFIHeapSatisfiesInEnv h' q env CC.
+Proof.
+  intros gamma env h h' p q CC.
+  intros h'_subheap gamma_match_env p_implies_q h'_satisfies_p.
+  destruct (RestrictEnvToHeap env h') as (env' & env'_restricted).
+  assert (gamma_match_env' := RestrictedEnvMatchesGamma _ _ _ _ _ gamma_match_env h'_subheap env'_restricted).
+  apply RestrictedEnvPreservesHeapSatisfying with (env' := env') in h'_satisfies_p; try assumption.
+  assert (h'_satisfies_q := p_implies_q env' h' gamma_match_env' h'_satisfies_p).
+  apply RestrictedEnvPreservesHeapSatisfying with (env' := env'); try assumption.
+Qed.
+
+Lemma SepIntroSoundness : forall decls gamma p1 q1 p2 q2,
   let CC := JFIDeclsProg decls in
   JFISemanticallyImplies gamma p1 q1 CC ->
-  JFISemanticallyImplies gamma p2 q1 CC ->
+  JFISemanticallyImplies gamma p2 q2 CC ->
   JFISemanticallyImplies gamma (JFISep p1 p2) (JFISep q1 q2) CC.
 Proof.
   intros decls gamma p1 q1 p2 q2 CC.
   intros p1_implies_q1 p2_implies_q2.
-Admitted.
-Hint Resolve SepIntroRuleSoundness : core.
+  intros env h gamma_match_env h_satisfies_sep.
+  destruct h_satisfies_sep as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
+
+  exists h1, h2.
+  split; split; try assumption.
+  + apply ImplicationToRestrictedImplication with (gamma := gamma) (h := h) (p := p1); try assumption.
+    exact (proj1 union_h1_h2).
+  + apply ImplicationToRestrictedImplication with (gamma := gamma) (h := h) (p := p2); try assumption.
+    exact (proj1 (proj2 union_h1_h2)).
+Qed.
+Hint Resolve SepIntroSoundness : core.
+
+Lemma SepIntroPersistentSoundness : forall decls gamma p q,
+  let CC := (JFIDeclsProg decls) in
+  JFITermPersistent p ->
+  JFISemanticallyImplies gamma (JFIAnd p q) (JFISep p q) CC.
+Proof.
+  intros decls gamma p q CC.
+  intros p_persistent.
+  intros env h gamma_match_env h_satisfies_and.
+  exists (Heap.empty Obj), h.
+  split; split; try assumption.
+  + apply UnionIdentity.
+  + apply JFIEmptyHeapDisjoint.
+  + apply EmptyHeapSatisfiesPersistentTerm with (h := h); try assumption.
+    apply h_satisfies_and.
+  + simpl in h_satisfies_and.
+    apply h_satisfies_and.
+Qed.
+Hint Resolve SepIntroPersistentSoundness : core.
 
 (* =============== Jafun reduction Lemmas =============== *)
 Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
@@ -2587,7 +2664,7 @@ Proof.
   (* JFISepIntroRule *)
   + eauto.
   (* JFISepIntroPersistentRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIWandIntroRule *)
   + admit. (* TODO *)
   (* JFIWandElimRule *)
