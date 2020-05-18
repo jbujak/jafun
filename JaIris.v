@@ -28,12 +28,11 @@ Module HeapFacts := Facts Heap.
 Definition JFIHeapsDisjoint (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
   (~(Heap.In l h1 /\ Heap.In l h2)).
 
-Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
-  Heap.In l h1 -> Heap.In l h2.
+Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall (l : nat) o,
+  Heap.MapsTo l o h1 -> Heap.MapsTo l o h2.
 
 Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
   JFISubheap h1 h /\ JFISubheap h2 h /\ forall l, Heap.In l h -> (Heap.In l h1 \/ Heap.In l h2).
-
 
 Definition JFIObjFieldEq (objLoc : Loc) (fieldName : string) (loc : Loc) (h : Heap) : Prop :=
   match objLoc with
@@ -121,20 +120,19 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC :
           | (Some objLoc, Some valLoc) => JFIObjFieldEq objLoc fieldName valLoc h
           | _ => False
         end
-    | JFISep t1 t2 => exists (h1 : Heap) (h2 : Heap),
+    | JFISep t1 t2 => exists (h1 h2 : Heap),
         (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
         (JFIHeapSatisfiesInEnv h1 t1 env CC /\ JFIHeapSatisfiesInEnv h2 t2 env CC)
-    | JFIWand t1 t2 => exists (h1 : Heap) (h_h1 : Heap),
-        (JFIHeapsDisjoint h h1 /\ JFIHeapsUnion h h1 h_h1) /\ 
-        (JFIHeapSatisfiesInEnv h1 t1 env CC /\ JFIHeapSatisfiesInEnv h_h1 t2 env CC)
+    | JFIWand t1 t2 => forall h', JFIHeapsDisjoint h h' -> JFIHeapSatisfiesInEnv h' t1 env CC ->
+        (exists h_h', JFIHeapsUnion h h' h_h' /\ JFIHeapSatisfiesInEnv h_h' t2 env CC) 
   end.
 
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
   forall var_name,
     (StrMap.In var_name gamma <-> StrMap.In var_name env) /\
     (forall var_loc var_type,
-      (StrMap.find var_name gamma = Some var_type) ->
-      (StrMap.find var_name env = Some var_loc) ->
+      (StrMap.MapsTo var_name var_type gamma) ->
+      (StrMap.MapsTo var_name var_loc env) ->
        JFILocOfType var_loc h var_type).
 
 Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) (CC : JFProgram) : Prop :=

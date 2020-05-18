@@ -174,13 +174,13 @@ Proof.
        assumption).
   + intros var_loc var_type var_is_some_type.
     intros var_is_some_loc.
-    rewrite StrMapFacts.add_o in var_is_some_type, var_is_some_loc.
+    rewrite StrMapFacts.find_mapsto_iff, StrMapFacts.add_o in var_is_some_type, var_is_some_loc.
     destruct (StrMapFacts.eq_dec x var_name).
     ++ injection var_is_some_type as type_eq_var_type.
        injection var_is_some_loc as l_eq_var_loc.
        rewrite <- type_eq_var_type, <- l_eq_var_loc.
        assumption.
-    ++ apply (proj2 (gamma_match_env var_name)); try assumption.
+    ++ apply (proj2 (gamma_match_env var_name)); rewrite StrMapFacts.find_mapsto_iff; try assumption.
 Qed.
 
 Lemma StrictlyExtendedGammaMatchesExtendedEnv : forall x l type env gamma gamma_x h,
@@ -675,14 +675,13 @@ Proof.
   intros h t1 t2 env1 env2 CC.
   intros env_eq t1_equivalence t2_equivalence.
   simpl.
-  intros (h1 & (h_h1 & (disjoint_union & (h1_satisfies_t1 & union_satisfies_t2)))).
-  exists h1, h_h1.
-  split; [ | split].
-  + exact disjoint_union.
-  + apply (t1_equivalence h1 env1 env2 env_eq).
-    exact h1_satisfies_t1. 
-  + apply (t2_equivalence h_h1 env1 env2 env_eq).
-    exact union_satisfies_t2.
+  intros wand h' disjoint_h_h' h'_satisfies_t1.
+  unfold EqualEnvsEquivalentInTermForHeap in t1_equivalence.
+  apply (t1_equivalence h' env1 env2 env_eq) in h'_satisfies_t1.
+  destruct (wand h' disjoint_h_h' h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
+  apply (t2_equivalence h_h' env1 env2 env_eq) in h_h'_satisfies_t2.
+  exists h_h'.
+  split; assumption.
 Qed.
 
 Lemma EqualEnvsAreEquivalent : forall t CC h env1 env2,
@@ -855,18 +854,20 @@ Proof.
   unfold FreshVarPreservesTermSatysfying.
   intros h x l env (x_fresh_in_t1 & x_fresh_in_t2).
   split.
-  + simpl.
-    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
-    exists h1, h2.
-    assert (h1_satisfies_t1_in_env_x := proj1 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
-    assert (h2_satisfies_t2_in_env_x := proj1 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
-    split; try assumption; split; assumption.
-  + simpl.
-    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
-    exists h1, h2.
-    assert (h1_satisfies_t1_in_env := proj2 (t1_preserves h1 x l env x_fresh_in_t1) h1_satisfies_t1).
-    assert (h2_satisfies_t2_in_env := proj2 (t2_preserves h2 x l env x_fresh_in_t2) h2_satisfies_t2).
-    split; try assumption; split; assumption.
+  + intros h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1.
+    apply t1_preserves in h'_satisfies_t1; try assumption.
+    destruct (h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
+    exists h_h'.
+    unfold FreshVarPreservesTermSatysfying in t2_preserves.
+    apply t2_preserves with (x := x) (l := l) in h_h'_satisfies_t2; try assumption.
+    split; assumption.
+  + intros h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1.
+    apply t1_preserves with (x := x) (l := l) in h'_satisfies_t1; try assumption.
+    destruct (h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
+    exists h_h'.
+    unfold FreshVarPreservesTermSatysfying in t2_preserves.
+    apply t2_preserves with (x := x) (l := l) in h_h'_satisfies_t2; try assumption.
+    split; assumption.
 Qed.
 
 Lemma AddingFreshVarPreservesHeapSatisfiying : forall q CC h x l env,
@@ -1220,7 +1221,7 @@ Proof.
     ++ exact gamma_match_env.
     ++ exact loc_of_type.
     ++ exact gamma_add_new_x.
-  + apply AddingFreshVarPreservesHeapSatisfiying.
+  + apply AddingFreshVarPreservesHeapSatisfiying. (* TODO replace with ,,extending env preserves heap satisfying *)
     ++ exact x_fresh_in_q.
     ++ exact h_satisfies_q.
 Qed.
@@ -1240,13 +1241,14 @@ Proof.
   rewrite r_is_subst.
   destruct v.
   + unfold JFIRefType in type_of_v.
-    assert (x0_same_in_gamma_env := gamma_match_env x0). 
-    destruct (StrMap.find x0 env).
+    assert (x0_same_in_gamma_env := gamma_match_env x0).
+    destruct (Classical_Prop.classic (exists l, StrMap.MapsTo x0 l env)) as [(l & x0_is_l) | ].
     ++ apply EqualEnvsAreEquivalent with (env1 := env) (env2 := (StrMap.add x0 l (StrMap.remove x0 env))).
        +++ admit. (* TODO remove and add same var is equivalent *)
        +++ apply VarNameChangePreservesHeapSatisfiying.
            unfold JFIRefFreshInTerm in v_fresh.
-           assert (l_of_type := (proj2 (x0_same_in_gamma_env) l type type_of_v) eq_refl).
+           rewrite <- StrMapFacts.find_mapsto_iff in type_of_v.
+           assert (l_of_type := (proj2 (x0_same_in_gamma_env) l type type_of_v x0_is_l)).
            apply (h_satisfies_forall l) in l_of_type as h_satisfies_p_in_env_x.
            apply RemovingFreshVarPreservesHeapSatisfyig; assumption.
     ++ admit. (* TODO zapewnic zmienna w srodowisku *)
@@ -1273,7 +1275,8 @@ Proof.
   destruct v_in_gamma as (l & v_is_l).
   exists l.
   split.
-  + exact (proj2 (gamma_match_env v) l type type_of_v v_is_l).
+  + rewrite <- StrMapFacts.find_mapsto_iff in type_of_v, v_is_l.
+    exact (proj2 (gamma_match_env v) l type type_of_v v_is_l).
   + unfold JFISemanticallyImplies in q_implies_p.
     apply (HeapSatisfiesSubstIffVarMovedToEnv h x v l p env CC v_is_l).
     apply q_implies_p; assumption.
@@ -1281,6 +1284,15 @@ Qed.
 Hint Resolve ExistsIntroRuleSoundness : core.
 
 (* =============== Separation rules soundness ===============*)
+
+Definition HeapEq (h1 h2 : Heap) :=
+  forall n, Heap.find n h1 = Heap.find n h2.
+
+Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env,
+  (HeapEq h1 h2) ->
+    ((JFIHeapSatisfiesInEnv h1 t env CC) <-> (JFIHeapSatisfiesInEnv h2 t env CC)).
+Proof.
+Admitted.
 
 Lemma ExistsUnion : forall h1 h2,
   exists h, JFIHeapsUnion h1 h2 h.
@@ -1306,6 +1318,13 @@ Lemma UnionIdentity : forall h,
 Proof.
 Admitted.
 
+Lemma UnionUnique : forall h1 h2 h h',
+  JFIHeapsUnion h1 h2 h ->
+  JFIHeapsUnion h1 h2 h' ->
+  HeapEq h h'.
+Proof.
+Admitted.
+
 Lemma SubheapDisjoint : forall h1 h2 h12 h,
   JFIHeapsUnion h1 h2 h12 ->
   JFIHeapsDisjoint h12 h ->
@@ -1323,8 +1342,17 @@ Lemma UnionSymmetry : forall h1 h2 h,
 Proof.
 Admitted.
 
+Lemma UnionMatchesGamma : forall gamma h1 h2 h1_h2 env,
+  JFIHeapsUnion h1 h2 h1_h2 ->
+  JFIGammaMatchEnv h1 gamma env ->
+  JFIGammaMatchEnv h2 gamma env ->
+  JFIGammaMatchEnv h1_h2 gamma env.
+Proof.
+Admitted.
+
 Definition EnvRestrictedToHeap (env : JFITermEnv) (h' : Heap)  (env' : JFITermEnv):=
-  forall x n, StrMap.MapsTo x (JFLoc n) env' -> Heap.In n h'.
+  (forall x, StrMap.In x env <-> StrMap.In x env') /\
+  (forall x n, StrMap.MapsTo x (JFLoc n) env' -> Heap.In n h').
 
 Lemma RestrictEnvToHeap : forall env h', exists env', EnvRestrictedToHeap env h' env'.
 Proof.
@@ -1474,6 +1502,84 @@ Proof.
     apply h_satisfies_and.
 Qed.
 Hint Resolve SepIntroPersistentSoundness : core.
+
+Lemma WandIntroSoundness : forall decls gamma p q r,
+  let CC := JFIDeclsProg decls in
+  JFISemanticallyImplies gamma (JFISep r p) q CC ->
+  JFISemanticallyImplies gamma r (JFIWand p q) CC.
+Proof.
+  intros decls gamma p q r CC.
+  intros sep_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
+  intros h' h_disjoint h'_satisfies_p.
+  destruct (ExistsUnion h h') as (h_h', union_h_h').
+  exists h_h'.
+  split; try assumption.
+  apply (sep_implies_q env h_h').
+  + unfold JFIGammaMatchEnv.
+    intros var_name.
+    destruct (gamma_match_env var_name) as (gamma_keys_match_env & types_match).
+    split; try exact gamma_keys_match_env.
+    intros var_loc var_type var_is_type var_is_loc.
+    unfold JFILocOfType.
+    destruct var_loc; try trivial.
+    assert (var_name_type := types_match (JFLoc n) var_type var_is_type var_is_loc).
+    unfold JFILocOfType in var_name_type.
+    unfold JFIHeapsUnion, JFISubheap in union_h_h'.
+    destruct union_h_h' as (h_subheap & h'_subheap & _).
+    destruct (Classical_Prop.classic (exists o, Heap.find n h = Some o)).
+    ++ destruct H as (o & n_is_o).
+       assert (o_in_union := h_subheap n o).
+       rewrite n_is_o in var_name_type.
+       rewrite <- HeapFacts.find_mapsto_iff in n_is_o.
+       apply o_in_union in n_is_o.
+       rewrite HeapFacts.find_mapsto_iff in n_is_o.
+       rewrite n_is_o.
+       destruct o.
+       exact var_name_type.
+    ++ destruct (Heap.find n h); try destruct var_name_type.
+       exfalso.
+       apply H.
+       exists o.
+       trivial.
+  + exists h, h'.
+    split; split; try assumption.
+Qed.
+Hint Resolve WandIntroSoundness : core.
+
+Lemma WandElimSoundness : forall decls gamma p q r1 r2,
+  let CC := JFIDeclsProg decls in
+  JFISemanticallyImplies gamma r1 (JFIWand p q) CC ->
+  JFISemanticallyImplies gamma r2 p CC ->
+  JFISemanticallyImplies gamma (JFISep r1 r2) q CC.
+Proof.
+  intros decls gamma p q r1 r2 CC.
+  intros r1_implies_wand r2_implies_p.
+  intros env h gamma_match_env h_satisfies_r.
+
+  simpl in h_satisfies_r.
+  destruct h_satisfies_r as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_r1 & h2_satisfies_r2).
+
+  destruct (RestrictEnvToHeap env h1) as (env1 & env1_restricted).
+  assert (gamma_match_env1 := RestrictedEnvMatchesGamma gamma env h env1 h1 gamma_match_env (proj1 union_h1_h2) env1_restricted).
+  apply RestrictedEnvPreservesHeapSatisfying with (env' := env1) in h1_satisfies_r1; try assumption.
+  unfold JFISemanticallyImplies in r1_implies_wand.
+  assert (h1_satisfies_wand := r1_implies_wand env1 h1 gamma_match_env1 h1_satisfies_r1).
+  apply RestrictedEnvPreservesHeapSatisfying with (env := env) in h1_satisfies_wand; try assumption.
+
+  destruct (RestrictEnvToHeap env h2) as (env2 & env2_restricted).
+  assert (gamma_match_env2 := RestrictedEnvMatchesGamma gamma env h env2 h2 gamma_match_env (proj1 (proj2 union_h1_h2)) env2_restricted).
+  apply RestrictedEnvPreservesHeapSatisfying with (env' := env2) in h2_satisfies_r2; try assumption.
+  assert (h2_satisfies_p := r2_implies_p env2 h2 gamma_match_env2 h2_satisfies_r2).
+  apply RestrictedEnvPreservesHeapSatisfying with (env := env) in h2_satisfies_p; try assumption.
+
+  simpl in h1_satisfies_wand.
+  destruct (h1_satisfies_wand h2 disjoint_h1_h2 h2_satisfies_p) as (h' & union_h1_h2_h' & h'_satisfies_q).
+  apply EqualHeapsAreEquivalent with (h1 := h) (h2 := h'); try assumption.
+  apply UnionUnique with (h1 := h1) (h2 := h2); assumption.
+Qed.
+Hint Resolve WandElimSoundness : core.
+
 
 (* =============== Jafun reduction Lemmas =============== *)
 Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
@@ -2323,6 +2429,7 @@ Proof.
        unfold red in throw_red.
        destruct l; try destruct (x_not_null (eq_refl null)).
        unfold class in throw_red.
+       rewrite <- StrMapFacts.find_mapsto_iff in type_of_x, x_is_l.
        assert (type_of_n := (proj2 (gamma_match_env x)) (JFLoc n) cn type_of_x x_is_l).
        unfold JFILocOfType in type_of_n.
        destruct (NatMap.find (elt:=Obj) n h); try destruct throw_red.
@@ -2335,6 +2442,7 @@ Proof.
        destruct (Classical_Prop.classic (x = v)).
        +++ rewrite StrMapFacts.add_eq_o; trivial; symmetry; trivial.
        +++ rewrite StrMapFacts.add_neq_o; try (intros v_eq_x; symmetry in v_eq_x; destruct (H v_eq_x)).
+           rewrite StrMapFacts.find_mapsto_iff in x_is_l.
            rewrite x_is_l.
            injection res_x as res_x.
            symmetry.
@@ -2666,9 +2774,9 @@ Proof.
   (* JFISepIntroPersistentRule *)
   + eauto.
   (* JFIWandIntroRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIWandElimRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTFrameRule *)
   + admit. (* TODO *)
   (* JFIHTRetRule *)
