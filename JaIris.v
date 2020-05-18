@@ -357,6 +357,8 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIExistsElimRule :
     forall decls gamma p q r x type,
+      (JFIVarFreshInTerm x r) ->
+      (JFIVarFreshInTerm x q) ->
       (JFIProves decls gamma r (JFIExists type x p)) ->
       (JFIProves decls (JFIGammaAdd x type gamma) (JFIAnd r p) q) ->
       (*----------------*)

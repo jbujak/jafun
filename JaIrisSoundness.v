@@ -1283,6 +1283,31 @@ Proof.
 Qed.
 Hint Resolve ExistsIntroRuleSoundness : core.
 
+Lemma ExistsElimRuleSoundness : forall gamma decls p q r type x,
+  let CC := JFIDeclsProg decls in
+  JFIVarFreshInTerm x r ->
+  JFIVarFreshInTerm x q ->
+  JFISemanticallyImplies gamma r (JFIExists type x p) CC ->
+  JFISemanticallyImplies (JFIGammaAdd x type gamma) (JFIAnd r p) q CC ->
+  JFISemanticallyImplies gamma r q CC.
+Proof.
+  intros gamma decls p q r type x CC.
+  intros x_fresh_in_r x_fresh_in_q r_implies_exists and_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
+  assert (h_satisfies_exists := r_implies_exists env h gamma_match_env h_satisfies_r).
+  destruct h_satisfies_exists as (l & l_of_type & h_satisfies_p).
+  assert (h_satisfies_q := and_implies_q (StrMap.add x l env) h).
+  apply AddingFreshVarPreservesHeapSatisfiying with (x := x) (l := l); try assumption.
+  apply h_satisfies_q.
+  + apply ExtendedGammaMatchesExtendedEnv; assumption.
+  + simpl.
+    split.
+    ++ apply AddingFreshVarPreservesHeapSatisfiying; assumption.
+    ++ exact h_satisfies_p.
+Qed.
+Hint Resolve ExistsElimRuleSoundness : core.
+
+
 (* =============== Separation rules soundness ===============*)
 
 Definition HeapEq (h1 h2 : Heap) :=
@@ -2760,7 +2785,7 @@ Proof.
   (* JFIExistsIntroRule *)
   + eauto.
   (* JFIExistsElimRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFITypeAddRule *)
   + admit. (* TODO *)
   (* JFISepAssoc1Rule *)
