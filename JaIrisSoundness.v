@@ -1307,7 +1307,6 @@ Proof.
 Qed.
 Hint Resolve ExistsElimRuleSoundness : core.
 
-
 (* =============== Separation rules soundness ===============*)
 
 Definition HeapEq (h1 h2 : Heap) :=
@@ -2666,8 +2665,6 @@ Proof.
   |  decls gamma p q x v type
   (* JFIExistsElimRule *)
   |  decls gamma p q r x type
-  (* JFITypeAddRule *)
-  |  x cn gamma decls gamma' s p
   (* JFISepAssoc1Rule *)
   |  decls gamma p1 p2 p3
   (* JFISepAssoc2Rule *)
@@ -2786,8 +2783,6 @@ Proof.
   + eauto.
   (* JFIExistsElimRule *)
   + eauto.
-  (* JFITypeAddRule *)
-  + admit. (* TODO *)
   (* JFISepAssoc1Rule *)
   + eauto.
   (* JFISepAssoc2Rule *)

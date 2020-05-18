@@ -364,13 +364,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*----------------*)
       JFIProves decls gamma r q
 
-| JFITypeAddRule :
-    forall x cn gamma decls gamma' s p,
-      (JFIProves decls gamma s p) ->
-      (gamma' = (JFIGammaAdd x cn gamma)) ->
-      (*---------------------------------------------------*)
-      JFIProves decls gamma' s p
-
 (* Rules for separation logic *)
 
 | JFISepAssoc1Rule :
