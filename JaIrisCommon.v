@@ -173,11 +173,34 @@ Proof.
   induction (StrMap.elements (elt:=Loc) env); auto.
 Qed.
 
-Lemma StrMapKeyEqEquivalence : Equivalence (StrMap.eq_key_elt (elt:=Loc)).
+Lemma StrMapEqKeyEltEquivalence : Equivalence (StrMap.eq_key_elt (elt:=Loc)).
 Proof.
   unfold StrMap.eq_key_elt.
   unfold StrMap.Raw.Proofs.PX.eqke.
-Admitted.
+  split; try firstorder.
+  split;
+  destruct H, H0.
+  + now rewrite H, H0.
+  + now rewrite H1, H2.
+Qed.
+
+Lemma HeapEqKeyEquivalence : Equivalence (Heap.eq_key (elt:=Obj)).
+Proof.
+  unfold Heap.eq_key.
+  unfold Heap.Raw.Proofs.PX.eqk.
+  split; try firstorder.
+Qed.
+
+Lemma HeapEqKeyEltEquivalence : Equivalence (Heap.eq_key_elt (elt:=Obj)).
+Proof.
+  unfold StrMap.eq_key_elt.
+  unfold StrMap.Raw.Proofs.PX.eqke.
+  split; try firstorder.
+  split;
+  destruct H, H0.
+  + now rewrite H, H0.
+  + now rewrite H1, H2.
+Qed.
 
 Lemma ValEnvSubstitutionPreservesVarNotInEnv : forall env x,
   ~StrMap.In x env ->
@@ -193,7 +216,7 @@ Proof.
     assert (exists_element : exists e, InA (StrMap.eq_key_elt (elt:=Loc)) (x, e) (StrMap.elements (elt:=Loc) env)).
     ++ exists l.
        apply In_InA; try assumption.
-       exact StrMapKeyEqEquivalence.
+       exact StrMapEqKeyEltEquivalence.
     ++ set (elements_in_iff := StrMapFacts.elements_in_iff env x).
        destruct elements_in_iff as (_ & exists_elements_then_in_env).
        set (x_in_env := exists_elements_then_in_env exists_element).

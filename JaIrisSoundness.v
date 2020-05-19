@@ -1318,10 +1318,154 @@ Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env,
 Proof.
 Admitted.
 
-Lemma ExistsUnion : forall h1 h2,
-  exists h, JFIHeapsUnion h1 h2 h.
+Definition _HeapUnion (h1 h2 : Heap) := 
+  Heap.fold (fun k v a => Heap.add k v a) h1 h2.
+
+Definition _HeapUnion_fold_1 els1 (h2 : Heap) :=
+  fold_left (fun a p => Heap.add (fst p) (snd p) a) els1 h2.
+
+Lemma UnionPreservesNonElements : forall l o els1 h2,
+  ~(exists o', In (l, o') els1) -> Heap.MapsTo l o h2 ->
+   Heap.MapsTo l o (_HeapUnion_fold_1 els1 h2).
 Proof.
-Admitted.
+  intros l o els1.
+  induction els1.
+  + intros h2 _ l_o_h2.
+    simpl.
+    exact l_o_h2.
+  + intros h2 not_in_els1 l_o_h2.
+    simpl.
+    apply IHels1.
+    ++ intros in_els1.
+       apply not_in_els1.
+       destruct in_els1 as (o' & o'_in_els1).
+       exists o'.
+       apply in_cons.
+       exact o'_in_els1.
+    ++ apply HeapFacts.add_mapsto_iff.
+       apply or_intror.
+       split; try assumption.
+       destruct a.
+       simpl.
+       intros k_eq_l.
+       rewrite k_eq_l in *.
+       apply not_in_els1.
+       exists o0.
+       apply in_eq.
+Qed.
+
+Lemma H1SubheapUnion : forall h1 h2,
+  JFISubheap h1 (_HeapUnion h1 h2).
+Proof.
+  intros h1 h2 l o l_o_h1.
+  unfold _HeapUnion.
+  rewrite Heap.fold_1.
+  apply HeapFacts.elements_mapsto_iff in l_o_h1.
+  generalize h2.
+  assert (no_dup := Heap.elements_3w h1).
+  induction (Heap.elements h1).
+  + apply InA_nil in l_o_h1.
+    destruct l_o_h1.
+  + intros h0.
+    apply InA_cons in l_o_h1.
+    destruct l_o_h1.
+    ++ unfold Heap.eq_key_elt, Heap.Raw.Proofs.PX.eqke in H.
+       destruct a as (ll, oo).
+       simpl in H.
+       destruct H as (fst_a_eq & snd_a_eq).
+       rewrite <-fst_a_eq, <-snd_a_eq in *.
+       simpl.
+       apply UnionPreservesNonElements.
+       +++ inversion no_dup.
+           intros (o' & l_o'_l0).
+           apply H1.
+           apply InA_eqA with (x := (l, o')).
+           - exact HeapEqKeyEquivalence.
+           - now unfold Heap.eq_key, Heap.Raw.Proofs.PX.eqk.
+           - apply In_InA; try assumption.
+             exact HeapEqKeyEquivalence.
+       +++ apply HeapFacts.find_mapsto_iff.
+           apply HeapFacts.add_eq_o.
+           trivial.
+    ++ simpl.
+       apply (IHl0 H).
+       now inversion no_dup.
+Qed.
+
+Lemma H2SubheapUnion : forall h1 h2,
+  JFIHeapsDisjoint h1 h2 ->
+  JFISubheap h2 (_HeapUnion h1 h2).
+Proof.
+  intros h1 h2 disj.
+  intros l o l_o_h2.
+  unfold _HeapUnion.
+  rewrite Heap.fold_1.
+  apply UnionPreservesNonElements; try assumption.
+  unfold JFIHeapsDisjoint in disj.
+  intros (o', l_o'_h1).
+  apply (disj l).
+  split.
+  + apply HeapFacts.elements_in_iff.
+    exists o'.
+    apply In_InA; try assumption.
+    exact HeapEqKeyEltEquivalence.
+  + apply HeapFacts.elements_in_iff.
+    exists o.
+    apply HeapFacts.elements_mapsto_iff.
+    exact l_o_h2.
+Qed.
+
+Lemma UnionHasNoExtraElements : forall h1 h2 n,
+  Heap.In n (_HeapUnion h1 h2) ->
+  Heap.In n h1 \/ Heap.In n h2.
+Proof.
+  intros h1 h2 n.
+  unfold _HeapUnion.
+  rewrite Heap.fold_1.
+  generalize h2 n.
+  clear h2 n.
+  assert (el_in_heap : forall n' o', In (n', o') (Heap.elements h1) -> Heap.In n' h1).
+  + intros n' o' in_h1.
+    apply HeapFacts.elements_in_iff.
+    exists o'.
+    apply In_InA; try assumption.
+    apply HeapEqKeyEltEquivalence.
+  + induction (Heap.elements h1).
+    ++ intros h2 n n_in_union.
+       simpl in n_in_union.
+       apply or_intror.
+       exact n_in_union.
+    ++ intros h2 n n_in_union.
+       destruct a as (n' & l').
+       simpl in *.
+       apply IHl in n_in_union.
+       +++ destruct n_in_union as [n_in_h1 | n_in_h2].
+           - now apply or_introl.
+           - destruct (Classical_Prop.classic (n = n')).
+             -- rewrite <- H in *.
+                apply or_introl.
+                apply (el_in_heap n l').
+                now apply or_introl.
+             -- apply or_intror.
+                apply neq_symmetry in H.
+                now rewrite HeapFacts.add_neq_in_iff in n_in_h2.
+       +++ intros n'' o'' in_h1.
+           apply (el_in_heap n'' o'').
+           now apply or_intror.
+Qed.
+
+Lemma ExistsUnion : forall h1 h2,
+  JFIHeapsDisjoint h1 h2 -> exists h, JFIHeapsUnion h1 h2 h.
+Proof.
+  intros h1 h2 disj.
+  exists (_HeapUnion h1 h2).
+  unfold JFIHeapsUnion.
+  split; try split.
+  + apply H1SubheapUnion.
+  + apply H2SubheapUnion.
+    exact disj.
+  + apply UnionHasNoExtraElements.
+Qed.
 
 Lemma UnionAssoc : forall h1 h2 h3 h12 h23 h,
   (JFIHeapsUnion h1 h23 h /\ JFIHeapsUnion h2 h3 h23) <->
@@ -1414,18 +1558,22 @@ Proof.
           h2 & h3 & (union_h2_h3 & disj_h2_h3) & h_2_satisfies_p2 & h3_satisfies_p3).
   simpl.
   destruct (ExistsUnion h1 h2) as (h12, union_h1_h2).
-  exists h12, h3.
-  split; try split; try trivial.
-  + apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
-  + apply (UnionDisjoint h1 h2 h12 h3); try assumption.
+  + apply DisjointSymmetry.
+    apply (SubheapDisjoint h2 h3 h23 h1); try assumption.
     apply DisjointSymmetry.
-    apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
-    apply UnionSymmetry.
-    assumption.
-  + exists h1, h2.
-    split; try split; trivial.
-    apply DisjointSymmetry.
-    apply (SubheapDisjoint h2 h3 h23 h1); try apply DisjointSymmetry; assumption.
+    exact disj_h1_h23.
+  + exists h12, h3.
+    split; try split; try trivial.
+    ++ apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
+    ++ apply (UnionDisjoint h1 h2 h12 h3); try assumption.
+       apply DisjointSymmetry.
+       apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
+       apply UnionSymmetry.
+       assumption.
+    ++ exists h1, h2.
+       split; try split; trivial.
+       apply DisjointSymmetry.
+       apply (SubheapDisjoint h2 h3 h23 h1); try apply DisjointSymmetry; assumption.
 Qed.
 Hint Resolve SepAssoc1Soundness : core.
 
@@ -1442,18 +1590,20 @@ Proof.
   simpl.
 
   destruct (ExistsUnion h2 h3) as (h23 & h2_h3_union).
-  exists h1, h23.
-  split; try split; try trivial.
-  + apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
-  + apply DisjointSymmetry.
-    apply (UnionDisjoint h2 h3 h23 h1); try assumption.
+  + apply (SubheapDisjoint h2 h1 h12 h3); try assumption.
+    now apply UnionSymmetry.
+  + exists h1, h23.
+    split; try split; try trivial.
+    ++ apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
     ++ apply DisjointSymmetry.
-       assumption.
-    ++ apply DisjointSymmetry.
-     apply (SubheapDisjoint h1 h2 h12 h3); try assumption.
-  + exists h2, h3.
-    split; try split; trivial.
-    apply (SubheapDisjoint h2 h1 h12 h3); try apply UnionSymmetry; assumption.
+        apply (UnionDisjoint h2 h3 h23 h1); try assumption.
+        +++ apply DisjointSymmetry.
+            assumption.
+        +++ apply DisjointSymmetry.
+            apply (SubheapDisjoint h1 h2 h12 h3); try assumption.
+    ++ exists h2, h3.
+       split; try split; trivial.
+       apply (SubheapDisjoint h2 h1 h12 h3); try apply UnionSymmetry; assumption.
 Qed.
 Hint Resolve SepAssoc2Soundness : core.
 
@@ -1536,7 +1686,7 @@ Proof.
   intros sep_implies_q.
   intros env h gamma_match_env h_satisfies_r.
   intros h' h_disjoint h'_satisfies_p.
-  destruct (ExistsUnion h h') as (h_h', union_h_h').
+  destruct (ExistsUnion h h') as (h_h', union_h_h'); try assumption.
   exists h_h'.
   split; try assumption.
   apply (sep_implies_q env h_h').
