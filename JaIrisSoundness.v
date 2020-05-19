@@ -1709,21 +1709,47 @@ Proof.
     split; apply one_way.
 Qed.
 
-Lemma UnionMatchesGamma : forall gamma h1 h2 h1_h2 env,
-  JFIHeapsUnion h1 h2 h1_h2 ->
-  JFIGammaMatchEnv h1 gamma env ->
-  JFIGammaMatchEnv h2 gamma env ->
-  JFIGammaMatchEnv h1_h2 gamma env.
-Proof.
-Admitted.
-
 Definition EnvRestrictedToHeap (env : JFITermEnv) (h' : Heap)  (env' : JFITermEnv):=
   (forall x, StrMap.In x env <-> StrMap.In x env') /\
-  (forall x n, StrMap.MapsTo x (JFLoc n) env' -> Heap.In n h').
+  (forall x l, StrMap.MapsTo x (JFLoc l) env' -> Heap.In l h') /\
+  (forall x l, StrMap.MapsTo x (JFLoc l) env' -> StrMap.MapsTo x (JFLoc l) env).
 
-Lemma RestrictEnvToHeap : forall env h', exists env', EnvRestrictedToHeap env h' env'.
+Definition RestrictEnv (env : JFITermEnv) (h' : Heap) :=
+  StrMap.map (fun l =>
+    match l with
+    | null => null
+    | JFLoc n => if Heap.mem n h' then l else null
+    end
+  ) env.
+
+Lemma ExistsRestrictedEnv : forall env h', exists env', EnvRestrictedToHeap env h' env'.
 Proof.
-Admitted.
+  intros env h'.
+  exists (RestrictEnv env h').
+  unfold EnvRestrictedToHeap, RestrictEnv.
+  split; [ | split].
+  + intros x.
+    split;
+    apply StrMapFacts.map_in_iff with (x := x) (m := env).
+  + intros x n.
+    intros x_mapsto_n.
+    apply StrMapFacts.map_mapsto_iff in x_mapsto_n.
+    destruct x_mapsto_n as (l & match_is_loc & x_mapsto_l).
+    apply HeapFacts.mem_in_iff.
+    destruct l; try discriminate match_is_loc.
+    assert (n_eq_n0 : n = n0).
+    ++ destruct (Heap.mem (elt:=Obj) n0 h'); try discriminate match_is_loc.
+       now injection match_is_loc as n_eq_n0.
+    ++ rewrite <-n_eq_n0 in *.
+       now destruct (Heap.mem (elt:=Obj) n h'); try discriminate match_is_loc.
+  + intros x n x_n_env'.
+    apply StrMapFacts.map_mapsto_iff in x_n_env'.
+    destruct x_n_env' as (l & match_is_loc & x_mapsto_l).
+    destruct l; try discriminate match_is_loc.
+    destruct (Heap.mem n0 h'); try discriminate match_is_loc.
+    injection match_is_loc as n_eq_n0.
+    now rewrite n_eq_n0.
+Qed.
 
 Lemma RestrictedEnvMatchesGamma : forall gamma env h env' h',
   JFIGammaMatchEnv h gamma env ->
@@ -1731,12 +1757,40 @@ Lemma RestrictedEnvMatchesGamma : forall gamma env h env' h',
   EnvRestrictedToHeap env h' env' ->
   JFIGammaMatchEnv h' gamma env'.
 Proof.
-Admitted.
+  intros gamma env h env' h'.
+  intros gamma_match_env subheap_h'_h env'_restricted.
+  intros x.
+  split; try split.
+  + intros x_in_gamma.
+    apply env'_restricted.
+    now apply gamma_match_env.
+  + intros x_in_env'.
+    apply env'_restricted in x_in_env'.
+    now apply gamma_match_env.
+  + intros loc type.
+    intros t_type_gamma x_loc_env'.
+    destruct env'_restricted as (same_vars & env'_match_h' & env'_subenv).
+    destruct loc; try easy.
+    assert (n_of_type := proj2 (gamma_match_env x) (JFLoc n) type t_type_gamma (env'_subenv x n x_loc_env')).
+    apply env'_match_h' in x_loc_env'.
+    simpl.
+    simpl in n_of_type.
+    apply HeapFacts.elements_in_iff in x_loc_env'.
+    destruct x_loc_env' as (o & l_o_h').
+    apply HeapFacts.elements_mapsto_iff in l_o_h'.
+    assert (l_o_h := l_o_h').
+    apply subheap_h'_h in l_o_h.
+    apply HeapFacts.find_mapsto_iff in l_o_h'.
+    apply HeapFacts.find_mapsto_iff in l_o_h.
+    rewrite l_o_h'.
+    now rewrite l_o_h in n_of_type.
+Qed.
 
 Lemma RestrictedEnvPreservesHeapSatisfying : forall h p env env' CC,
   EnvRestrictedToHeap env h env' ->
   (JFIHeapSatisfiesInEnv h p env CC <-> JFIHeapSatisfiesInEnv h p env' CC).
 Proof.
+  intros h p env env' CC.
 Admitted.
 
 Lemma EmptyHeapSatisfiesPersistentTerm : forall h p env CC,
@@ -1830,7 +1884,7 @@ Lemma ImplicationToRestrictedImplication : forall gamma env h h' p q CC,
 Proof.
   intros gamma env h h' p q CC.
   intros h'_subheap gamma_match_env p_implies_q h'_satisfies_p.
-  destruct (RestrictEnvToHeap env h') as (env' & env'_restricted).
+  destruct (ExistsRestrictedEnv env h') as (env' & env'_restricted).
   assert (gamma_match_env' := RestrictedEnvMatchesGamma _ _ _ _ _ gamma_match_env h'_subheap env'_restricted).
   apply RestrictedEnvPreservesHeapSatisfying with (env' := env') in h'_satisfies_p; try assumption.
   assert (h'_satisfies_q := p_implies_q env' h' gamma_match_env' h'_satisfies_p).
@@ -1933,14 +1987,14 @@ Proof.
   simpl in h_satisfies_r.
   destruct h_satisfies_r as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_r1 & h2_satisfies_r2).
 
-  destruct (RestrictEnvToHeap env h1) as (env1 & env1_restricted).
+  destruct (ExistsRestrictedEnv env h1) as (env1 & env1_restricted).
   assert (gamma_match_env1 := RestrictedEnvMatchesGamma gamma env h env1 h1 gamma_match_env (proj1 union_h1_h2) env1_restricted).
   apply RestrictedEnvPreservesHeapSatisfying with (env' := env1) in h1_satisfies_r1; try assumption.
   unfold JFISemanticallyImplies in r1_implies_wand.
   assert (h1_satisfies_wand := r1_implies_wand env1 h1 gamma_match_env1 h1_satisfies_r1).
   apply RestrictedEnvPreservesHeapSatisfying with (env := env) in h1_satisfies_wand; try assumption.
 
-  destruct (RestrictEnvToHeap env h2) as (env2 & env2_restricted).
+  destruct (ExistsRestrictedEnv env h2) as (env2 & env2_restricted).
   assert (gamma_match_env2 := RestrictedEnvMatchesGamma gamma env h env2 h2 gamma_match_env (proj1 (proj2 union_h1_h2)) env2_restricted).
   apply RestrictedEnvPreservesHeapSatisfying with (env' := env2) in h2_satisfies_r2; try assumption.
   assert (h2_satisfies_p := r2_implies_p env2 h2 gamma_match_env2 h2_satisfies_r2).
