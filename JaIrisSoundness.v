@@ -1467,11 +1467,141 @@ Proof.
   + apply UnionHasNoExtraElements.
 Qed.
 
-Lemma UnionAssoc : forall h1 h2 h3 h12 h23 h,
-  (JFIHeapsUnion h1 h23 h /\ JFIHeapsUnion h2 h3 h23) <->
-  (JFIHeapsUnion h1 h2 h12 /\ JFIHeapsUnion h12 h3 h).
+Lemma InSubheap : forall h1 h2 l,
+  JFISubheap h1 h2 -> Heap.In l h1 -> Heap.In l h2.
 Proof.
-Admitted.
+  intros h1 h2 l.
+  intros subheap_h1_h2 l_in_h1.
+  unfold JFISubheap in subheap_h1_h2.
+  apply HeapFacts.elements_in_iff in l_in_h1.
+  apply HeapFacts.elements_in_iff.
+  destruct l_in_h1 as (o & l_o_h1).
+  exists o.
+  apply HeapFacts.elements_mapsto_iff in l_o_h1.
+  apply HeapFacts.elements_mapsto_iff.
+  apply (subheap_h1_h2 l o l_o_h1).
+Qed.
+
+Lemma SubheapTransitive : forall h1 h2 h3,
+  (JFISubheap h1 h2) -> (JFISubheap h2 h3) -> (JFISubheap h1 h3).
+Proof.
+  intros h1 h2 h3.
+  intros subheap_h1_h2 subheap_h2_h3.
+  intros l o l_o_h1.
+  apply (subheap_h2_h3 l o).
+  now apply (subheap_h1_h2 l o).
+Qed.
+
+Lemma UnionSubheap : forall h1 h2 h12 h,
+  (JFIHeapsUnion h1 h2 h12) ->
+  (JFISubheap h12 h) <-> (JFISubheap h1 h /\ JFISubheap h2 h).
+Proof.
+  intros h1 h2 h12 h.
+  intros (subheap_h1_h12 & subheap_h2_h12 & union_h1_h2).
+  split.
+    intros subheap_h12_h.
+    split.
+  + intros l o l_o_h1.
+    apply (subheap_h12_h l o).
+    now apply (subheap_h1_h12 l o).
+  + intros l o l_o_h2.
+    apply (subheap_h12_h l o).
+    now apply (subheap_h2_h12 l o).
+  + intros (subheap_h1_h & subheap_h2_h).
+    intros l o l_o_h12.
+    apply HeapFacts.elements_mapsto_iff in l_o_h12.
+    assert (l_in_h12 : exists o, InA (Heap.eq_key_elt (elt:=Obj)) 
+            (l, o) (Heap.elements (elt:=Obj) h12)).
+      now exists o.
+    apply HeapFacts.elements_in_iff in l_in_h12.
+    destruct (union_h1_h2 l l_in_h12).
+    ++ apply (subheap_h1_h l o).
+
+       apply HeapFacts.elements_in_iff in H.
+       destruct H as (o' & l_o'_h1).
+       apply HeapFacts.elements_mapsto_iff in l_o'_h1.
+       apply HeapFacts.elements_mapsto_iff in l_o_h12.
+       assert (l_o'_h12 := l_o'_h1).
+       apply subheap_h1_h12 in l_o'_h12.
+       apply HeapFacts.find_mapsto_iff in l_o_h12.
+       apply HeapFacts.find_mapsto_iff in l_o'_h12.
+       rewrite l_o'_h12 in l_o_h12.
+       injection l_o_h12 as o_eq_o'.
+       now rewrite o_eq_o' in *.
+    ++ apply (subheap_h2_h l o).
+
+       apply HeapFacts.elements_in_iff in H.
+       destruct H as (o' & l_o'_h2).
+       apply HeapFacts.elements_mapsto_iff in l_o'_h2.
+       apply HeapFacts.elements_mapsto_iff in l_o_h12.
+       assert (l_o'_h12 := l_o'_h2).
+       apply subheap_h2_h12 in l_o'_h12.
+       apply HeapFacts.find_mapsto_iff in l_o_h12.
+       apply HeapFacts.find_mapsto_iff in l_o'_h12.
+       rewrite l_o'_h12 in l_o_h12.
+       injection l_o_h12 as o_eq_o'.
+       now rewrite o_eq_o' in *.
+Qed.
+
+Lemma UnionSymmetry : forall h1 h2 h,
+  JFIHeapsUnion h1 h2 h <-> JFIHeapsUnion h2 h1 h.
+Proof.
+  assert (one_way : forall h1 h2 h, JFIHeapsUnion h1 h2 h -> JFIHeapsUnion h2 h1 h).
+  + intros h1 h2 h (subheap_h1_h & subheap_h2_h & union_h1_h2).
+    split; try split; try assumption.
+    intros l l_in_h.
+    destruct (union_h1_h2 l l_in_h).
+    ++ now apply or_intror.
+    ++ now apply or_introl.
+  + intros h1 h2 h.
+    split; apply one_way.
+Qed.
+
+Lemma UnionAssoc : forall h1 h2 h3 h12 h23 h,
+  (JFIHeapsUnion h1 h2 h12 /\ JFIHeapsUnion h2 h3 h23) ->
+  (JFIHeapsUnion h1 h23 h) <-> (JFIHeapsUnion h12 h3 h).
+Proof.
+  intros h1 h2 h3 h12 h23 h.
+  intros (union_h1_h2, union_h2_h3).
+  split.
+  + intros union_h1_h23.
+    unfold JFIHeapsUnion in *.
+    destruct union_h1_h2, union_h2_h3, union_h1_h23.
+    destruct H0, H2, H4.
+    split; try split.
+    ++ apply (UnionSubheap h1 h2 h12 h).
+       now unfold JFIHeapsUnion.
+       split; try assumption.
+       now apply (SubheapTransitive h2 h23 h).
+    ++ apply (UnionSubheap h2 h3 h23 h); try assumption.
+       now unfold JFIHeapsUnion.
+    ++ intros l l_in_h.
+       destruct (H7 l l_in_h) as [l_in_h1 | l_in_h23].
+       +++ apply or_introl.
+           now apply (InSubheap h1 h12 l).
+       +++ destruct (H6 l l_in_h23) as [l_in_h2 | l_in_h3].
+           - apply or_introl.
+             now apply (InSubheap h2 h12 l).
+           - now apply or_intror.
+  + intros union_h12_h3.
+    unfold JFIHeapsUnion in *.
+    destruct union_h1_h2, union_h2_h3, union_h12_h3.
+    destruct H0, H2, H4.
+    split; try split.
+    ++ now apply (UnionSubheap h1 h2 h12 h).
+    ++ apply (UnionSubheap h2 h3 h23 h); try assumption.
+       now unfold JFIHeapsUnion.
+       split; try assumption.
+       now apply (SubheapTransitive h2 h12 h).
+    ++ intros l l_in_h.
+       destruct (H7 l l_in_h) as [l_in_h12 | l_in_h3].
+       +++ destruct (H5 l l_in_h12) as [l_in_h1 | l_in_h2].
+           - now apply or_introl.
+           - apply or_intror.
+             now apply (InSubheap h2 h23 l).
+       +++ apply or_intror.
+           now apply (InSubheap h3 h23 l).
+Qed.
 
 Lemma UnionDisjoint : forall h1 h2 h12 h,
   JFIHeapsUnion h1 h2 h12 ->
@@ -1479,36 +1609,105 @@ Lemma UnionDisjoint : forall h1 h2 h12 h,
   JFIHeapsDisjoint h2 h ->
   JFIHeapsDisjoint h12 h.
 Proof.
-Admitted.
+  intros h1 h2 h12 h.
+  intros (_ & _ & union) disj_h1_h disj_h2_h.
+  intros l.
+  intros (l_in_h12 & l_in_h).
+  destruct (union l); try assumption.
+  + now apply (disj_h1_h l).
+  + now apply (disj_h2_h l).
+Qed.
 
 Lemma UnionIdentity : forall h,
   JFIHeapsUnion (Heap.empty Obj) h h.
 Proof.
-Admitted.
+  intros h.
+  split; try split; try easy; auto.
+Qed.
 
 Lemma UnionUnique : forall h1 h2 h h',
   JFIHeapsUnion h1 h2 h ->
   JFIHeapsUnion h1 h2 h' ->
   HeapEq h h'.
 Proof.
-Admitted.
+  intros h1 h2 h h'.
+  intros (subheap_h1_h & subheap_h2_h & union_h) (subheap_h1_h' & subheap_h2_h' & union_h').
+  intros l.
+  destruct (Classical_Prop.classic (Heap.In l h)) as [l_in_h | not_l_in_h].
+  + destruct (union_h l l_in_h).
+    ++ apply HeapFacts.elements_in_iff in H.
+       destruct H as (o & l_o_h1).
+       apply HeapFacts.elements_mapsto_iff in l_o_h1.
+       assert (l_o_h := l_o_h1).
+       apply subheap_h1_h' in l_o_h1.
+       apply subheap_h1_h in l_o_h.
+       apply HeapFacts.find_mapsto_iff in l_o_h1.
+       apply HeapFacts.find_mapsto_iff in l_o_h.
+       rewrite l_o_h1, l_o_h.
+       trivial.
+    ++ apply HeapFacts.elements_in_iff in H.
+       destruct H as (o & l_o_h2).
+       apply HeapFacts.elements_mapsto_iff in l_o_h2.
+       assert (l_o_h := l_o_h2).
+       apply subheap_h2_h' in l_o_h2.
+       apply subheap_h2_h in l_o_h.
+       apply HeapFacts.find_mapsto_iff in l_o_h2.
+       apply HeapFacts.find_mapsto_iff in l_o_h.
+       rewrite l_o_h2, l_o_h.
+       trivial.
+  + apply HeapFacts.not_find_mapsto_iff in not_l_in_h.
+    rewrite not_l_in_h.
+    symmetry.
+    apply HeapFacts.not_find_mapsto_iff.
+    intros l_in_h'.
+    apply HeapFacts.not_find_mapsto_iff in not_l_in_h.
+    apply not_l_in_h.
+    destruct (union_h' l l_in_h').
+    ++ apply HeapFacts.elements_in_iff.
+       apply HeapFacts.elements_in_iff in H.
+       destruct H as (o & l_o_h1).
+       exists o.
+       apply HeapFacts.elements_mapsto_iff.
+       apply HeapFacts.elements_mapsto_iff in l_o_h1.
+       now apply (subheap_h1_h l).
+    ++ apply HeapFacts.elements_in_iff.
+       apply HeapFacts.elements_in_iff in H.
+       destruct H as (o & l_o_h2).
+       exists o.
+       apply HeapFacts.elements_mapsto_iff.
+       apply HeapFacts.elements_mapsto_iff in l_o_h2.
+       now apply (subheap_h2_h l).
+Qed.
 
 Lemma SubheapDisjoint : forall h1 h2 h12 h,
   JFIHeapsUnion h1 h2 h12 ->
   JFIHeapsDisjoint h12 h ->
   JFIHeapsDisjoint h1 h.
 Proof.
-Admitted.
+  intros h1 h2 h12 h.
+  intros (subheap_h1_h12 & _ & _) disj_h12_h.
+  intros l (l_in_h1 & l_in_h).
+  apply (disj_h12_h l).
+  split; try assumption.
+  apply HeapFacts.elements_in_iff.
+  apply HeapFacts.elements_in_iff in l_in_h1.
+  destruct l_in_h1 as (o & l_o_h1).
+  exists o.
+  apply HeapFacts.elements_mapsto_iff.
+  apply HeapFacts.elements_mapsto_iff in l_o_h1.
+  now apply (subheap_h1_h12 l).
+Qed.
 
 Lemma DisjointSymmetry : forall h1 h2,
   JFIHeapsDisjoint h1 h2 <-> JFIHeapsDisjoint h2 h1.
 Proof.
-Admitted.
-
-Lemma UnionSymmetry : forall h1 h2 h,
-  JFIHeapsUnion h1 h2 h <-> JFIHeapsUnion h2 h1 h.
-Proof.
-Admitted.
+  assert (one_way : forall h1 h2, JFIHeapsDisjoint h1 h2 -> JFIHeapsDisjoint h2 h1).
+  + intros h1 h2 disj.
+    intros l (l_in_h2 & l_in_h1).
+    now apply (disj l).
+  + intros h1 h2.
+    split; apply one_way.
+Qed.
 
 Lemma UnionMatchesGamma : forall gamma h1 h2 h1_h2 env,
   JFIHeapsUnion h1 h2 h1_h2 ->
@@ -1564,7 +1763,7 @@ Proof.
     exact disj_h1_h23.
   + exists h12, h3.
     split; try split; try trivial.
-    ++ apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
+    ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply (UnionDisjoint h1 h2 h12 h3); try assumption.
        apply DisjointSymmetry.
        apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
@@ -1594,7 +1793,7 @@ Proof.
     now apply UnionSymmetry.
   + exists h1, h23.
     split; try split; try trivial.
-    ++ apply (UnionAssoc h1 h2 h3 h12 h23); split; assumption.
+    ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply DisjointSymmetry.
         apply (UnionDisjoint h2 h3 h23 h1); try assumption.
         +++ apply DisjointSymmetry.
