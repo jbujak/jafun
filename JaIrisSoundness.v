@@ -1786,17 +1786,103 @@ Proof.
     now rewrite l_o_h in n_of_type.
 Qed.
 
-Lemma RestrictedEnvPreservesHeapSatisfying : forall h p env env' CC,
+Lemma AddingNullPreservesRestrictedEnv : forall env h env' name,
+  EnvRestrictedToHeap env h env' ->
+  EnvRestrictedToHeap (StrMap.add name null env) h (StrMap.add name null env').
+Proof.
+Admitted.
+
+Lemma AddingHeapLocPreservesRestrictedEnv : forall env h env' name n,
+  Heap.In n h ->
+  EnvRestrictedToHeap env h env' ->
+  EnvRestrictedToHeap (StrMap.add name (JFLoc n) env) h (StrMap.add name (JFLoc n) env').
+Proof.
+Admitted.
+
+Lemma LocOfTypeImpliesLocInHeap : forall n h type,
+  JFILocOfType (JFLoc n) h type -> Heap.In n h.
+Proof.
+Admitted.
+
+Lemma LocOfTypeImpliesExtendedRestricted : forall name l h type env env',
+  JFILocOfType l h type ->
+  EnvRestrictedToHeap env h env' ->
+  EnvRestrictedToHeap (StrMap.add name l env) h (StrMap.add name l env').
+Proof.
+  intros name l h type env env' env_restricted l_of_type.
+  destruct l.
+  now apply AddingNullPreservesRestrictedEnv.
+  apply AddingHeapLocPreservesRestrictedEnv; try assumption.
+  now apply LocOfTypeImpliesLocInHeap with (type := type).
+Qed.
+
+Lemma RestrictedEnvPreservesHeapSatisfying : forall p h env env' CC,
   EnvRestrictedToHeap env h env' ->
   (JFIHeapSatisfiesInEnv h p env CC <-> JFIHeapSatisfiesInEnv h p env' CC).
 Proof.
-  intros h p env env' CC.
+  intros p.
+  induction p; intros h env env' CC env_restricted.
+  + split; auto.
+  + split; auto.
+  + split.
+    ++ simpl.
+       intros (h_satisfies_p1 & h_satisfies_p2).
+        split.
+        now apply (IHp1 h env).
+        now apply (IHp2 h env).
+    ++ simpl.
+       intros (h_satisfies_p1 & h_satisfies_p2).
+        split.
+        now apply (IHp1 h env env' CC).
+        now apply (IHp2 h env env' CC).
+  + split; simpl.
+    ++ destruct 1.
+       apply or_introl. now apply (IHp1 h env).
+       apply or_intror. now apply (IHp2 h env).
+    ++ destruct 1.
+       apply or_introl. now apply (IHp1 h env env').
+       apply or_intror. now apply (IHp2 h env env').
+  + split; simpl.
+    ++ destruct 1.
+       apply or_introl.
+       intros h_p1_env.
+       apply H. now apply (IHp1 h env env').
+       apply or_intror.
+       now apply (IHp2 h env env').
+    ++ destruct 1.
+       apply or_introl.
+       intros h_p1_env.
+       apply H. now apply (IHp1 h env env').
+       apply or_intror.
+       now apply (IHp2 h env env').
+  + split; simpl.
+    ++ destruct 1 as (l & l_of_type & h_satisfies_p).
+       exists l.
+       split; trivial.
+       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
+       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
+    ++ destruct 1 as (l & l_of_type & h_satisfies_p).
+       exists l.
+       split; trivial.
+       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
+       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
+  + split; simpl.
+    ++ intros h_satisfies_forall l l_of_type.
+       assert (h_satisfies_p := h_satisfies_forall l l_of_type).
+       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
+       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
+    ++ intros h_satisfies_forall l l_of_type.
+       assert (h_satisfies_p := h_satisfies_forall l l_of_type).
+       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
+       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
+  + admit.
+  + split. (* TODO to moze nie zadzialac *)
 Admitted.
 
-Lemma EmptyHeapSatisfiesPersistentTerm : forall h p env CC,
+Lemma EmptyHeapSatisfiesPersistentTerm : forall p h env CC,
   JFITermPersistent p ->
-  JFIHeapSatisfiesInEnv h p env CC ->
-  JFIHeapSatisfiesInEnv (Heap.empty Obj) p env CC.
+  (JFIHeapSatisfiesInEnv h p env CC <->
+    JFIHeapSatisfiesInEnv (Heap.empty Obj) p env CC).
 Proof.
 Admitted.
 
