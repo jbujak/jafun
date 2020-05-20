@@ -411,6 +411,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIHTFrameRule :
     forall decls gamma p q r s e ex v,
+      (JFITermPersistent s) ->
       (JFIProves decls gamma s (JFIHoare p e ex v q)) ->
       (*-------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare (JFISep p r) e ex v (JFISep q r))

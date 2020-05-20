@@ -1879,10 +1879,10 @@ Proof.
   + split. (* TODO to moze nie zadzialac *)
 Admitted.
 
-Lemma EmptyHeapSatisfiesPersistentTerm : forall p h env CC,
+Lemma EveryHeapSatisfiesPersistentTerm : forall p h h' env CC,
   JFITermPersistent p ->
-  (JFIHeapSatisfiesInEnv h p env CC <->
-    JFIHeapSatisfiesInEnv (Heap.empty Obj) p env CC).
+  (JFIHeapSatisfiesInEnv h  p env CC <->
+   JFIHeapSatisfiesInEnv h' p env CC).
 Proof.
 Admitted.
 
@@ -2009,7 +2009,7 @@ Proof.
   split; split; try assumption.
   + apply UnionIdentity.
   + apply JFIEmptyHeapDisjoint.
-  + apply EmptyHeapSatisfiesPersistentTerm with (h := h); try assumption.
+  + apply EveryHeapSatisfiesPersistentTerm with (h := h); try assumption.
     apply h_satisfies_and.
   + simpl in h_satisfies_and.
     apply h_satisfies_and.
@@ -2296,6 +2296,27 @@ Lemma EnsureLocInHeap : forall h (n : nat),
   exists (o : Obj), Heap.find n h = Some o.
 Proof.
 Admitted.
+
+Lemma HTFrameRuleSoundness : forall decls gamma s p r e ex v q,
+  let CC := JFIDeclsProg decls in
+  JFITermPersistent s ->
+  JFISemanticallyImplies gamma s (JFIHoare         p    e ex v         q   ) CC ->
+  JFISemanticallyImplies gamma s (JFIHoare (JFISep p r) e ex v (JFISep q r)) CC.
+Proof.
+  intros decls gamma s p r e ex v q CC.
+  intros s_persistent hoare_p_e_q.
+  intros env h gamma_match_env h_satisfies_s.
+  simpl.
+  intros confs hn res_ex res.
+  intros h_satisfies_sep h_e_eval.
+  destruct h_satisfies_sep as (hp & hr & (union_hp_hr & disj_hp_hr) &
+    hp_satisfies_p & hr_satisfies_r).
+  assert (fake_gamma_match_env : JFIGammaMatchEnv hp gamma env). admit.
+  apply (EveryHeapSatisfiesPersistentTerm s hp) in h_satisfies_s as hp_satisfies_s;
+    try assumption.
+  assert (hp_satisfies_hoare := hoare_p_e_q env hp fake_gamma_match_env hp_satisfies_s).
+Admitted.
+Hint Resolve HTFrameRuleSoundness : core.
 
 Lemma HTRetRuleSoundness : forall gamma s v w CC,
   JFISemanticallyImplies gamma s
@@ -3287,7 +3308,7 @@ Proof.
   (* JFIWandElimRule *)
   + eauto.
   (* JFIHTFrameRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTRetRule *)
   + apply HTRetRuleSoundness.
   (* JFIHTCsqRule: *)
