@@ -101,10 +101,9 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC :
     | JFIForall class name term => forall l : Loc,
         let env1 := StrMap.add name l env
         in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1 CC
-    | JFIHoare t1 e ex valueName t2 => forall confs hn res_ex res,
+    | JFIHoare t1 e ex valueName t2 => JFIHeapSatisfiesInEnv h t1 env CC -> exists confs hn res_ex res,
         let newEnv := StrMap.add valueName res env
-        in (JFIHeapSatisfiesInEnv h t1 env CC) ->
-           (JFIEvalInEnv h e confs hn res_ex res env CC) ->
+        in (JFIEvalInEnv h e confs hn res_ex res env CC) /\
            (res_ex = ex /\ JFIHeapSatisfiesInEnv hn t2 newEnv CC)
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env

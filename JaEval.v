@@ -2006,3 +2006,37 @@ Proof.
        destruct e2_eval as (_ & _ & e2_eval).
        destruct e2_eval.
 Qed.
+
+Lemma LetEvaluationNormal : forall h h' hn class x v e1 e2 confs_e1 confs_e2 e1_res e2_res A env CC,
+   (JFIEvalInEnv h e1 confs_e1 h' None e1_res env CC) ->
+   (JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) confs_e2 hn A e2_res (StrMap.add v e1_res env) CC) ->
+   (exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env CC).
+Proof.
+Admitted.
+
+Lemma LetEvaluationEx : forall h hn class x e1 e2 confs_e1 e1_res ex env CC,
+   (JFIEvalInEnv h e1 confs_e1 hn (Some ex) e1_res env CC) ->
+   (exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn (Some ex) e1_res env CC).
+Proof.
+Admitted.
+
+Lemma CatchEvaluationNormal : forall h hn mu catch_A x e1 e2 confs_e1 e1_res env CC,
+   (JFIEvalInEnv h e1 confs_e1 hn None e1_res env CC) ->
+   (exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn None e1_res env CC).
+Proof.
+Admitted.
+
+Lemma CatchEvaluationExPass : forall h hn mu e1_A catch_A x e1 e2 confs_e1 e1_res env CC,
+   ~Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
+   JFIEvalInEnv h e1 confs_e1 hn (Some e1_A) e1_res env CC ->
+   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn (Some e1_A) e1_res env CC.
+Proof.
+Admitted.
+
+Lemma CatchEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x v e1 e2 confs_e1 confs_e2 e1_res e2_res env CC,
+   Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
+   JFIEvalInEnv h e1 confs_e1 h' (Some e1_A) e1_res env CC ->
+   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) confs_e2 hn e2_A e2_res (StrMap.add v e1_res env) CC ->
+   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn e2_A e2_res env CC.
+Proof.
+Admitted.
