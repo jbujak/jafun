@@ -2875,7 +2875,7 @@ Proof.
   fold JFIHeapSatisfiesInEnv in tmp.
   destruct tmp as (e1_confs & hn & e1_ex & e1_res & e1_eval & e1_ex_eq & hn_satisfies_q).
   rewrite e1_ex_eq in *.
-  destruct (CatchEvaluationNormal h hn mu ex x e1 e2 e1_confs e1_res env CC e1_eval)
+  destruct (TryEvaluationNormal h hn mu ex x e1 e2 e1_confs e1_res env CC e1_eval)
     as (try_confs & try_eval).
   now exists try_confs, hn, None, e1_res.
 Qed.
@@ -2918,7 +2918,7 @@ Proof.
   rewrite res_ex_eq in *; clear res_ex_eq.
   apply (VarNameChangePreservesHeapSatisfiying _ _ v x) in h'_satisfies_q.
 
-  destruct (CatchEvaluationExCatch h h' hn mu ex' ex'' ex x v e1 e2
+  destruct (TryEvaluationExCatch h h' hn mu ex' ex'' ex x v e1 e2
     e1_confs e2_confs e1_res res env CC is_subtype e1_eval e2_eval) as (try_confs & try_eval).
   exists try_confs, hn, ex'', res.
   split; try split; try split; try easy.
@@ -2940,7 +2940,7 @@ Proof.
   fold JFIHeapSatisfiesInEnv in tmp.
   destruct tmp as (e1_confs & hn & e1_ex & e1_res & e1_eval & e1_ex_eq & hn_satisfies_q).
   rewrite e1_ex_eq in *.
-  destruct (CatchEvaluationExPass h hn mu ex' ex x e1 e2 e1_confs e1_res env CC not_subtype e1_eval)
+  destruct (TryEvaluationExPass h hn mu ex' ex x e1 e2 e1_confs e1_res env CC not_subtype e1_eval)
     as (try_confs & try_eval).
   now exists try_confs, hn, (Some ex'), e1_res.
 Qed.

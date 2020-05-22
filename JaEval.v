@@ -1895,7 +1895,7 @@ Proof.
        exact e2_eval.
 Qed.
 
-Lemma CatchSubstitution: forall x y env e,
+Lemma TrySubstitution: forall x y env e,
   substExpr (JFVar x) y (JFIExprSubstituteEnv (JaIrisCommon.StrMap.remove (elt:=Loc) x env) e) =
   JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc y) e).
 Proof.
@@ -1961,7 +1961,7 @@ Proof.
            exists confs_e1, [], h', e1_res.
            unfold JFIEvalInEnv, JFIEval.
            split; trivial.
-           rewrite <- CatchSubstitution.
+           rewrite <- TrySubstitution.
            exact e2_eval.
        +++ apply or_intror, or_introl.
            exists j.
@@ -1983,7 +1983,7 @@ Proof.
            exists confs_e1, (p :: confs_let_e2), h', e1_res.
            unfold JFIEvalInEnv, JFIEval.
            split; trivial.
-           rewrite <- CatchSubstitution.
+           rewrite <- TrySubstitution.
            exact e2_eval.
        +++ exfalso.
            unfold JFIPartialEval in e2_eval.
@@ -2007,36 +2007,231 @@ Proof.
        destruct e2_eval.
 Qed.
 
-Lemma LetEvaluationNormal : forall h h' hn class x v e1 e2 confs_e1 confs_e2 e1_res e2_res A env CC,
-   (JFIEvalInEnv h e1 confs_e1 h' None e1_res env CC) ->
-   (JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) confs_e2 hn A e2_res (StrMap.add v e1_res env) CC) ->
-   (exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env CC).
+
+
+
+Definition ConfExtendedByCtx (ext_conf conf : Heap * FrameStack) ctx :=
+  fst conf = fst ext_conf /\ 
+  exists st ctxs e1 A,
+    snd conf =     st ++ [ ctxs           [[ e1 ]]_ A] /\
+    snd ext_conf = st ++ [(ctxs ++ [ctx]) [[ e1 ]]_ A].
+
+Fixpoint ConfsExtendedByCtx ext_confs confs ctx:=
+  match (ext_confs, confs) with
+  | (ext_conf::ext_confs, conf::confs) => ConfExtendedByCtx ext_conf conf ctx /\ ConfsExtendedByCtx ext_confs confs ctx
+  | ([], []) => True
+  | _ => False
+  end.
+
+Lemma ExistExtendedConfs : forall confs ctx,
+  exists ext_confs, ConfsExtendedByCtx ext_confs confs ctx.
 Proof.
 Admitted.
 
-Lemma LetEvaluationEx : forall h hn class x e1 e2 confs_e1 e1_res ex env CC,
-   (JFIEvalInEnv h e1 confs_e1 hn (Some ex) e1_res env CC) ->
-   (exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn (Some ex) e1_res env CC).
+Lemma RedImpliesExtendedRed : forall h h' st st' ctxs ctxs' e1 e1' A A' CC ctx,
+  red CC (h , st  ++ [ ctxs            [[ e1 ]]_  A]) =
+    Some (h', st' ++ [ ctxs'           [[ e1' ]]_ A']) ->
+  red CC (h , st  ++ [(ctxs  ++ [ctx]) [[ e1 ]]_  A]) =
+    Some (h', st' ++ [(ctxs' ++ [ctx]) [[ e1' ]]_ A']).
 Proof.
 Admitted.
 
-Lemma CatchEvaluationNormal : forall h hn mu catch_A x e1 e2 confs_e1 e1_res env CC,
-   (JFIEvalInEnv h e1 confs_e1 hn None e1_res env CC) ->
+Lemma ExtendedEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_confs hn e_A CC,
+  JFIPartialEval h ([ ctxs  [[ e  ]]_ A  ]) confs hn
+                    [ ctxs' [[ e' ]]_ e_A] CC ->
+  ConfsExtendedByCtx ext_confs confs ctx ->
+  JFIPartialEval h ([ (ctxs  ++ [ctx]) [[ e  ]]_ A  ]) ext_confs hn
+                    [ (ctxs' ++ [ctx]) [[ e' ]]_ e_A] CC.
+Proof.
+Admitted.
+
+Lemma EvaluationJoin : forall h st confs h' st' confs' h'' st'' CC,
+  JFIPartialEval h  st  confs  h'  st'  CC ->
+  JFIPartialEval h' st' confs' h'' st'' CC ->
+  JFIPartialEval h  st (confs ++ confs') h'' st'' CC.
+Proof.
+Admitted.
+
+Lemma RemoveVarFromEvalEnv : forall x v l e env,
+  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv (StrMap.remove x env) e) =
+  JFIExprSubstituteEnv (StrMap.add v l env) (JFIExprSubstituteVar x v e).
+Proof.
+Admitted.
+
+Lemma ExistsNormalLetEval : forall h e1 e1_confs hn e1_res class x e2 CC,
+  JFIPartialEval h  [ [] [[ e1 ]]_ None ] e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ None] CC ->
+  exists let_e1_confs,
+  JFIPartialEval h  [ [] [[ JFLet class x e1 e2 ]]_ None ] let_e1_confs
+                 hn [ [] [[ substExpr (JFVar x) e1_res e2 ]]_ None] CC.
+Proof.
+  intros h e1 e1_confs hn e1_res class x e2 CC.
+  intros e1_eval.
+  destruct (ExistExtendedConfs e1_confs (JFCtxLet class x __ e2))
+    as (e1_ext_confs & e1_ext_extended).
+  set (letin := (h, [ [] [[ JFLet class x e1 e2 ]]_ None ])).
+  set (letgo := (hn, [ [JFCtxLet class x __ e2] [[ JFVal1 (JFVLoc e1_res) ]]_ None])).
+  exists (letin::(e1_ext_confs ++ [letgo])).
+  simpl.
+  split; try split; try trivial.
+  apply EvaluationJoin with (h' := hn) (st' := snd letgo).
+  + now apply ExtendedEvaluationIsEvaluation with
+      (ctxs := []) (ctxs' := []) (confs := e1_confs).
+  + now simpl.
+Qed.
+
+Lemma ExistsExLetEval : forall h e1 e1_confs hn e1_res ex class x e2 CC,
+  JFIPartialEval h  [ [] [[ e1 ]]_ None ] e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)] CC ->
+  exists let_e1_confs,
+  JFIPartialEval h  [ [] [[ JFLet class x e1 e2 ]]_ None ] let_e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)] CC.
+Proof.
+  intros h e1 e1_confs hn e1_res ex class x e2 CC.
+  intros e1_eval.
+  destruct (ExistExtendedConfs e1_confs (JFCtxLet class x __ e2))
+    as (e1_ext_confs & e1_ext_extended).
+  set (letin := (h, [ [] [[ JFLet class x e1 e2 ]]_ None ])).
+  set (letgo := (hn, [ [JFCtxLet class x __ e2] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)])).
+  exists (letin::(e1_ext_confs ++ [letgo])).
+  simpl.
+  split; try split; try trivial.
+  apply EvaluationJoin with (h' := hn) (st' := snd letgo).
+  + now apply ExtendedEvaluationIsEvaluation with
+      (ctxs := []) (ctxs' := []) (confs := e1_confs).
+  + now simpl.
+Qed.
+
+Lemma ExistsNormalTryEval : forall h e1 e1_confs hn e1_res mu catch_ex x e2 CC,
+  JFIPartialEval h  [ [] [[ e1 ]]_ None ] e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ None] CC ->
+  exists try_e1_confs,
+  JFIPartialEval h  [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ] try_e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ None] CC.
+Proof.
+  intros h e1 e1_confs hn e1_res mu catch_ex x e2 CC.
+  intros e1_eval.
+  destruct (ExistExtendedConfs e1_confs (JFCtxTry __ mu catch_ex x e2))
+    as (e1_ext_confs & e1_ext_extended).
+  set (tryin := (h, [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ])).
+  set (trygo := (hn, [ [JFCtxTry __ mu catch_ex x e2] [[ JFVal1 (JFVLoc e1_res) ]]_ None])).
+  exists (tryin::(e1_ext_confs ++ [trygo])).
+  simpl.
+  split; try split; try trivial.
+  apply EvaluationJoin with (h' := hn) (st' := snd trygo).
+  + now apply ExtendedEvaluationIsEvaluation with
+      (ctxs := []) (ctxs' := []) (confs := e1_confs).
+  + now simpl.
+Qed.
+
+Lemma ExistsExTryEval : forall h e1 e1_confs hn e1_res mu catch_ex ex x e2 CC,
+  JFIPartialEval h  [ [] [[ e1 ]]_ None ] e1_confs
+                 hn [ [] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)] CC ->
+  exists try_e1_confs,
+  JFIPartialEval h  [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ] try_e1_confs
+                 hn [ [JFCtxTry __ mu catch_ex x e2] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)] CC.
+Proof.
+  intros h e1 e1_confs hn e1_res mu catch_ex ex x e2 CC.
+  intros e1_eval.
+  destruct (ExistExtendedConfs e1_confs (JFCtxTry __ mu catch_ex x e2))
+    as (e1_ext_confs & e1_ext_extended).
+  set (tryin := (h, [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ])).
+  set (trygo := (hn, [ [] [[ e2 ]]_ None])).
+  exists (tryin::e1_ext_confs).
+  simpl.
+  split; try split; try trivial.
+  now apply ExtendedEvaluationIsEvaluation with
+      (ctxs := []) (ctxs' := []) (confs := e1_confs).
+Qed.
+
+Theorem LetEvaluationNormal : forall h h' hn class x v e1 e2 e1_confs e2_confs e1_res e2_res A env CC,
+   JFIEvalInEnv h e1 e1_confs h' None e1_res env CC ->
+   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) e2_confs hn A e2_res (StrMap.add v e1_res env) CC ->
+   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env CC.
+Proof.
+  intros h h' hn class x v e1 e2 e1_confs e2_confs e1_res e2_res A env CC.
+  intros e1_eval e2_eval.
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  apply ExistsNormalLetEval with (x := x) (class := class) (e2 := e2_in_env) in e1_eval
+    as (let_e1_confs & e1_let_eval).
+  exists (let_e1_confs ++ e2_confs).
+  unfold JFIEvalInEnv, JFIEval in  e2_eval.
+  rewrite <- RemoveVarFromEvalEnv in e2_eval.
+  rewrite <- SubstExprEqExprSubstituteVal in e2_eval.
+  now apply EvaluationJoin with (h' := h')
+    (st' := [ [] [[ substExpr (JFVar x) e1_res e2_in_env ]]_ None]).
+Qed.
+
+Theorem LetEvaluationEx : forall h hn class x e1 e2 e1_confs e1_res ex env CC,
+   JFIEvalInEnv h e1 e1_confs hn (Some ex) e1_res env CC ->
+   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn (Some ex) e1_res env CC.
+Proof.
+  intros h hn class x e1 e2 e1_confs e1_res ex env CC.
+  intros e1_eval.
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  apply ExistsExLetEval with (x := x) (class := class) (e2 := e2_in_env) in e1_eval.
+  destruct e1_eval as (let_e1_confs & e1_let_eval).
+  now exists (let_e1_confs).
+Qed.
+
+Theorem TryEvaluationNormal : forall h hn mu catch_A x e1 e2 e1_confs e1_res env CC,
+   (JFIEvalInEnv h e1 e1_confs hn None e1_res env CC) ->
    (exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn None e1_res env CC).
 Proof.
-Admitted.
+  intros h hn mu catch_A x e1 e2 e1_confs e1_res env CC.
+  intros e1_eval.
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  apply ExistsNormalTryEval with (x := x) (mu := mu)
+    (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
+  destruct e1_eval as (try_e1_confs & try_e1_eval).
+  now exists (try_e1_confs).
+Qed.
 
-Lemma CatchEvaluationExPass : forall h hn mu e1_A catch_A x e1 e2 confs_e1 e1_res env CC,
+Theorem TryEvaluationExPass : forall h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env CC,
    ~Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
-   JFIEvalInEnv h e1 confs_e1 hn (Some e1_A) e1_res env CC ->
+   JFIEvalInEnv h e1 e1_confs hn (Some e1_A) e1_res env CC ->
    exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn (Some e1_A) e1_res env CC.
 Proof.
-Admitted.
+  intros h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env CC.
+  intros not_subtype e1_eval.
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  apply ExistsExTryEval with (x := x) (mu := mu)
+    (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
+  destruct e1_eval as (try_e1_confs & try_e1_eval).
+  set (trygo := (hn, [ [JFCtxTry __ mu catch_A x e2_in_env] [[ JFVal1 (JFVLoc e1_res)]]_ Some e1_A ])).
+  exists (try_e1_confs ++ [trygo]).
+  apply EvaluationJoin with (h' := hn) (st' := snd trygo); try trivial.
+  simpl.
+  split; try split; try trivial.
+  unfold subtype_bool in not_subtype.
+  destruct (subtype_class_bool CC e1_A catch_A); try easy.
+  exfalso.
+  now apply not_subtype.
+Qed.
 
-Lemma CatchEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x v e1 e2 confs_e1 confs_e2 e1_res e2_res env CC,
+Theorem TryEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x v e1 e2 e1_confs e2_confs e1_res e2_res env CC,
    Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
-   JFIEvalInEnv h e1 confs_e1 h' (Some e1_A) e1_res env CC ->
-   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) confs_e2 hn e2_A e2_res (StrMap.add v e1_res env) CC ->
+   JFIEvalInEnv h e1 e1_confs h' (Some e1_A) e1_res env CC ->
+   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) e2_confs hn e2_A e2_res (StrMap.add v e1_res env) CC ->
    exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn e2_A e2_res env CC.
 Proof.
-Admitted.
+  intros h h' hn mu e1_A e2_A catch_A x v e1 e2 e1_confs e2_confs e1_res e2_res env CC.
+  intros is_subtype e1_eval e2_eval.
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  apply ExistsExTryEval with (x := x) (mu := mu)
+    (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
+  unfold JFIEvalInEnv, JFIEval in e2_eval.
+  rewrite <- RemoveVarFromEvalEnv in e2_eval.
+  rewrite <- SubstExprEqExprSubstituteVal in e2_eval.
+  destruct e1_eval as (try_e1_confs & try_e1_eval).
+  set (trygo1 := (h', [ [JFCtxTry __ mu catch_A x e2_in_env] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some e1_A)])).
+  set (trygo2 := (h', [ [] [[ substExpr (JFVar x) e1_res e2_in_env ]]_ None])).
+  exists ((try_e1_confs ++ [trygo1]) ++ e2_confs).
+  apply EvaluationJoin with (h' := h') (st' := snd trygo2); try easy.
+
+  apply EvaluationJoin with (h' := h')
+    (st' := snd trygo1); try easy.
+  split; try split; trivial.
+  unfold trygo1, snd, red.
+  now destruct (subtype_bool CC (JFClass e1_A) (JFClass catch_A)).
+Qed.
