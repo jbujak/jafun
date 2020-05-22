@@ -391,8 +391,10 @@ Proof.
   + 
 Admitted.
 
-Lemma RemoveSubstitutedVarFromEnv : forall env x v e,
-  JFIExprSubstituteEnv (StrMap.remove (elt:=Loc) x env) (JFIExprSubstituteVal x v e) =
-  JFIExprSubstituteEnv env (JFIExprSubstituteVal x v e).
+Lemma RemoveVarFromEnv : forall x v l e env,
+  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv (StrMap.remove x env) e) =
+  JFIExprSubstituteEnv (StrMap.add v l env) (JFIExprSubstituteVar x v e).
 Proof.
 Admitted.
+
+
