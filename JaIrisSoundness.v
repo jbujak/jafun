@@ -2190,21 +2190,42 @@ Lemma EnsureLocInHeap : forall h (n : nat),
 Proof.
 Admitted.
 
-Definition PiMapsTo l1 l2 pi :=
+(* Heaps and envs permutation *)
+
+Definition PiMapsTo l1 l2 (pi : HeapPermutation) :=
   match (l1, l2) with
   | (null, null) => True
-  | (JFLoc n1, JFLoc n2) => NatMap.MapsTo n1 n2 pi
+  | (JFLoc n1, JFLoc n2) => NatMap.MapsTo n1 n2 (fst pi)
   | _ => False
   end.
 
 Definition HeapsPermuted (h1 h2 : Heap) pi :=
   forall n1 n2 o1 cn1 o2 cn2 f v1 v2,
-    NatMap.MapsTo n1 n2 pi ->
+    NatMap.MapsTo n1 n2 (fst pi) ->
+    NatMap.MapsTo n2 n1 (snd pi) ->
     Heap.MapsTo n1 (o1, cn1) h1 ->
     Heap.MapsTo n2 (o2, cn2) h2 ->
     JFXIdMap.MapsTo f v1 o1 ->
     JFXIdMap.MapsTo f v2 o2 ->
     (cn1 = cn2 /\ PiMapsTo v1 v2 pi).
+
+Definition EnvsPermuted env1 env2 pi :=
+  forall x l1 l2,
+    StrMap.MapsTo x l1 env1 -> StrMap.MapsTo x l2 env2 ->
+    PiMapsTo l1 l2 pi.
+
+Lemma ExtendedEnvsPermuted : forall env1 env2 x l1 l2 pi,
+  EnvsPermuted env1 env2 pi ->
+  PiMapsTo l1 l2 pi ->
+  EnvsPermuted (StrMap.add x l1 env1) (StrMap.add x l2 env2) pi.
+Proof.
+Admitted.
+
+Lemma InvertPermutation : forall pi, exists pi',
+  (forall h1 h2, HeapsPermuted h1 h2 pi -> HeapsPermuted h2 h1 pi') /\
+  (forall env1 env2, EnvsPermuted env1 env2 pi -> EnvsPermuted env2 env1 pi').
+Proof.
+Admitted.
 
 Lemma EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env CC,
    JFIEvalInEnv h0 e confs hn res_ex res env CC ->
@@ -2217,16 +2238,178 @@ Lemma EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env 
 Proof.
 Admitted.
 
-
-Lemma PermutationPreservesHeapSatisfying : forall t h h_perm pi v l l_perm env CC,
+Lemma PiMapsToSameType : forall h h_perm pi l type,
   HeapsPermuted h h_perm pi ->
-  PiMapsTo l l_perm pi ->
-  HeapEnvEquivalent h h_perm (StrMap.add v l env) (StrMap.add v l_perm env) t CC.
+  JFILocOfType l h type ->
+  exists l_perm,
+    PiMapsTo l l_perm pi /\ JFILocOfType l_perm h_perm type.
+Proof.
+Admitted.
 
+Definition PermutationPreservesSatisfying t :=
+  forall h h_perm env env_perm pi CC,
+    HeapsPermuted h h_perm pi ->
+    EnvsPermuted env env_perm pi ->
+    HeapEnvEquivalent h h_perm env env_perm t CC.
+
+Lemma PermutationPreservesExistsSatisfying : forall type x t,
+  PermutationPreservesSatisfying t ->
+  PermutationPreservesSatisfying (JFIExists type x t).
+Proof.
+  intros type name t IHt h h_perm env env_perm pi CC pi_h pi_env.
+  split.
+  + intros (l & l_of_type & h_satisfies_t).
+    destruct (PiMapsToSameType h h_perm pi l type pi_h l_of_type)
+      as (l_perm & pi_l & l_perm_of_type).
+    exists l_perm.
+    simpl.
+    split; trivial.
+    set (env' := StrMap.add name l env).
+    set (env_perm' := StrMap.add name l_perm env_perm).
+    apply (IHt h h_perm env' env_perm' pi CC); trivial.
+    unfold env', env_perm'.
+    now apply ExtendedEnvsPermuted.
+  + intros (l_perm & l_perm_of_type & h_satisfies_t).
+    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+    apply pi'_heaps in pi_h.
+    apply pi'_envs in pi_env.
+    destruct (PiMapsToSameType h_perm h pi' l_perm type pi_h l_perm_of_type)
+      as (l & pi_l & l_of_type).
+    exists l.
+    simpl.
+    split; trivial.
+    set (env' := StrMap.add name l env).
+    set (env_perm' := StrMap.add name l_perm env_perm).
+    apply (IHt h_perm h env_perm' env' pi' CC); trivial.
+    unfold env', env_perm'.
+    now apply ExtendedEnvsPermuted.
+Qed.
+
+Lemma PermutationPreservesForallSatisfying : forall type x t,
+  PermutationPreservesSatisfying t ->
+  PermutationPreservesSatisfying (JFIForall type x t).
+Proof.
+  intros type name t IHt h h_perm env env_perm pi CC pi_h pi_env.
+  split.
+  + simpl.
+    intros h_satisfies_forall l_perm l_perm_of_type.
+    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+    assert (pi'_h := pi'_heaps h h_perm pi_h); clear pi'_heaps.
+    assert (pi'_env := pi'_envs env env_perm pi_env); clear pi'_envs.
+    destruct (PiMapsToSameType h_perm h pi' l_perm type pi'_h l_perm_of_type)
+      as (l & pi_l & l_of_type).
+    set (env' := StrMap.add name l env).
+    set (env_perm' := StrMap.add name l_perm env_perm).
+    apply (IHt h_perm h env_perm' env' pi' CC); trivial.
+    ++ now apply ExtendedEnvsPermuted.
+    ++ now apply h_satisfies_forall.
+  + simpl.
+    intros h_satisfies_forall l l_of_type.
+    destruct (PiMapsToSameType h h_perm pi l type pi_h l_of_type)
+      as (l_perm & pi_l & l_perm_of_type).
+    set (env' := StrMap.add name l env).
+    set (env_perm' := StrMap.add name l_perm env_perm).
+    apply (IHt h h_perm env' env_perm' pi CC); trivial.
+    ++ now apply ExtendedEnvsPermuted.
+    ++ now apply h_satisfies_forall.
+Qed.
+
+Lemma EnvsPermutedEq1 : forall x env env_perm pi (l : Loc),
+  EnvsPermuted env env_perm pi ->
+  match StrMap.find x env with
+  | Some loc => l = loc
+  | None => False
+  end ->
+  match StrMap.find x env_perm with
+  | Some loc => l = loc
+  | None => False
+  end.
+Proof.
+  intros x env env_perm pi l pi_env x_find.
+  destruct (Classical_Prop.classic (exists loc, StrMap.find x env_perm = Some loc))
+    as [(loc & x_loc_env) | asdf].
+  + rewrite x_loc_env.
+    rewrite <-StrMapFacts.find_mapsto_iff in x_loc_env.
+    apply (pi_env x l) in x_loc_env.
+    ++ unfold PiMapsTo in x_loc_env.
+    destruct l, loc; try easy.
+Admitted.
+
+Lemma EnvsPermutedEq2 : forall x env env_perm pi (l : Loc),
+  EnvsPermuted env env_perm pi ->
+  match StrMap.find x env with
+  | Some loc => loc = l
+  | None => False
+  end ->
+  match StrMap.find x env_perm with
+  | Some loc => loc = l
+  | None => False
+  end.
+Proof.
+Admitted.
+
+Lemma PermutationPreservesValToLocEq : forall x1 x2 env env_perm pi,
+  EnvsPermuted env env_perm pi ->
+  JFIValToLoc x1 env = JFIValToLoc x2 env ->
+  JFIValToLoc x1 env_perm = JFIValToLoc x2 env_perm.
+Proof.
+Admitted.
+
+Lemma PermutationPreservesElements : forall x env env_perm pi,
+  EnvsPermuted env env_perm pi ->
+  (exists l, StrMap.find x env = Some l) ->
+  exists l_perm, StrMap.find x env_perm = Some l_perm.
+Proof.
+Admitted.
+
+Lemma PermutationPreservesEqSatisfying : forall x1 x2,
+  PermutationPreservesSatisfying (JFIEq x1 x2).
+Proof.
+  intros x1 x2 h h_perm env env_perm pi CC pi_h pi_env.
+  split.
+  + simpl.
+    intros eq_in_env.
+    rewrite <-PermutationPreservesValToLocEq with (x1 := x1) (x2 := x2) (env := env) (pi := pi); trivial.
+    ++ unfold JFIValToLoc in eq_in_env |- *.
+       destruct x1; trivial.
+       destruct x; trivial.
+       destruct (Classical_Prop.classic (exists l_perm, StrMap.find x env_perm = Some l_perm))
+         as [(l_perm & x_l_perm_env) | not_exists_l_perm].
+       +++ now rewrite x_l_perm_env.
+       +++ exfalso; apply not_exists_l_perm.
+           apply PermutationPreservesElements with (env := env) (pi := pi); trivial.
+           destruct (StrMap.find x env); try destruct eq_in_env.
+           now exists l.
+    ++ destruct (JFIValToLoc x1 env), (JFIValToLoc x2 env); try easy.
+       now rewrite eq_in_env.
+  + simpl.
+    intros eq_in_env.
+    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+    apply pi'_envs in pi_env.
+    rewrite <-PermutationPreservesValToLocEq with (x1 := x1) (x2 := x2) (env := env_perm) (pi := pi'); trivial.
+    ++ unfold JFIValToLoc in eq_in_env |- *.
+       destruct x1; trivial.
+       destruct x; trivial.
+       destruct (Classical_Prop.classic (exists l, StrMap.find x env = Some l))
+         as [(l & x_l_env) | not_exists_l].
+       +++ now rewrite x_l_env.
+       +++ exfalso; apply not_exists_l.
+           apply PermutationPreservesElements with (env := env_perm) (pi := pi'); trivial.
+           destruct (StrMap.find x env_perm); try destruct eq_in_env.
+           now exists l.
+    ++ destruct (JFIValToLoc x1 env_perm), (JFIValToLoc x2 env_perm); try easy.
+       now rewrite eq_in_env.
+Qed.
+
+Lemma PermutationPreservesHeapSatisfying : forall t,
+  PermutationPreservesSatisfying t .
 Proof.
   intros t.
-  induction t; intros h h_perm pi u l l_perm env CC pi_h pi_l; eauto.
-  + admit. 
+  induction t; intros h h_perm env env_perm pi CC pi_h pi_env; eauto.
+  + now apply PermutationPreservesExistsSatisfying with (pi := pi).
+  + now apply PermutationPreservesForallSatisfying with (pi := pi).
+  + admit. (* TODO hoare *)
+  + now apply PermutationPreservesEqSatisfying with (pi := pi).
 Admitted.
 
 Lemma AddingNullPreservesHeapSatisfying : forall h t x env CC,

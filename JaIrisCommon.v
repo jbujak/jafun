@@ -23,7 +23,7 @@ Module StrMapFacts := Facts StrMap.
 
 Definition JFITermEnv : Type := StrMap.t Loc.
 Definition JFITypeEnv : Type := StrMap.t JFClassName.
-Definition HeapPermuation : Type :=  NatMap.t Loc.
+Definition HeapPermutation : Type :=  (NatMap.t nat * NatMap.t nat).
 
 Inductive JFITerm : Set :=
 | JFITrue
