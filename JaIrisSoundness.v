@@ -2262,21 +2262,104 @@ Lemma EnsureLocInHeap : forall h (n : nat),
 Proof.
 Admitted.
 
+Definition HeapsWithSameLocs (h1 h2 : Heap) :=
+  forall n, Heap.In n h1 <-> Heap.In n h2.
+
+Definition HeapsPermuted (h1 h2 : Heap) pi := (* TODO *)
+  forall n1 n2, NatMap.MapsTo n1 n2 pi ->
+    forall o, (Heap.MapsTo n1 o h1 <-> Heap.MapsTo n2 o h2).
+
+Lemma PermutationDisjoint : forall h1 h1_perm h2 pi,
+  JFIHeapsDisjoint h1 h2 ->
+  HeapsPermuted h1 h1_perm pi ->
+  JFIHeapsDisjoint h1_perm h2.
+Proof.
+Admitted.
+
+Lemma PermutationUnion : forall h1 h1_perm h2 h2_perm pi h h_perm,
+  JFIDisjointUnion h1 h2 h ->
+  JFIDisjointUnion h1_perm h2_perm h_perm ->
+  HeapsPermuted h1 h1_perm pi ->
+  HeapsPermuted h2 h2_perm pi ->
+  HeapsPermuted h h_perm pi.
+Proof.
+Admitted.
+
+Definition PiMapsTo l1 l2 pi :=
+  match (l1, l2) with
+  | (null, null) => True
+  | (JFLoc n1, JFLoc n2) => NatMap.MapsTo n1 n2 pi
+  | _ => False
+  end.
+
+Lemma EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env CC,
+   JFIEvalInEnv h0 e confs hn res_ex res env CC ->
+   JFIDisjointUnion h0 h0' h0_ext ->
+  (exists confs_ext hn_perm hn_ext res_ext pi,
+      HeapsPermuted hn hn_perm pi /\
+      PiMapsTo res res_ext pi /\
+      JFIDisjointUnion hn_perm h0' hn_ext /\ 
+      JFIEvalInEnv h0_ext e confs_ext hn_ext res_ex res_ext env CC).
+Proof.
+Admitted.
+
+Lemma PermutationPreservesHeapSatisfying : forall h h_perm pi t v l l_perm env CC,
+  HeapsPermuted h h_perm pi ->
+  PiMapsTo l l_perm pi ->
+  (JFIHeapSatisfiesInEnv h t (StrMap.add v l env) CC <->
+   JFIHeapSatisfiesInEnv h_perm t (StrMap.add v l_perm env) CC).
+Proof.
+Admitted.
+
+Lemma AddingLocNotInHeapPreservesHeapSatisfying : forall h t x n env CC,
+  JFIVarFreshInTerm x t ->
+  JFIHeapSatisfiesInEnv h t env CC ->
+  JFIHeapSatisfiesInEnv h t (StrMap.add x (JFLoc n) env) CC.
+Proof.
+Admitted.
+
+Lemma AddingNullPreservesHeapSatisfying : forall h t x env CC,
+  JFIHeapSatisfiesInEnv h t env CC ->
+  JFIHeapSatisfiesInEnv h t (StrMap.add x null env) CC.
+Proof.
+Admitted.
+
 Lemma HTFrameRuleSoundness : forall decls gamma s p r e ex v q,
   let CC := JFIDeclsProg decls in
   JFITermPersistent s ->
+  JFIVarFreshInTerm v r ->
   JFISemanticallyImplies gamma s (JFIHoare         p    e ex v         q   ) CC ->
   JFISemanticallyImplies gamma s (JFIHoare (JFISep p r) e ex v (JFISep q r)) CC.
 Proof.
   intros decls gamma s p r e ex v q CC.
-  intros s_persistent hoare_p_e_q.
+  intros s_persistent v_fresh_in_r hoare_p_e_q.
   intros env h gamma_match_env h_satisfies_s.
   intros h_satisfies_sep.
-  destruct h_satisfies_sep as (hp & hr & (union_hp_hr & disj_hp_hr) &
+  destruct h_satisfies_sep as (hp & hr & union_hp_hr &
     hp_satisfies_p & hr_satisfies_r).
   assert (fake_gamma_match_env : JFIGammaMatchEnv hp gamma env). admit.
-  apply (proj2 (EveryHeapSatisfiesPersistentTerm s hp h env CC s_persistent)) in h_satisfies_s.
-  assert (hp_satisfies_hoare := hoare_p_e_q env hp fake_gamma_match_env h_satisfies_s).
+  assert (hp_satisfies_s := h_satisfies_s).
+  apply (proj2 (EveryHeapSatisfiesPersistentTerm s hp h env CC s_persistent)) in hp_satisfies_s.
+  assert (hp_satisfies_hoare := hoare_p_e_q env hp fake_gamma_match_env hp_satisfies_s).
+  assert (hp_eval := hp_satisfies_hoare hp_satisfies_p).
+  fold JFIHeapSatisfiesInEnv in hp_eval.
+  destruct hp_eval as (confs & hn & res_ex & res & hp_eval & ex_eq & hn_satisfies_q).
+  rewrite ex_eq in *; clear ex_eq res_ex.
+  destruct (EvaluationOnExtendedHeap _ _ _ _ _ _ _ _ _ _ hp_eval union_hp_hr)
+    as (confs_ext & hn_perm & hn_ext & res_ext & pi & eval_ext).
+  destruct eval_ext as
+    (hn_pi & res_pi & union_hn_perm_hr & eval_ext).
+  exists confs_ext, hn_ext, ex, res_ext.
+  simpl.
+  split; try split; try easy.
+  exists hn_perm, hr.
+  split; split.
+  + apply union_hn_perm_hr.
+  + apply union_hn_perm_hr.
+  + now apply (PermutationPreservesHeapSatisfying _ _ _ _ _ res res_ext _ _ hn_pi).
+  + destruct res_ext.
+    ++ now apply AddingNullPreservesHeapSatisfying.
+    ++ now apply AddingLocNotInHeapPreservesHeapSatisfying.
 Admitted.
 Hint Resolve HTFrameRuleSoundness : core.
 

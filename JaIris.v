@@ -34,6 +34,9 @@ Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall (l : nat) o,
 Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
   JFISubheap h1 h /\ JFISubheap h2 h /\ forall l, Heap.In l h -> (Heap.In l h1 \/ Heap.In l h2).
 
+Definition JFIDisjointUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
+  JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2.
+
 Definition JFIObjFieldEq (objLoc : Loc) (fieldName : string) (loc : Loc) (h : Heap) : Prop :=
   match objLoc with
     | null => False
@@ -411,6 +414,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFIHTFrameRule :
     forall decls gamma p q r s e ex v,
       (JFITermPersistent s) ->
+      (JFIVarFreshInTerm v r) ->
       (JFIProves decls gamma s (JFIHoare p e ex v q)) ->
       (*-------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare (JFISep p r) e ex v (JFISep q r))
