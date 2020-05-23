@@ -201,6 +201,76 @@ Proof.
     ++ injection add_new_x. trivial.
 Qed.
 
+
+(* Framework for heap satisfying equivalence lemmas *)
+
+Definition HeapEnvEquivalent h h' env env' t CC :=
+  JFIHeapSatisfiesInEnv h t env CC <-> JFIHeapSatisfiesInEnv h' t env' CC.
+
+Lemma TrueEquivalence : forall h h' env env' CC,
+  HeapEnvEquivalent h h' env env' JFITrue CC.
+Proof.
+  intros.
+  easy.
+Qed.
+Hint Resolve TrueEquivalence : core.
+
+Lemma FalseEquivalence : forall h h' env env' CC,
+  HeapEnvEquivalent h h' env env' JFIFalse CC.
+Proof.
+  intros.
+  easy.
+Qed.
+Hint Resolve FalseEquivalence : core.
+
+Lemma AndPreservesEquivalence : forall h h' env env' t1 t2 CC,
+  HeapEnvEquivalent h h' env env' t1 CC ->
+  HeapEnvEquivalent h h' env env' t2 CC ->
+  HeapEnvEquivalent h h' env env' (JFIAnd t1 t2) CC.
+Proof.
+  intros h h' env env' t1 t2 CC.
+  intros t1_equivalence t2_equivalence.
+  unfold HeapEnvEquivalent in *.
+  split; intro; split; destruct H.
+  + now apply t1_equivalence.
+  + now apply t2_equivalence.
+  + now apply t1_equivalence.
+  + now apply t2_equivalence.
+Qed.
+Hint Resolve AndPreservesEquivalence : core.
+
+Lemma OrPreservesEquivalence : forall h h' env env' t1 t2 CC,
+  HeapEnvEquivalent h h' env env' t1 CC ->
+  HeapEnvEquivalent h h' env env' t2 CC ->
+  HeapEnvEquivalent h h' env env' (JFIOr t1 t2) CC.
+Proof.
+  intros h h' env env' t1 t2 CC.
+  intros t1_equivalence t2_equivalence.
+  unfold HeapEnvEquivalent in *.
+  split; intro; simpl; destruct H.
+  + apply or_introl; now apply t1_equivalence.
+  + apply or_intror; now apply t2_equivalence.
+  + apply or_introl; now apply t1_equivalence.
+  + apply or_intror; now apply t2_equivalence.
+Qed.
+Hint Resolve OrPreservesEquivalence : core.
+
+Lemma ImpliesPreservesEquivalence : forall h h' env env' t1 t2 CC,
+  HeapEnvEquivalent h h' env env' t1 CC ->
+  HeapEnvEquivalent h h' env env' t2 CC ->
+  HeapEnvEquivalent h h' env env' (JFIImplies t1 t2) CC.
+Proof.
+  intros h h' env env' t1 t2 CC.
+  intros t1_equivalence t2_equivalence.
+  unfold HeapEnvEquivalent in *.
+  split; intro; simpl; destruct H.
+  + apply or_introl. intro. apply H. now apply t1_equivalence.
+  + apply or_intror; now apply t2_equivalence.
+  + apply or_introl. intro. apply H. now apply t1_equivalence.
+  + apply or_intror; now apply t2_equivalence.
+Qed.
+Hint Resolve ImpliesPreservesEquivalence : core.
+
 (* =============== Env Lemmas =============== *)
 
 Lemma DifferentVarIsFresh : forall v w,
@@ -500,62 +570,6 @@ Proof.
     ++ exact h_satisfies_t.
 Qed.
 
-Lemma EnvEqGivesAndImplication : forall h t1 t2 env1 env2 CC,
-  (EnvEq env1 env2) ->
-  (EqualEnvsEquivalentInTermForHeap t1 CC) ->
-  (EqualEnvsEquivalentInTermForHeap t2 CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIAnd t1 t2) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIAnd t1 t2) env2 CC.
-Proof.
-    intros h t1 t2 env1 env2 CC.
-    intros env_eq t1_equivalence t2_equivalence (h_satisfies_t1 & h_satisfies_t2).
-    split.
-    + apply (t1_equivalence h env1 env2 env_eq).
-      exact h_satisfies_t1.
-    + apply (t2_equivalence h env1 env2 env_eq).
-      exact h_satisfies_t2.
-Qed.
-
-Lemma EnvEqGivesOrImplication : forall h t1 t2 env1 env2 CC,
-  (EnvEq env1 env2) ->
-  (EqualEnvsEquivalentInTermForHeap t1 CC) ->
-  (EqualEnvsEquivalentInTermForHeap t2 CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIOr t1 t2) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIOr t1 t2) env2 CC.
-Proof.
-  intros h t1 t2 env1 env2 CC.
-  intros env_eq t1_equivalence t2_equivalence [h_satisfies_t1 | h_satisfies_t2].
-  + simpl.
-    apply or_introl.
-    apply (t1_equivalence h env1 env2 env_eq).
-    exact h_satisfies_t1.
-  + simpl.
-    apply or_intror.
-    apply (t2_equivalence h env1 env2 env_eq).
-    exact h_satisfies_t2.
-Qed.
-
-Lemma EnvEqGivesImpliesImplication : forall h t1 t2 env1 env2 CC,
-  (EnvEq env1 env2) ->
-  (EqualEnvsEquivalentInTermForHeap t1 CC) ->
-  (EqualEnvsEquivalentInTermForHeap t2 CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIImplies t1 t2) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIImplies t1 t2) env2 CC.
-Proof.
-  intros h t1 t2 env1 env2 CC.
-  intros env_eq t1_equivalence t2_equivalence [not_h_satisfies_t1 | h_satisfies_t2].
-  + simpl.
-    apply or_introl.
-    intros h_satisfies_t1.
-    apply (t1_equivalence h env1 env2 env_eq) in h_satisfies_t1.
-    apply not_h_satisfies_t1.
-    exact h_satisfies_t1.
-  + simpl.
-    apply or_intror.
-    apply (t2_equivalence h env1 env2 env_eq).
-    exact h_satisfies_t2.
-Qed.
-
 Lemma EnvEqGivesForallImplication : forall h type x t env1 env2 CC,
   (EnvEq env1 env2) ->
   (EqualEnvsEquivalentInTermForHeap t CC) ->
@@ -678,24 +692,10 @@ Proof.
 Qed.
 
 Lemma EqualEnvsAreEquivalent : forall t CC h env1 env2,
-  (EnvEq env1 env2) ->
-    ((JFIHeapSatisfiesInEnv h t env1 CC) <-> (JFIHeapSatisfiesInEnv h t env2 CC)).
+  (EnvEq env1 env2) -> HeapEnvEquivalent h h env1 env2 t CC.
 Proof.
   intros t CC.
-  induction t; intros h env1 env2 env1_eq_env2.
-  (* JFITrue *)
-  + split; simpl; trivial.
-  (* JFIFalse *)
-  + split; simpl; trivial.
-  (* JFIAnd t1 t2 *)
-  + split; apply EnvEqGivesAndImplication; try assumption.
-    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
-  (* JFIOr t1 t2 *)
-  + split; apply EnvEqGivesOrImplication; try assumption.
-    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
-  (* JFIImplies t1 t2 *)
-  + split; apply EnvEqGivesImpliesImplication; try assumption.
-    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
+  induction t; intros h env1 env2 env1_eq_env2; auto.
   (* JFIExists *)
   + split; apply EnvEqGivesExistsImplication; try assumption.
     exact (EnvEqSymmetry env1 env2 env1_eq_env2).
@@ -751,23 +751,6 @@ Lemma FreshVarPreservesEval : forall h e confs hn ex res x l env CC,
   JFIEvalInEnv h e confs hn ex res (StrMap.add x l env) CC.
 Proof.
 Admitted.
-
-Lemma FreshVarPreservesAndSatystying : forall t1 t2 CC,
-  FreshVarPreservesTermSatysfying t1 CC ->
-  FreshVarPreservesTermSatysfying t2 CC ->
-  FreshVarPreservesTermSatysfying (JFIAnd t1 t2) CC.
-Proof.
-  intros t1 t2 CC.
-  intros t1_preserves t2_preserves.
-  unfold FreshVarPreservesTermSatysfying.
-  intros h x l env and_fresh.
-  destruct and_fresh as (t1_fresh & t2_fresh).
-  split; intros h_satisfies_and; split;
-  destruct h_satisfies_and as (h_satisfies_t1 & h_satisfies_t2);
-  try apply (t1_preserves h x l env t1_fresh);
-  try apply (t2_preserves h x l env t2_fresh);
-  try assumption.
-Qed.
 
 Lemma FreshVarPreservesHoareSatystying : forall t1 e ex v t2 CC,
   FreshVarPreservesTermSatysfying t1 CC ->
@@ -859,66 +842,15 @@ Proof.
 Qed.
 
 Lemma AddingFreshVarPreservesHeapSatisfiying : forall q CC h x l env,
-  (JFIVarFreshInTerm x q) ->
-    ((JFIHeapSatisfiesInEnv h q env CC) <->
-      JFIHeapSatisfiesInEnv h q (StrMap.add x l env) CC).
+  JFIVarFreshInTerm x q ->
+  HeapEnvEquivalent h h env (StrMap.add x l env) q CC.
+(*     ((JFIHeapSatisfiesInEnv h q env CC) <->
+      JFIHeapSatisfiesInEnv h q (StrMap.add x l env) CC). *)
 Proof.
-  intros q CC.
-  induction q as
-    [ | | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    | type name t IH_t
-    | type name t IH_t
-    | t1 IH_t1 e v t2 IH_t2
-    | val1 val2
-    | obj field val
-    | t1 IH_t1 t2 IH_t2
-    | t1 IH_t1 t2 IH_t2
-    ];   intros h x l.
-  (* JFITrue *)
-  + simpl.
-    split; trivial.
-  (* JFIFalse *)
-  + simpl.
-    split; trivial.
-  (* JFIAnd t1 t2 *)
-  + apply FreshVarPreservesAndSatystying; assumption.
-  (* JFIOr t1 t2 *)
-  + simpl.
-    intros env x_fresh.
-    destruct x_fresh as (t1_fresh & t2_fresh).
-    split; intros [ h_satisfies_t1 | h_satisfies_t2 ].
-    ++ apply or_introl.
-       apply (IH_t1 h x l env t1_fresh); exact h_satisfies_t1.
-    ++ apply or_intror.
-       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
-    ++ apply or_introl.
-       apply (IH_t1 h x l env t1_fresh); exact h_satisfies_t1.
-    ++ apply or_intror.
-       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
-  (* JFIImplies t1 t2 *)
-  + simpl.
-    intros env x_fresh.
-    destruct x_fresh as (t1_fresh & t2_fresh);
-    split; intros [ not_h_satisfies_t1 | h_satisfies_t2 ].
-    ++ apply or_introl.
-       unfold not.
-       intros h_satisfies_t1.
-       apply (IH_t1 h x l env t1_fresh) in h_satisfies_t1.
-       exact (not_h_satisfies_t1 h_satisfies_t1).
-    ++ apply or_intror.
-       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
-    ++ apply or_introl.
-       unfold not.
-       intros h_satisfies_t1.
-       apply (IH_t1 h x l env t1_fresh) in h_satisfies_t1.
-       exact (not_h_satisfies_t1 h_satisfies_t1).
-    ++ apply or_intror.
-       apply (IH_t2 h x l env t2_fresh); exact h_satisfies_t2.
+  intros t CC.
+  induction t; intros h x l env x_fresh; try destruct x_fresh; auto.
   (* JFIExists *)
-  + intros env x_fresh.
-    split.
+  + split.
     ++ simpl.
        intros (loc & loc_of_type & h_satisfies_t).
        exists loc.
@@ -927,7 +859,7 @@ Proof.
        +++ apply neq_symmetry.
            apply FreshVarDifferentFromForallVar with (class := name) (t := t).
            exact x_fresh.
-       +++ apply (IH_t h x l (StrMap.add name loc env)); try assumption.
+       +++ apply (IHt h x l (StrMap.add name loc env)); try assumption.
            simpl in x_fresh.
            destruct (String.eqb name x); try assumption.
            destruct x_fresh.
@@ -936,22 +868,21 @@ Proof.
        exists loc.
        split; try assumption.
        apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t.
-       +++ apply (IH_t h x l (StrMap.add name loc env)) in h_satisfies_t; try assumption.
+       +++ apply (IHt h x l (StrMap.add name loc env)) in h_satisfies_t; try assumption.
            simpl in x_fresh.
            destruct (String.eqb name x); try assumption.
            destruct x_fresh.
        +++ apply FreshVarDifferentFromForallVar with (class := name) (t := t).
            exact x_fresh.
   (* JFIForall *)
-  + intros env x_fresh.
-    split.
+  + split.
     ++ simpl.
        intros h_satisfies_t loc loc_of_type.
        apply EnvOrderChangePreservesHeapSatisfiying.
        +++ apply neq_symmetry.
            apply FreshVarDifferentFromForallVar with (class := name) (t := t).
            exact x_fresh.
-       +++ apply (IH_t h x l (StrMap.add name loc env)).
+       +++ apply (IHt h x l (StrMap.add name loc env)).
            - simpl in x_fresh.
              destruct (String.eqb name x); try assumption.
              destruct x_fresh.
@@ -960,7 +891,7 @@ Proof.
        intros h_satisfies_t loc loc_of_type.
        set (h_satisfies_t' := h_satisfies_t loc loc_of_type).
        apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t'.
-       +++ apply (IH_t h x l (StrMap.add name loc env)) in h_satisfies_t'; try assumption.
+       +++ apply (IHt h x l (StrMap.add name loc env)) in h_satisfies_t'; try assumption.
            simpl in x_fresh.
            destruct (String.eqb name x); try assumption.
            destruct x_fresh.
@@ -969,19 +900,16 @@ Proof.
   (* JFIHoare *)
   + apply FreshVarPreservesHoareSatystying; assumption.
   (* JFIEq *)
-  + intros env x_fresh.
-    split;
-    apply AddingFreshVarPreservesHeapSatisfiyingEq with (x := x) (l := l);
-    exact x_fresh.
+  + split;
+    now apply AddingFreshVarPreservesHeapSatisfiyingEq with (x := x) (l := l).
   (* JFIFieldEq *)
-  + intros env x_fresh.
-    split;
+  + split;
     apply AddingFreshVarPreservesHeapSatisfiyingFieldEq with (x := x) (l := l);
-    exact x_fresh.
+    exact (conj H H0).
   (* JFISep*)
-  + apply FreshVarPreservesSepSatystying; try assumption.
+  + now apply FreshVarPreservesSepSatystying.
   (* JFIWand *)
-  + apply FreshVarPreservesWandSatystying; try assumption.
+  + now apply FreshVarPreservesWandSatystying.
 Qed.
 
 Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env CC x0,
@@ -2262,35 +2190,21 @@ Lemma EnsureLocInHeap : forall h (n : nat),
 Proof.
 Admitted.
 
-Definition HeapsWithSameLocs (h1 h2 : Heap) :=
-  forall n, Heap.In n h1 <-> Heap.In n h2.
-
-Definition HeapsPermuted (h1 h2 : Heap) pi := (* TODO *)
-  forall n1 n2, NatMap.MapsTo n1 n2 pi ->
-    forall o, (Heap.MapsTo n1 o h1 <-> Heap.MapsTo n2 o h2).
-
-Lemma PermutationDisjoint : forall h1 h1_perm h2 pi,
-  JFIHeapsDisjoint h1 h2 ->
-  HeapsPermuted h1 h1_perm pi ->
-  JFIHeapsDisjoint h1_perm h2.
-Proof.
-Admitted.
-
-Lemma PermutationUnion : forall h1 h1_perm h2 h2_perm pi h h_perm,
-  JFIDisjointUnion h1 h2 h ->
-  JFIDisjointUnion h1_perm h2_perm h_perm ->
-  HeapsPermuted h1 h1_perm pi ->
-  HeapsPermuted h2 h2_perm pi ->
-  HeapsPermuted h h_perm pi.
-Proof.
-Admitted.
-
 Definition PiMapsTo l1 l2 pi :=
   match (l1, l2) with
   | (null, null) => True
   | (JFLoc n1, JFLoc n2) => NatMap.MapsTo n1 n2 pi
   | _ => False
   end.
+
+Definition HeapsPermuted (h1 h2 : Heap) pi :=
+  forall n1 n2 o1 cn1 o2 cn2 f v1 v2,
+    NatMap.MapsTo n1 n2 pi ->
+    Heap.MapsTo n1 (o1, cn1) h1 ->
+    Heap.MapsTo n2 (o2, cn2) h2 ->
+    JFXIdMap.MapsTo f v1 o1 ->
+    JFXIdMap.MapsTo f v2 o2 ->
+    (cn1 = cn2 /\ PiMapsTo v1 v2 pi).
 
 Lemma EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env CC,
    JFIEvalInEnv h0 e confs hn res_ex res env CC ->
@@ -2303,19 +2217,16 @@ Lemma EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env 
 Proof.
 Admitted.
 
-Lemma PermutationPreservesHeapSatisfying : forall h h_perm pi t v l l_perm env CC,
+
+Lemma PermutationPreservesHeapSatisfying : forall t h h_perm pi v l l_perm env CC,
   HeapsPermuted h h_perm pi ->
   PiMapsTo l l_perm pi ->
-  (JFIHeapSatisfiesInEnv h t (StrMap.add v l env) CC <->
-   JFIHeapSatisfiesInEnv h_perm t (StrMap.add v l_perm env) CC).
-Proof.
-Admitted.
+  HeapEnvEquivalent h h_perm (StrMap.add v l env) (StrMap.add v l_perm env) t CC.
 
-Lemma AddingLocNotInHeapPreservesHeapSatisfying : forall h t x n env CC,
-  JFIVarFreshInTerm x t ->
-  JFIHeapSatisfiesInEnv h t env CC ->
-  JFIHeapSatisfiesInEnv h t (StrMap.add x (JFLoc n) env) CC.
 Proof.
+  intros t.
+  induction t; intros h h_perm pi u l l_perm env CC pi_h pi_l; eauto.
+  + admit. 
 Admitted.
 
 Lemma AddingNullPreservesHeapSatisfying : forall h t x env CC,
@@ -2359,7 +2270,7 @@ Proof.
   + now apply (PermutationPreservesHeapSatisfying _ _ _ _ _ res res_ext _ _ hn_pi).
   + destruct res_ext.
     ++ now apply AddingNullPreservesHeapSatisfying.
-    ++ now apply AddingLocNotInHeapPreservesHeapSatisfying.
+    ++ now apply AddingFreshVarPreservesHeapSatisfiying.
 Admitted.
 Hint Resolve HTFrameRuleSoundness : core.
 
