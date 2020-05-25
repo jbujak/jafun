@@ -25,6 +25,20 @@ Definition JFITermEnv : Type := StrMap.t Loc.
 Definition JFITypeEnv : Type := StrMap.t JFClassName.
 Definition HeapPermutation : Type :=  (NatMap.t nat * NatMap.t nat).
 
+Inductive JFIVal : Type :=
+  | JFINull
+  | JFIThis
+  | JFIVar (var : string).
+
+Definition JFIValToJFVal val :=
+  match val with
+  | JFINull => JFVLoc null
+  | JFIThis => JFSyn JFThis
+  | JFIVar var => JFSyn (JFVar var)
+  end.
+
+Definition JFIValsToJFVals vals := List.map JFIValToJFVal vals.
+
 Inductive JFITerm : Set :=
 | JFITrue
 | JFIFalse
@@ -34,8 +48,8 @@ Inductive JFITerm : Set :=
 | JFIExists (type : JFClassName) (name : string) (t : JFITerm)
 | JFIForall (type : JFClassName) (name : string) (t : JFITerm)
 | JFIHoare (t1 : JFITerm) (e : JFExpr) (ex : JFEvMode)  (value : string) (t2 : JFITerm)
-| JFIEq (val1 : JFVal) (val2 : JFVal)
-| JFIFieldEq (obj : JFVal) (field : string) (v : JFVal)
+| JFIEq (val1 : JFIVal) (val2 : JFIVal)
+| JFIFieldEq (obj : JFIVal) (field : string) (v : JFIVal)
 | JFISep (t1 : JFITerm) (t2 : JFITerm)
 | JFIWand (t1 : JFITerm) (t2 : JFITerm).
 
@@ -44,7 +58,7 @@ Inductive JFITerm : Set :=
 Definition JFIStringSubstitute : string -> string -> string -> string :=
   fun str from to => if String.eqb str from then to else str.
 
-Definition JFIValSubstituteVal (from : string) (to : JFVal) (val : JFVal) :=
+Definition JFValSubstituteVal (from : string) (to : JFVal) (val : JFVal) :=
   match val with
   | JFVLoc _ => val
   | JFSyn x =>
@@ -54,30 +68,36 @@ Definition JFIValSubstituteVal (from : string) (to : JFVal) (val : JFVal) :=
     end
   end.
 
+Definition JFIValSubstituteVal (from : string) (to : JFIVal) (val : JFIVal) :=
+  match val with
+  | JFIVar x => if String.eqb x from then to else val
+  | _ => val
+  end.
+
 Definition JFIValSubstituteVar (from : string) (to : string) (val : JFVal) :=
-  JFIValSubstituteVal from (JFSyn (JFVar to)) val.
+  JFValSubstituteVal from (JFSyn (JFVar to)) val.
 
 Fixpoint JFIExprSubstituteVal (from : string) (to : JFVal) (e : JFExpr) : JFExpr :=
   match e with
-  | JFNew mu C vs => JFNew mu C (List.map (JFIValSubstituteVal from to) vs)
+  | JFNew mu C vs => JFNew mu C (List.map (JFValSubstituteVal from to) vs)
   | JFLet C x e1 e2 =>
     if String.eqb x from then
       JFLet C x (JFIExprSubstituteVal from to e1) e2
     else
       JFLet C x (JFIExprSubstituteVal from to e1) (JFIExprSubstituteVal from to e2)
   | JFIf v1 v2 e1 e2 =>
-    JFIf (JFIValSubstituteVal from to v1) (JFIValSubstituteVal from to v2)
+    JFIf (JFValSubstituteVal from to v1) (JFValSubstituteVal from to v2)
          (JFIExprSubstituteVal from to e1) (JFIExprSubstituteVal from to e2)
   | JFInvoke v1 m vs =>
-    JFInvoke (JFIValSubstituteVal from to v1) m (List.map (JFIValSubstituteVal from to) vs)
+    JFInvoke (JFValSubstituteVal from to v1) m (List.map (JFValSubstituteVal from to) vs)
   | JFAssign (v1,fld) v2 =>
-    JFAssign (JFIValSubstituteVal from to v1, fld) (JFIValSubstituteVal from to v2)
+    JFAssign (JFValSubstituteVal from to v1, fld) (JFValSubstituteVal from to v2)
   | JFVal1 v1 =>
-    JFVal1 (JFIValSubstituteVal from to v1)
+    JFVal1 (JFValSubstituteVal from to v1)
   | JFVal2 (v1, fld) =>
-    JFVal2 (JFIValSubstituteVal from to v1, fld)
+    JFVal2 (JFValSubstituteVal from to v1, fld)
   | JFThrow v1 =>
-    JFThrow  (JFIValSubstituteVal from to v1)
+    JFThrow  (JFValSubstituteVal from to v1)
   | JFTry e1 mu C x e2 =>
     if String.eqb x from then
       JFTry (JFIExprSubstituteVal from to e1) mu C x e2
@@ -95,7 +115,7 @@ Fixpoint JFIExprSubstituteVals (froms : list string) (tos: list JFVal) (e : JFEx
   | _ => None
   end.
 
-Fixpoint JFITermSubstituteVal (from : string) (to : JFVal) (t : JFITerm) : JFITerm :=
+Fixpoint JFITermSubstituteVal (from : string) (to : JFIVal) (t : JFITerm) : JFITerm :=
     match t with
     | JFITrue => JFITrue
     | JFIFalse => JFIFalse
@@ -107,7 +127,7 @@ Fixpoint JFITermSubstituteVal (from : string) (to : JFVal) (t : JFITerm) : JFITe
     | JFIHoare t1 e ex valueName t2 =>
         JFIHoare
           (JFITermSubstituteVal from to t1)
-          (JFIExprSubstituteVal from to e)
+          (JFIExprSubstituteVal from (JFIValToJFVal to) e)
            ex
            valueName
           (JFITermSubstituteVal from to t2)
@@ -117,7 +137,7 @@ Fixpoint JFITermSubstituteVal (from : string) (to : JFVal) (t : JFITerm) : JFITe
     | JFIWand t1 t2 => JFIWand (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
     end.
 
-Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFVal) (t : JFITerm) : JFITerm :=
+Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFIVal) (t : JFITerm) : JFITerm :=
   match froms with
     | [] => t
     | from :: froms' =>
@@ -128,10 +148,10 @@ Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFVal) (t : JFI
   end.
 
 Definition JFITermSubstituteVar (from : string) (to : string) (t : JFITerm) : JFITerm :=
-    JFITermSubstituteVal from (JFSyn (JFVar to)) t.
+    JFITermSubstituteVal from (JFIVar to) t.
 
 Definition JFIValSubstituteEnv (env : JFITermEnv) (val : JFVal)  :=
-  StrMap.fold (fun k v a => JFIValSubstituteVal k (JFVLoc v) a) env val.
+  StrMap.fold (fun k v a => JFValSubstituteVal k (JFVLoc v) a) env val.
 
 Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
   match e with
@@ -225,7 +245,7 @@ Proof.
   + rewrite StrMap.fold_1.
     induction (StrMap.elements (elt:=Loc) env); auto.
     unfold fold_left.
-    unfold JFIValSubstituteVal.
+    unfold JFValSubstituteVal.
     replace (String.eqb x (fst a)) with false.
     ++ apply IHl.
        intros a0 a0_in_l.
@@ -244,6 +264,13 @@ Lemma ValEnvSubstitutionReplacesVarInEnv : forall env x l,
 Proof.
 Admitted.
 
+Lemma ValEnvSubstitutionReplacesNthVarInEnv : forall var env l vs n,
+  StrMap.find var env = Some l ->
+  nth_error vs n = Some (JFSyn (JFVar var)) ->
+  nth_error (map (JFIValSubstituteEnv env) vs) n = Some (JFVLoc l).
+Proof.
+Admitted.
+
 Lemma ExprEnvSubstitutionPreservesVLoc : forall env loc,
   JFIExprSubstituteEnv env (JFVal1 (JFVLoc loc)) = JFVal1 (JFVLoc loc).
 Proof.
@@ -254,10 +281,10 @@ Proof.
 Qed.
 
 Lemma ValSubstituteIdentity : forall x v,
-  JFIValSubstituteVal x (JFSyn (JFVar x)) v = v.
+  JFValSubstituteVal x (JFSyn (JFVar x)) v = v.
 Proof.
   intros x v.
-  unfold JFIValSubstituteVal.
+  unfold JFValSubstituteVal.
   destruct v; try trivial.
   destruct x0; try trivial.
   destruct (Classical_Prop.classic (x0 = x)).
@@ -271,7 +298,7 @@ Proof.
 Qed.
 
 Lemma ValMapSubstituteIdentity : forall x vs,
-  map (JFIValSubstituteVal x (JFSyn (JFVar x))) vs = vs.
+  map (JFValSubstituteVal x (JFSyn (JFVar x))) vs = vs.
 Proof.
   intros x vs.
   induction vs; try trivial.
@@ -311,30 +338,9 @@ Proof.
     destruct (String.eqb x0 x); trivial.
 Qed.
 
-Lemma TermSubstituteIdentity : forall x q,
-  JFITermSubstituteVal x (JFSyn (JFVar x)) q = q.
-Proof.
-  intros x q.
-  unfold JFITermSubstituteVal.
-  induction q; fold JFITermSubstituteVal in *.
-  + trivial.
-  + trivial.
-  + rewrite IHq1; rewrite IHq2; trivial.
-  + rewrite IHq1; rewrite IHq2; trivial.
-  + rewrite IHq1; rewrite IHq2; trivial.
-  + destruct (String.eqb name x); try trivial.
-    rewrite IHq; trivial.
-  + destruct (String.eqb name x); try trivial.
-    rewrite IHq; trivial.
-  + rewrite IHq1; rewrite IHq2; rewrite ExprSubstituteIdentity; trivial.
-  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
-  + rewrite ValSubstituteIdentity; rewrite ValSubstituteIdentity; trivial.
-  + rewrite IHq1; rewrite IHq2; trivial.
-  + rewrite IHq1; rewrite IHq2; trivial.
-Qed.
 
 Lemma ValSubstitutePreservesDifferentVar : forall x y v,
-  x <> y -> JFIValSubstituteVal x v (JFSyn (JFVar y)) = (JFSyn (JFVar y)).
+  x <> y -> JFValSubstituteVal x v (JFSyn (JFVar y)) = (JFSyn (JFVar y)).
 Proof.
 Admitted.
 
@@ -346,20 +352,20 @@ Admitted.
 
 Lemma SubstituteValEnvComm : forall x l v env,
   ~StrMap.In x env ->
-  (JFIValSubstituteEnv env (JFIValSubstituteVal x (JFVLoc l) v)) =
-  (JFIValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env v)).
+  (JFIValSubstituteEnv env (JFValSubstituteVal x (JFVLoc l) v)) =
+  (JFValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env v)).
 Proof.
   intros x l v env.
   intros x_not_in_env.
   destruct v.
-  + unfold JFIValSubstituteVal.
+  + unfold JFValSubstituteVal.
     rewrite ValEnvSubstitutionPreservesVLoc.
     trivial.
   + destruct x0.
     ++ destruct (Classical_Prop.classic (x = x0)) as [x_eq_x0 | x_ne_x0].
        +++ rewrite <- x_eq_x0 in *.
            rewrite ValEnvSubstitutionPreservesVarNotInEnv; try assumption.
-           unfold JFIValSubstituteVal.
+           unfold JFValSubstituteVal.
            destruct (String.eqb x x).
            - rewrite ValEnvSubstitutionPreservesVLoc.
              trivial.
@@ -367,7 +373,7 @@ Proof.
              trivial.
        +++ rewrite ValSubstitutePreservesDifferentVar; try assumption.
            admit.
-    ++ unfold JFIValSubstituteVal.
+    ++ unfold JFValSubstituteVal.
        rewrite ValEnvSubstitutionPreservesThis.
        trivial.
 Admitted.
