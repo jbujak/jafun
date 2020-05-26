@@ -2226,10 +2226,14 @@ Definition PiMapsTo l1 l2 (pi : HeapPermutation) :=
   | _ => False
   end.
 
+Definition CorrectPermutation (pi : HeapPermutation) :=
+  forall n1 n2, NatMap.MapsTo n1 n2 (fst pi) <-> NatMap.MapsTo n2 n1 (snd pi).
+
 Definition HeapsPermuted (h1 h2 : Heap) pi :=
+  CorrectPermutation pi /\
+  (forall x, Heap.In x h1 <-> Heap.In x h2) /\
   forall n1 n2 o1 cn1 o2 cn2 f v1 v2,
     NatMap.MapsTo n1 n2 (fst pi) ->
-    NatMap.MapsTo n2 n1 (snd pi) ->
     Heap.MapsTo n1 (o1, cn1) h1 ->
     Heap.MapsTo n2 (o2, cn2) h2 ->
     JFXIdMap.MapsTo f v1 o1 ->
@@ -2237,6 +2241,7 @@ Definition HeapsPermuted (h1 h2 : Heap) pi :=
     (cn1 = cn2 /\ PiMapsTo v1 v2 pi).
 
 Definition EnvsPermuted env1 env2 pi :=
+  (forall x, StrMap.In x env1 <-> StrMap.In x env2) /\
   forall x l1 l2,
     StrMap.MapsTo x l1 env1 -> StrMap.MapsTo x l2 env2 ->
     PiMapsTo l1 l2 pi.
@@ -2357,7 +2362,7 @@ Proof.
     as [(loc & x_loc_env) | asdf].
   + rewrite x_loc_env.
     rewrite <-StrMapFacts.find_mapsto_iff in x_loc_env.
-    apply (pi_env x l) in x_loc_env.
+    apply ((proj2 pi_env) x l) in x_loc_env.
     ++ unfold PiMapsTo in x_loc_env.
     destruct l, loc; try easy.
 Admitted.
@@ -2412,19 +2417,129 @@ Proof.
     now apply PermutationEqImplication with (pi := pi').
 Qed.
 
-Lemma PermutationFieldEqImplication : forall h h' x1 x2 env env_perm pi CC,
+Lemma ExistsInEnvPerm : forall var env env_perm l pi,
   EnvsPermuted env env_perm pi ->
-  JFIHeapSatisfiesInEnv h (JFIEq x1 x2) env CC ->
-  JFIHeapSatisfiesInEnv h' (JFIEq x1 x2) env_perm CC.
+  StrMap.find var env = Some l ->
+  (exists l_perm, StrMap.find var env_perm = Some l_perm /\ PiMapsTo l l_perm pi).
 Proof.
+Admitted.
+
+Lemma PermFieldEq : forall o o_perm f v v_perm h h_perm pi,
+  JFIObjFieldEq o f v h ->
+  HeapsPermuted h h_perm pi ->
+  PiMapsTo o o_perm pi ->
+  PiMapsTo v v_perm pi ->
+  JFIObjFieldEq o_perm f v_perm h_perm.
+Proof.
+Admitted.
+
+Lemma FieldEqFindObj : forall env env_perm h h_perm var l l_perm f pi,
+  EnvsPermuted env env_perm pi ->
+  HeapsPermuted h h_perm pi ->
+  PiMapsTo l l_perm pi ->
+  match StrMap.find var env with
+  | Some objLoc => JFIObjFieldEq objLoc f l h
+  | None => False
+  end ->
+  match StrMap.find var env_perm with
+  | Some objLoc => JFIObjFieldEq objLoc f l_perm h_perm
+  | None => False
+  end.
+Proof.
+  intros env env_perm h h_perm var l l_perm f pi.
+  intros pi_env pi_h pi_l env_eq.
+  destruct (Classical_Prop.classic (exists l, StrMap.find var env = Some l)) as [ (o & var_o_env) | not_find ].
+  + destruct (ExistsInEnvPerm var env env_perm o pi pi_env var_o_env) as (o_perm & var_o_env_perm & pi_o).
+    rewrite var_o_env_perm.
+    rewrite var_o_env in env_eq.
+    now apply PermFieldEq with (o := o) (v := l) (h := h) (pi := pi).
+  + exfalso.
+    apply not_find.
+    destruct (StrMap.find (elt:=Loc) var env).
+    now exists l0.
+    destruct env_eq.
+Qed.
+
+Lemma FieldEqFindField : forall env env_perm h h_perm var o o_perm f pi,
+  EnvsPermuted env env_perm pi ->
+  HeapsPermuted h h_perm pi ->
+  PiMapsTo o o_perm pi ->
+  match StrMap.find var env with
+  | Some valLoc => JFIObjFieldEq o f valLoc h
+  | None => False
+  end ->
+  match StrMap.find var env_perm with
+  | Some valLoc => JFIObjFieldEq o_perm f valLoc h_perm
+  | None => False
+  end.
+Proof.
+  intros env env_perm h h_perm var o o_perm f pi.
+  intros pi_env pi_h pi_o env_eq.
+  destruct (Classical_Prop.classic (exists l, StrMap.find var env = Some l)) as [ (l & var_l_env) | not_find ].
+  + destruct (ExistsInEnvPerm var env env_perm l pi pi_env var_l_env) as (l_perm & var_l_env_perm & pi_l).
+    rewrite var_l_env_perm.
+    rewrite var_l_env in env_eq.
+    now apply PermFieldEq with (o := o) (v := l) (h := h) (pi := pi).
+  + exfalso.
+    apply not_find.
+    destruct (StrMap.find (elt:=Loc) var env).
+    now exists l.
+    destruct env_eq.
+Qed.
+
+Lemma PermutationFieldEqImplication : forall h h_perm o f v env env_perm pi CC,
+  EnvsPermuted env env_perm pi ->
+  HeapsPermuted h h_perm pi ->
+  JFIHeapSatisfiesInEnv h (JFIFieldEq o f v) env CC ->
+  JFIHeapSatisfiesInEnv h_perm (JFIFieldEq o f v) env_perm CC.
+Proof.
+  intros h h_perm o f v env env_perm pi CC.
+  intros pi_env pi_h env_eq.
+  simpl in *.
+  unfold EnvsPermuted in pi_env.
+  unfold HeapsPermuted in pi_h.
+  unfold JFIValToLoc in *.
+  destruct o, v; try easy.
+  + now apply FieldEqFindField with (env := env) (h := h) (o := null) (pi := pi).
+  + admit. (* TODO this *)
+  + admit. (* TODO this *)
+  + admit. (* TODO this *)
+  + now apply FieldEqFindObj with (env := env) (h := h) (l := null) (pi := pi).
+  + admit. (* TODO this *)
+  + destruct (Classical_Prop.classic (exists l, StrMap.find var env = Some l)) as [ (o & var_o_env) | not_find ].
+    ++ destruct (ExistsInEnvPerm var env env_perm o pi pi_env var_o_env) as (o_perm & var_o_env_perm & pi_o).
+       rewrite var_o_env_perm.
+       rewrite var_o_env in env_eq.
+       now apply FieldEqFindField with (env := env) (h := h) (o := o) (pi := pi).
+    ++ exfalso.
+       apply not_find.
+       destruct (StrMap.find (elt:=Loc) var env).
+       now exists l.
+       destruct env_eq.
 Admitted.
 
 Lemma PermutationPreservesFieldEqSatisfying : forall o f v,
   PermutationPreservesSatisfying (JFIFieldEq o f v).
 Proof.
   intros o f v h h_perm env env_perm pi CC pi_h pi_env.
-  split; simpl; intros eq_in_env.
-  + 
+  split.
+  + now apply PermutationFieldEqImplication with (pi := pi).
+  + destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+    apply pi'_envs in pi_env.
+    apply pi'_heaps in pi_h.
+    apply PermutationFieldEqImplication with (pi := pi'); try easy.
+Qed.
+
+Lemma PermutationPreservesSepSatisfying : forall t1 t2,
+  PermutationPreservesSatisfying t1 ->
+  PermutationPreservesSatisfying t2 ->
+  PermutationPreservesSatisfying (JFISep t1 t2).
+Proof.
+  intros t1 t2 t1_preserving t2_preserving h h_perm env env_perm pi CC pi_h pi_env.
+  split.
+  + intros sep_in_env.
+    simpl in sep_in_env.
+    simpl.
 Admitted.
 
 Lemma PermutationPreservesHeapSatisfying : forall t,
@@ -2437,6 +2552,7 @@ Proof.
   + admit. (* TODO hoare *)
   + now apply PermutationPreservesEqSatisfying with (pi := pi).
   + now apply PermutationPreservesFieldEqSatisfying with (pi := pi).
+  +
 Admitted.
 
 Lemma AddingNullPreservesHeapSatisfying : forall h t x env CC,
