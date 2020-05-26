@@ -2254,8 +2254,41 @@ Proof.
 Admitted.
 
 Lemma InvertPermutation : forall pi, exists pi',
-  (forall h1 h2, HeapsPermuted h1 h2 pi -> HeapsPermuted h2 h1 pi') /\
-  (forall env1 env2, EnvsPermuted env1 env2 pi -> EnvsPermuted env2 env1 pi').
+   CorrectPermutation pi' /\
+  (forall h1 h2, HeapsPermuted h1 h2 pi <-> HeapsPermuted h2 h1 pi') /\
+  (forall env1 env2, EnvsPermuted env1 env2 pi <-> EnvsPermuted env2 env1 pi').
+Proof.
+Admitted.
+
+Lemma ExistsPermutedHeap : forall h pi,
+  CorrectPermutation pi ->
+  exists h', HeapsPermuted h h' pi.
+Proof.
+Admitted.
+
+Lemma DisjointPermuted : forall h1 h1_perm h2 h2_perm pi,
+  JFIHeapsDisjoint h1 h2 ->
+  HeapsPermuted h1 h1_perm pi ->
+  HeapsPermuted h2 h2_perm pi ->
+  JFIHeapsDisjoint h1_perm h2_perm.
+Proof.
+Admitted.
+
+Lemma UnionPermuted : forall h1 h1_perm h2 h2_perm h h_perm pi,
+  JFIHeapsUnion h1 h2 h ->
+  HeapsPermuted h1 h1_perm pi ->
+  HeapsPermuted h2 h2_perm pi ->
+  HeapsPermuted h h_perm pi ->
+  JFIHeapsUnion h1_perm h2_perm h_perm.
+Proof.
+Admitted.
+
+Lemma DisjointUnionPermuted : forall h1 h1_perm h2 h2_perm h h_perm pi,
+  JFIDisjointUnion h1 h2 h ->
+  HeapsPermuted h1 h1_perm pi ->
+  HeapsPermuted h2 h2_perm pi ->
+  HeapsPermuted h h_perm pi ->
+  JFIDisjointUnion h1_perm h2_perm h_perm.
 Proof.
 Admitted.
 
@@ -2302,7 +2335,7 @@ Proof.
     unfold env', env_perm'.
     now apply ExtendedEnvsPermuted.
   + intros (l_perm & l_perm_of_type & h_satisfies_t).
-    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+    destruct (InvertPermutation pi) as (pi' & _ & pi'_heaps & pi'_envs).
     apply pi'_heaps in pi_h.
     apply pi'_envs in pi_env.
     destruct (PiMapsToSameType h_perm h pi' l_perm type pi_h l_perm_of_type)
@@ -2325,9 +2358,9 @@ Proof.
   split.
   + simpl.
     intros h_satisfies_forall l_perm l_perm_of_type.
-    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
-    assert (pi'_h := pi'_heaps h h_perm pi_h); clear pi'_heaps.
-    assert (pi'_env := pi'_envs env env_perm pi_env); clear pi'_envs.
+    destruct (InvertPermutation pi) as (pi' & _ & pi'_heaps & pi'_envs).
+    assert (pi'_h := (proj1 (pi'_heaps h h_perm)) pi_h); clear pi'_heaps.
+    assert (pi'_env := (proj1 (pi'_envs env env_perm)) pi_env); clear pi'_envs.
     destruct (PiMapsToSameType h_perm h pi' l_perm type pi'_h l_perm_of_type)
       as (l & pi_l & l_of_type).
     set (env' := StrMap.add name l env).
@@ -2524,10 +2557,32 @@ Proof.
   intros o f v h h_perm env env_perm pi CC pi_h pi_env.
   split.
   + now apply PermutationFieldEqImplication with (pi := pi).
-  + destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
+  + destruct (InvertPermutation pi) as (pi' & _ & pi'_heaps & pi'_envs).
     apply pi'_envs in pi_env.
     apply pi'_heaps in pi_h.
-    apply PermutationFieldEqImplication with (pi := pi'); try easy.
+    now apply PermutationFieldEqImplication with (pi := pi').
+Qed.
+
+Lemma PermutationSepImplication : forall t1 t2 h h_perm env env_perm pi CC,
+  PermutationPreservesSatisfying t1 ->
+  PermutationPreservesSatisfying t2 ->
+  HeapsPermuted h h_perm pi ->
+  EnvsPermuted env env_perm pi ->
+  JFIHeapSatisfiesInEnv h (JFISep t1 t2) env CC ->
+  JFIHeapSatisfiesInEnv h_perm (JFISep t1 t2) env_perm CC.
+Proof.
+  intros t1 t2 h h_perm env env_perm pi CC IH_t1 IH_t2 pi_h pi_env.
+  intros sep_in_env.
+  assert (pi_correct := proj1 pi_h).
+  destruct sep_in_env as (h1 & h2 & disj_union & h1_satisfies_t1 & h2_satisfies_t2).
+  destruct (ExistsPermutedHeap h1 pi) as (h1_perm & pi_h1); trivial.
+  destruct (ExistsPermutedHeap h2 pi) as (h2_perm & pi_h2); trivial.
+  exists h1_perm, h2_perm.
+  split.
+  now apply DisjointUnionPermuted with (h1 := h1) (h2 := h2) (h := h) (pi := pi).
+  split.
+  now apply (IH_t1 h1 h1_perm env env_perm pi CC).
+  now apply (IH_t2 h2 h2_perm env env_perm pi CC).
 Qed.
 
 Lemma PermutationPreservesSepSatisfying : forall t1 t2,
@@ -2535,12 +2590,61 @@ Lemma PermutationPreservesSepSatisfying : forall t1 t2,
   PermutationPreservesSatisfying t2 ->
   PermutationPreservesSatisfying (JFISep t1 t2).
 Proof.
-  intros t1 t2 t1_preserving t2_preserving h h_perm env env_perm pi CC pi_h pi_env.
+  intros t1 t2 IH_t1 IH_t2 h h_perm env env_perm pi CC pi_h pi_env.
   split.
-  + intros sep_in_env.
-    simpl in sep_in_env.
-    simpl.
-Admitted.
+  + now apply PermutationSepImplication with (pi := pi).
+  + destruct (InvertPermutation pi) as (pi' & _ & pi'_heaps & pi'_envs).
+    apply pi'_envs in pi_env.
+    apply pi'_heaps in pi_h.
+    now apply PermutationSepImplication with (pi := pi').
+Qed.
+
+Lemma PermutationWandImplication : forall t1 t2 h h_perm env env_perm pi CC,
+  PermutationPreservesSatisfying t1 ->
+  PermutationPreservesSatisfying t2 ->
+  HeapsPermuted h h_perm pi ->
+  EnvsPermuted env env_perm pi ->
+  JFIHeapSatisfiesInEnv h (JFIWand t1 t2) env CC ->
+  JFIHeapSatisfiesInEnv h_perm (JFIWand t1 t2) env_perm CC.
+Proof.
+  intros t1 t2 h h_perm env env_perm pi CC IH_t1 IH_t2 pi_h pi_env.
+  intros wand_in_env.
+  assert (pi_correct := proj1 pi_h).
+  intros h'_perm disj_perm h'_satisfies_t1.
+  destruct (InvertPermutation pi) as (pi' & pi'_correct & pi'_heaps & pi'_envs).
+  destruct (ExistsPermutedHeap h'_perm pi') as (h' & pi_h'); trivial.
+  assert (pi'_h := pi_h).
+  apply pi'_heaps in pi'_h.
+  assert (h_h'_disj : JFIHeapsDisjoint h h').
+  now apply DisjointPermuted with (h1 := h_perm) (h2 := h'_perm) (pi := pi').
+
+  simpl in wand_in_env.
+  assert (pi'_h' := pi_h').
+  apply pi'_heaps in pi_h'.
+  assert (pi'_env := pi_env).
+  apply pi'_envs in pi'_env.
+  apply (IH_t1 h'_perm h' env_perm env pi' CC) in h'_satisfies_t1; try easy.
+  destruct (wand_in_env h' h_h'_disj h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
+  destruct (ExistsPermutedHeap h_h' pi) as (h_h'_perm & pi_h_h'); trivial.
+  exists h_h'_perm.
+  split; trivial.
+  now apply UnionPermuted with (h1 := h) (h2 := h') (h := h_h') (pi := pi).
+  now apply (IH_t2 h_h' h_h'_perm env env_perm pi CC).
+Qed.
+
+Lemma PermutationPreservesWandSatisfying : forall t1 t2,
+  PermutationPreservesSatisfying t1 ->
+  PermutationPreservesSatisfying t2 ->
+  PermutationPreservesSatisfying (JFIWand t1 t2).
+Proof.
+  intros t1 t2 IH_t1 IH_t2 h h_perm env env_perm pi CC pi_h pi_env.
+  split.
+  + now apply PermutationWandImplication with (pi := pi).
+  + destruct (InvertPermutation pi) as (pi' & _ & pi'_heaps & pi'_envs).
+    apply pi'_envs in pi_env.
+    apply pi'_heaps in pi_h.
+    now apply PermutationWandImplication with (pi := pi').
+Qed.
 
 Lemma PermutationPreservesHeapSatisfying : forall t,
   PermutationPreservesSatisfying t .
@@ -2552,7 +2656,8 @@ Proof.
   + admit. (* TODO hoare *)
   + now apply PermutationPreservesEqSatisfying with (pi := pi).
   + now apply PermutationPreservesFieldEqSatisfying with (pi := pi).
-  +
+  + now apply PermutationPreservesSepSatisfying with (pi := pi).
+  + now apply PermutationPreservesWandSatisfying with (pi := pi).
 Admitted.
 
 Lemma AddingNullPreservesHeapSatisfying : forall h t x env CC,
