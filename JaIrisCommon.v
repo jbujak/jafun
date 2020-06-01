@@ -20,10 +20,12 @@ Require Import FMapFacts.
 
 Module StrMap := FMapAVL.Make(String_as_OT).
 Module StrMapFacts := Facts StrMap.
+Module NatMapFacts := Facts NatMap.
 
 Definition JFITermEnv : Type := StrMap.t Loc.
 Definition JFITypeEnv : Type := StrMap.t JFClassName.
-Definition HeapPermutation : Type :=  (NatMap.t nat * NatMap.t nat).
+Definition HeapInjection : Type := NatMap.t nat.
+Definition HeapPermutation : Type :=  (HeapInjection * HeapInjection).
 
 Inductive JFIVal : Type :=
   | JFINull
@@ -213,6 +215,17 @@ Proof.
 Qed.
 
 Lemma HeapEqKeyEltEquivalence : Equivalence (Heap.eq_key_elt (elt:=Obj)).
+Proof.
+  unfold StrMap.eq_key_elt.
+  unfold StrMap.Raw.Proofs.PX.eqke.
+  split; try firstorder.
+  split;
+  destruct H, H0.
+  + now rewrite H, H0.
+  + now rewrite H1, H2.
+Qed.
+
+Lemma JFXIdMapEqKeyEltEquivalence : Equivalence (JFXIdMap.eq_key_elt (elt:=Loc)).
 Proof.
   unfold StrMap.eq_key_elt.
   unfold StrMap.Raw.Proofs.PX.eqke.
