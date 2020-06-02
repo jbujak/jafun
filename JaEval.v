@@ -238,6 +238,15 @@ Fixpoint StacksPermuted st st' pi :=
 Definition PermutationSubset (pi pi' : HeapPermutation) :=
   forall l1 l2, PiMapsTo l1 l2 pi -> PiMapsTo l1 l2 pi'.
 
+Lemma PermutationSubsetTrans : forall pi1 pi2 pi3,
+  PermutationSubset pi1 pi2 ->
+  PermutationSubset pi2 pi3 ->
+  PermutationSubset pi1 pi3.
+Proof.
+  intros pi1 pi2 pi3 pi1_pi2 pi2_pi3 x l pi1_x_l.
+  now apply pi2_pi3, pi1_pi2.
+Qed.
+
 Lemma ExistsPermutedResult : forall res A stn_ext pi',
   StacksPermuted [ [] [[JFVal1 (JFVLoc res) ]]_ A] stn_ext pi' ->
   exists res', PiMapsTo res res' pi' /\
@@ -260,22 +269,52 @@ Proof.
   now rewrite A_eq.
 Qed.
 
-Lemma ReductionPreservesHeapPermutation : forall h st h' st' h_perm st_perm st'_perm pi CC,
-  HeapsPermuted h h_perm pi ->
+Lemma ReductionPreservesHeapPermutation : forall h0 h0_perm h0' h0_ext st h' st' st_perm pi CC,
   StacksPermuted st st_perm pi ->
-  red CC (h, st) = Some (h', st') ->
-  exists h'_perm pi',
+  HeapsPermuted h0 h0_perm pi ->
+  red CC (h0, st) = Some (h', st') ->
+  JFIDisjointUnion h0_perm h0' h0_ext ->
+  exists h'_perm h'_ext st'_perm pi',
     PermutationSubset pi pi' /\
     HeapsPermuted h' h'_perm pi' /\
     StacksPermuted st' st'_perm pi' /\
-    red CC (h_perm, st_perm) = Some (h'_perm, st'_perm).
+    JFIDisjointUnion h'_perm h0' h'_ext /\
+    red CC (h0_ext, st_perm) = Some (h'_ext, st'_perm).
 Proof.
 Admitted.
 
-Lemma PartialEvaluationOnExtendedHeap : forall h0 h0' h0_ext st st_ext confs hn stn pi CC,
+Lemma PermutationEvalAux1 : forall h st confs hn stn CC,
+  match red CC (h, st) with
+  | Some (h, st) => JFIPartialEval h st confs hn stn CC
+  | None => False
+  end ->
+  exists h' st', red CC (h, st) = Some (h', st') /\
+    JFIPartialEval h' st' confs hn stn CC.
+Proof.
+  intros.
+  destruct (red CC (h, st)); try destruct H.
+  destruct p.
+  now exists h0, f.
+Qed.
+
+Lemma PermutationEvalAux2 : forall h0_ext st_ext h'_ext st'_perm confs_ext hn_ext stn_ext CC,
+  red CC (h0_ext, st_ext) = Some (h'_ext, st'_perm) ->
+  JFIPartialEval h'_ext st'_perm confs_ext hn_ext stn_ext CC ->
+  match red CC (h0_ext, st_ext) with
+  | Some (h1, st0) =>
+      JFIPartialEval h1 st0 confs_ext hn_ext stn_ext CC
+  | None => False
+  end.
+Proof.
+  intros.
+  now rewrite H.
+Qed.
+
+Lemma PartialEvaluationOnExtendedHeap : forall confs h0 h0_perm h0' h0_ext st st_ext hn stn pi CC,
   StacksPermuted st st_ext pi ->
+  HeapsPermuted h0 h0_perm pi ->
   JFIPartialEval h0 st confs hn stn CC ->
-  JFIDisjointUnion h0 h0' h0_ext ->
+  JFIDisjointUnion h0_perm h0' h0_ext ->
   exists confs_ext hn_perm hn_ext stn_ext pi',
     PermutationSubset pi pi' /\
     HeapsPermuted hn hn_perm pi' /\
@@ -283,8 +322,35 @@ Lemma PartialEvaluationOnExtendedHeap : forall h0 h0' h0_ext st st_ext confs hn 
     JFIDisjointUnion hn_perm h0' hn_ext /\ 
     JFIPartialEval h0_ext st_ext confs_ext hn_ext stn_ext CC.
 Proof.
-Admitted.
-
+  intros confs.
+  induction confs.
+  + intros h0 h0_perm h0' h0_ext st st_ext hn stn pi CC.
+    intros pi_h pi_st eval union.
+    unfold JFIPartialEval in eval.
+    destruct eval as (h0_eq & st_eq).
+    exists [], h0_perm, h0_ext, st_ext, pi.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+    ++ now rewrite <-h0_eq.
+    ++ now rewrite <-st_eq.
+  + intros h0 h0_perm h0' h0_ext st st_ext hn stn pi CC.
+    intros pi_h pi_st eval union.
+    unfold JFIPartialEval in eval.
+    fold JFIPartialEval in eval.
+    destruct a.
+    destruct eval as (h_eq & st_eq & eval).
+    apply PermutationEvalAux1 in eval as (h' & st' & red_is_some & eval).
+    destruct (ReductionPreservesHeapPermutation h0 h0_perm h0' h0_ext st h' st' st_ext pi CC)
+      as (h'_perm & h'_ext & st'_perm & pi' & pi_subset & pi'_h' & pi'_st' & union' & red_ext); trivial.
+    destruct (IHconfs h' h'_perm h0' h'_ext st' st'_perm hn stn pi' CC)
+      as (confs_ext & hn_perm & hn_ext & stn_ext & pin &
+          pi'_subset & pin_hn & pin_stn & union_n & eval_rest); trivial.
+    exists ((h0_ext,st_ext)::confs_ext), hn_perm, hn_ext, stn_ext, pin.
+    split; [ | split; [ | split; [ | split]]]; trivial.
+    now apply PermutationSubsetTrans with (pi2 := pi').
+    unfold JFIPartialEval; fold JFIPartialEval.
+    split; [ | split]; trivial.
+    now apply PermutationEvalAux2 with (h'_ext := h'_ext) (st'_perm := st'_perm).
+Qed.
 
 Theorem EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env CC,
    JFIEvalInEnv h0 e confs hn res_ex res env CC ->
@@ -302,14 +368,15 @@ Proof.
 
   assert (pi : HeapPermutation). admit.
   assert (pi_env : EnvsPermuted env env pi). admit.
-  assert (st_permuted : StacksPermuted 
+  assert (pi_h : HeapsPermuted h0 h0 pi). admit.
+  assert (pi_st : StacksPermuted 
     [ [] [[ JFIExprSubstituteEnv env e ]]_ None]
     [ [] [[ JFIExprSubstituteEnv env e ]]_ None] pi). admit.
 
-  destruct (PartialEvaluationOnExtendedHeap h0 h0' h0_ext 
+  destruct (PartialEvaluationOnExtendedHeap confs h0 h0 h0' h0_ext 
     [ [] [[JFIExprSubstituteEnv env e ]]_ None]
     [ [] [[JFIExprSubstituteEnv env e ]]_ None]
-    confs hn [ [] [[ JFVal1 (JFVLoc res) ]]_ res_ex] pi CC)
+    hn [ [] [[ JFVal1 (JFVLoc res) ]]_ res_ex] pi CC)
     as (confs_ext & hn_perm & hn_ext & stn_ext & pi' &
        pi_subset & pi'_hn & pi'_stn & hn_union & ext_eval); trivial.
 
