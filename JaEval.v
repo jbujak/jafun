@@ -13,6 +13,7 @@ Require Import JaEnvs.
 Require Import Jafun.
 Require Import JaSubtype.
 Require Import Bool.
+Require Import JaIrisPermutation.
 Require Import JaIrisCommon.
 Require Import Classical_Prop.
 
@@ -180,6 +181,28 @@ Lemma ExtendedEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_
   JFIPartialEval h ([ (ctxs  ++ [ctx]) [[ e  ]]_ A  ]) ext_confs hn
                     [ (ctxs' ++ [ctx]) [[ e' ]]_ e_A] CC.
 Proof.
+Admitted.
+
+(* ======================= Evaluation on extended heap ======================= *)
+
+Lemma ReductionPreservesHeapPermutation : forall h st h' st' h_perm st_perm h'_perm st'_perm CC,
+  red CC (h, st) = Some (h', st') ->
+  red CC (h_perm, st_perm) = Some (h'_perm, st'_perm).
+Proof.
+Admitted.
+
+Theorem EvaluationOnExtendedHeap : forall h0 h0' h0_ext e confs hn res_ex res env CC,
+   JFIEvalInEnv h0 e confs hn res_ex res env CC ->
+   JFIDisjointUnion h0 h0' h0_ext ->
+  (exists confs_ext hn_perm hn_ext res_ext pi,
+      HeapsPermuted hn hn_perm pi /\
+      EnvsPermuted env env pi /\
+      PiMapsTo res res_ext pi /\
+      JFIDisjointUnion hn_perm h0' hn_ext /\ 
+      JFIEvalInEnv h0_ext e confs_ext hn_ext res_ex res_ext env CC).
+Proof.
+  intros h0 h0' h0_ext e confs hn res_ex res env CC.
+  intros eval union.
 Admitted.
 
 (* ======================= Let and Try evaluation ======================= *)

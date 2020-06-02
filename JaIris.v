@@ -24,19 +24,6 @@ Module StrMap := JaIrisCommon.StrMap.
 Module HeapFacts := Facts Heap.
 
 (* Heaps *)
-
-Definition JFIHeapsDisjoint (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
-  (~(Heap.In l h1 /\ Heap.In l h2)).
-
-Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall (l : nat) o,
-  Heap.MapsTo l o h1 -> Heap.MapsTo l o h2.
-
-Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
-  JFISubheap h1 h /\ JFISubheap h2 h /\ forall l, Heap.In l h -> (Heap.In l h1 \/ Heap.In l h2).
-
-Definition JFIDisjointUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
-  JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2.
-
 Definition JFIObjFieldEq (objLoc : Loc) (fieldName : string) (loc : Loc) (h : Heap) : Prop :=
   match objLoc with
     | null => False
@@ -70,16 +57,6 @@ Definition JFIGetLocType (n : nat) (h : Heap) : option JFClassName :=
   match (Heap.find n h) with
     | None => None
     | Some (_, objClass) => Some objClass
-  end.
-
-Definition JFILocOfType (l : Loc) (h : Heap) (c : JFClassName) : Prop :=
-  match l with
-    | null => True
-    | JFLoc n =>
-      match (Heap.find n h) with
-        | Some (_, objClass) => c = objClass (* TODO also subclasses *)
-        | None => False
-      end
   end.
 
 Definition JFIValToLoc (val : JFIVal) (env : JFITermEnv) : option Loc :=

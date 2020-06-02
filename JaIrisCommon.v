@@ -27,6 +27,33 @@ Definition JFITypeEnv : Type := StrMap.t JFClassName.
 Definition HeapInjection : Type := NatMap.t nat.
 Definition HeapPermutation : Type :=  (HeapInjection * HeapInjection).
 
+Definition JFIHeapsDisjoint (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
+  (~(Heap.In l h1 /\ Heap.In l h2)).
+
+Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall (l : nat) o,
+  Heap.MapsTo l o h1 -> Heap.MapsTo l o h2.
+
+Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
+  JFISubheap h1 h /\ JFISubheap h2 h /\ forall l, Heap.In l h -> (Heap.In l h1 \/ Heap.In l h2).
+
+Definition JFIDisjointUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
+  JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2.
+
+Definition HeapConsistent (h : Heap) := forall n obj f f_n,
+  Heap.MapsTo n obj h ->
+  JFXIdMap.MapsTo f (JFLoc f_n) (fst obj) ->
+  exists obj', Heap.MapsTo f_n obj' h.
+
+Definition JFILocOfType (l : Loc) (h : Heap) (c : JFClassName) : Prop :=
+  match l with
+    | null => True
+    | JFLoc n =>
+      match (Heap.find n h) with
+        | Some (_, objClass) => c = objClass (* TODO also subclasses *)
+        | None => False
+      end
+  end.
+
 Inductive JFIVal : Type :=
   | JFINull
   | JFIThis
@@ -417,4 +444,13 @@ Lemma RemoveVarFromEnv : forall x v l e env,
 Proof.
 Admitted.
 
+Lemma neq_symmetry : forall t (x : t) (y : t), x <> y -> y <> x.
+Proof.
+  intros t x y.
+  intros x_neq_y.
+  unfold not.
+  intros y_eq_x.
+  symmetry in y_eq_x.
+  exact (x_neq_y y_eq_x).
+Qed.
 
