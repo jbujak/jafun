@@ -369,7 +369,7 @@ Fixpoint substExpr (v:JFRef) (l:Loc) (E:JFExpr) {struct E} : JFExpr :=
 (** Substitute the variables from the list [vs] by respective values
     in the list [fs] in [E] (i.e. _"E{fs/vs}"_). 
  *)
-Fixpoint substList fs vs E {struct fs} :=
+(* Fixpoint substList fs vs E {struct fs} :=
   match fs with
     | [] => Some E
     | v1 :: tl =>
@@ -381,6 +381,17 @@ Fixpoint substList fs vs E {struct fs} :=
             | _ => None
           end
       end            
+  end.
+ *)
+Fixpoint substList fs vs E {struct fs} :=
+  match (fs, vs) with
+    | ([], []) => Some E
+    | (v1 :: tl, v2::tl') =>
+        match v2 with
+          | JFVLoc l => substList tl tl' (substExpr v1 l E)
+          | _ => None
+        end
+    | _ => None
   end.
 
 (** A class type combinded with an annotation.

@@ -390,6 +390,12 @@ Proof.
   admit. (* TODO *)
 Admitted.
 
+Lemma SubstExprComm : forall f1 f2 l1 l2 e,
+  f1 <> f2 ->
+  substExpr f1 l1 (substExpr f2 l2 e) = substExpr f2 l2 (substExpr f1 l1 e).
+Proof.
+Admitted.
+
 Lemma SubstituteValEnvComm : forall x l v env,
   ~StrMap.In x env ->
   (JFIValSubstituteEnv env (JFValSubstituteVal x (JFVLoc l) v)) =
@@ -453,4 +459,14 @@ Proof.
   symmetry in y_eq_x.
   exact (x_neq_y y_eq_x).
 Qed.
+
+Ltac Loc_dec_eq l1 l2 l1_eq_l2 :=
+  destruct Loc_dec as [_ | l1_neq_l2];
+  [ | exfalso; apply l1_neq_l2; exact l1_eq_l2].
+
+Ltac Loc_dec_neq l1 l2 l1_neq_l2 :=
+  destruct Loc_dec as [l1_eq_l2 | _];
+  [exfalso; apply l1_neq_l2; exact l1_eq_l2 | ].
+
+
 
