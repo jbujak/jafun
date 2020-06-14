@@ -184,6 +184,13 @@ Proof.
 Admitted.
 
 (* ======================= Evaluation on extended heap ======================= *)
+Fixpoint LocsPermuted ls ls' pi :=
+  match (ls, ls') with
+  | ([], []) => True
+  | (l::ls, l'::ls') => PiMapsTo l l' pi /\ LocsPermuted ls ls' pi
+  | _ => False
+  end.
+
 Fixpoint ValsPermuted vs vs' pi :=
   match (vs, vs') with
   | ([], []) => True
@@ -193,7 +200,8 @@ Fixpoint ValsPermuted vs vs' pi :=
 
 Fixpoint ExprsPermuted e e' pi :=
   match (e, e') with
-  | (JFNew _ _ vs, JFNew _ _ vs') =>
+  | (JFNew mu cn vs, JFNew mu' cn' vs') =>
+      mu = mu' /\ cn = cn' /\
       ValsPermuted vs vs' pi
   | (JFLet cn x e1 e2, JFLet cn' x' e1' e2') =>
       cn = cn' /\ x = x' /\
@@ -506,6 +514,96 @@ Proof.
   now rewrite class_name, method_lookup, subst_perm.
 Admitted.
 
+Lemma AllocOnExtendedHeap : forall h0 h0_perm h0' h0_ext pi CC cn locs locs_perm l0 hp,
+  alloc_init CC h0 cn locs = Some (l0, hp) ->
+  HeapsPermuted h0 h0_perm pi ->
+  LocsPermuted locs locs_perm pi ->
+  JFIDisjointUnion h0_perm h0' h0_ext ->
+  exists pi' l0_perm hp_perm hp_ext,
+    (PermutationSubset pi pi' /\
+     HeapsPermuted hp hp_perm pi' /\
+     PiMapsTo l0 l0_perm pi' /\
+     JFIDisjointUnion hp_perm h0' hp_ext /\
+     alloc_init CC h0_ext cn locs_perm = Some (l0_perm, hp_ext)).
+Proof.
+Admitted.
+
+Lemma EqualLengthInduction : forall {A} p (q : A -> A -> Prop),
+  p [] [] ->
+  (forall (x x' : A) xs xs', q x x' -> p xs xs' -> p (x::xs) (x'::xs')) ->
+  forall xs xs',
+    length xs = length xs' ->
+    p xs xs'.
+Proof.
+Admitted.
+
+Lemma ExtendCtxPermutation : forall ctx ctx_perm pi pi',
+  CtxPermuted ctx ctx_perm pi ->
+  PermutationSubset pi pi' ->
+  CtxPermuted ctx ctx_perm pi'.
+Proof.
+Admitted.
+
+Lemma PermutedCtxsLength : forall ctxs ctxs_perm pi,
+  CtxsPermuted ctxs ctxs_perm pi ->
+  length ctxs = length ctxs_perm.
+Proof.
+  intros ctxs.
+  induction ctxs;
+    intros ctxs_perm pi pi_ctxs;
+    destruct ctxs_perm; try now destruct pi_ctxs.
+  simpl in *.
+  now rewrite IHctxs with (ctxs_perm := ctxs_perm) (pi := pi).
+Qed.
+
+Ltac induction2 l1 l2 length_eq head1 head2 tail1 tail2 :=
+  set (_l1 := l1);
+  set (_l2 := l2);
+  (replace l1 with _l1 in *; try now unfold _l1);
+  (replace l2 with _l2 in *; try now unfold _l2);
+  (replace _l1 with l1 in length_eq; try now unfold _l1);
+  (replace _l2 with l2 in length_eq; try now unfold _l2);
+  (replace _l1 with (fst (split (combine l1 l2))) in *; try now rewrite combine_split);
+  (replace _l2 with (snd (split (combine l1 l2))) in *; try now rewrite combine_split);
+  clear _l1 _l2;
+  induction (combine l1 l2) as [ | _a _l];
+    [unfold split in *
+    | simpl in *; destruct _a as (head1 & head2), (split _l) as (tail1 & tail2)
+    ];
+  unfold fst, snd in *.
+
+Lemma ExtendCtxsPermutation : forall ctxs ctxs_perm pi pi',
+  CtxsPermuted ctxs ctxs_perm pi ->
+  PermutationSubset pi pi' ->
+  CtxsPermuted ctxs ctxs_perm pi'.
+Proof.
+  intros ctxs ctxs_perm pi pi' pi_ctx pi_subset.
+  assert (length_eq : length ctxs = length ctxs_perm).
+    now apply PermutedCtxsLength with (pi := pi).
+  induction2 ctxs ctxs_perm length_eq ctx ctx_perm ctxs' ctxs'_perm; try easy.
+  simpl in *.
+  destruct pi_ctx as (pi_ctx & pi_ctxs).
+  split.
+  now apply ExtendCtxPermutation with (pi := pi).
+  now apply IH_l.
+Qed.
+
+Lemma ExtendStacksPermutation : forall st st_perm pi pi',
+  StacksPermuted st st_perm pi ->
+  PermutationSubset pi pi' ->
+  StacksPermuted st st_perm pi'.
+Proof.
+Admitted.
+
+Lemma LocOfValsPermutation : forall vs locs vs_perm pi,
+  list_map_opt loc_of_val vs = Some locs ->
+  ValsPermuted vs vs_perm pi ->
+  exists locs', 
+    list_map_opt loc_of_val vs_perm = Some locs' /\
+    LocsPermuted locs locs' pi.
+Proof.
+Admitted.
+
 Lemma ReductionPreservesHeapPermutation : forall h0 h0_perm h0' h0_ext st h' st' st_perm pi CC,
   PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi ->
   StacksPermuted st st_perm pi ->
@@ -524,7 +622,45 @@ Proof.
   unfold red in red_st.
   destruct st; try discriminate red_st.
   destruct f, E; try discriminate red_st.
-  + admit.
+  + simpl in pi_st.
+    destruct st_perm; [ destruct pi_st |].
+    destruct pi_st as (pi_f & pi_st).
+    unfold FramesPermuted in pi_f.
+    destruct f.
+    destruct pi_f as (pi_new & pi_ctx & A_eq).
+    destruct A.
+      destruct Ctx; try destruct j0; try discriminate red_st.
+    rewrite <-A_eq in *.
+    destruct E; try (simpl in pi_new; now destruct pi_new).
+    assert (exists locs, list_map_opt loc_of_val vs = Some locs).
+      destruct (list_map_opt loc_of_val vs).
+      now exists l.
+      destruct Ctx; try destruct j; try destruct (alloc_init CC h0 cn l); discriminate red_st.
+    destruct H as (locs & locs_of_vs).
+    rewrite locs_of_vs in red_st.
+    assert (exists l0 hp, alloc_init CC h0 cn locs = Some (l0, hp)).
+      destruct alloc_init.
+      destruct p. now exists l, h.
+      destruct Ctx; try destruct j; discriminate red_st.
+    destruct H as (l0 & hp & alloc_h0).
+    rewrite alloc_h0 in *.
+    assert (h' = hp /\ st' = ((Ctx [[JFVal1 (JFVLoc l0) ]]_ None) :: st)).
+      destruct Ctx; try destruct j; now injection red_st.
+    simpl in pi_new.
+    destruct pi_new as (_ & cn_eq & vs_perm).
+    destruct H as (h'_eq & st'_eq).
+    rewrite h'_eq, st'_eq, <-cn_eq in *.
+    apply LocOfValsPermutation with (vs_perm := vs0) (pi := pi) in locs_of_vs as (locs' & locs'_of_vs0 & locs_permuted); try easy.
+    destruct (AllocOnExtendedHeap h0 h0_perm h0' h0_ext pi CC cn locs locs' l0 hp alloc_h0 pi_h0 locs_permuted union)
+      as (pi' & l0_perm & hp_perm & hp_ext & pi_subset & pi_h_ext & pi_l0 & union_ext & alloc_h_ext).
+    exists hp_perm, hp_ext, ((Ctx0 [[JFVal1 (JFVLoc l0_perm) ]]_ None) :: st_perm), pi'.
+    apply ExtendCtxsPermutation with (pi' := pi') in pi_ctx; try easy.
+    apply ExtendStacksPermutation with (pi' := pi') in pi_st; try easy.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+    simpl.
+    rewrite locs'_of_vs0.
+    rewrite alloc_h_ext.
+    now destruct Ctx0; try destruct j.
   + simpl in pi_st.
     destruct st_perm; [ destruct pi_st |].
     destruct pi_st as (pi_f & pi_st).
@@ -609,7 +745,7 @@ Proof.
     ++ assert (getInvokeBody CC (getClassName h0 n) n m vs h0 Ctx st = Some (h', st')).
          now destruct Ctx; try destruct j.
        destruct l0; try now destruct pi_l.
-       assert (ASdf := ExistsPermutedBody).
+       assert (asdf := ExistsPermutedBody).
        destruct (ExistsPermutedBody CC h0 h0' h0_ext h0_perm n n0 m vs vs0 Ctx Ctx0 st st_perm h' st' pi)
          as (h_eq & st'_perm & pi_st' & invoke); trivial.
        exists h0_perm, h0_ext, st'_perm, pi.
