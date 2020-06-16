@@ -299,6 +299,47 @@ Definition TryPermuteHeap (h : Heap) (pi : HeapPermutation) :=
   | None => None
   end.
 
+
+Lemma MapsToEq : forall (pi : HeapInjection) n1 n2 n2',
+  NatMap.MapsTo n1 n2  pi ->
+  NatMap.MapsTo n1 n2' pi ->
+  n2 = n2'.
+Proof.
+  intros pi n1 n2 n2'.
+  intros n1_n2_pi n1_n2'_pi.
+  apply NatMapFacts.find_mapsto_iff in n1_n2_pi.
+  apply NatMapFacts.find_mapsto_iff in n1_n2'_pi.
+  rewrite n1_n2'_pi in n1_n2_pi.
+  now injection n1_n2_pi.
+Qed.
+
+
+Lemma PiMapsToEqIff : forall l1 l2 l1' l2' pi,
+  Bijection pi ->
+  PiMapsTo l1 l1' pi ->
+  PiMapsTo l2 l2' pi ->
+  (l1 = l2 <-> l1' = l2').
+Proof.
+  intros l1 l2 l1' l2' pi bijection pi_l1 pi_l2.
+  split.
+  + intros l_eq.
+    unfold PiMapsTo in *.
+    destruct l1, l2, l1', l2'; try easy.
+    injection l_eq as n_eq.
+    rewrite <-n_eq in pi_l2.
+    assert (n1_eq := MapsToEq (fst pi) n n1 n2 pi_l1 pi_l2).
+    now rewrite n1_eq.
+  + intros l_eq.
+    unfold PiMapsTo in *.
+    destruct l1, l2, l1', l2'; try easy.
+    apply bijection in pi_l1.
+    apply bijection in pi_l2.
+    injection l_eq as n1_eq.
+    rewrite <-n1_eq in pi_l2.
+    assert (n_eq := MapsToEq (snd pi) n1 n n0 pi_l1 pi_l2).
+    now rewrite n_eq.
+Qed.
+
 Lemma ObjFldsAux : forall n (pi : HeapPermutation) field_name n' (flds' : list (string * Loc)),
 NatMap.find (elt:=nat) n (fst pi) = Some n' ->
 match
@@ -437,11 +478,61 @@ Qed.
 
 Lemma PermutationDoesntAddNewHeapElements : forall n1 n2 els new_els pi,
   TryPermuteHeapElements els pi = Some new_els ->
-  (~exists o1', In (n1, o1') els) ->
+  (~exists o1, In (n1, o1) els) ->
+  Bijection pi ->
   NatMap.MapsTo n1 n2 (fst pi) ->
-  (~exists o2', In (n2, o2') new_els).
+  (~exists o2, In (n2, o2) new_els).
 Proof.
-Admitted.
+  intros n1 n2 els.
+  induction els; intros new_els pi pi_els n1_not_in_els bijection pi_n.
+  + intros  (o2 & n2_o2_new).
+    destruct new_els; try discriminate pi_els.
+    now apply in_nil in n2_o2_new.
+  + destruct new_els as [ | new_a new_els].
+      simpl in pi_els.
+      destruct a.
+      destruct (NatMap.find n (fst pi)),
+               (TryPermuteObj o pi),
+               (TryPermuteHeapElements els pi); try discriminate pi_els.
+    assert (n2_n1_pi := (proj1 (bijection n1 n2)) pi_n).
+    unfold Bijection in bijection.
+    destruct a as (n & o), new_a as (new_n & new_o).
+    destruct (Classical_Prop.classic (n2 = new_n)).
+    ++ rewrite <-H in *.
+       simpl in pi_els.
+       assert (NatMap.find n (fst pi) = Some n2).
+         destruct (NatMap.find n (fst pi)),
+                  (TryPermuteObj o pi),
+                   (TryPermuteHeapElements els pi); try discriminate pi_els.
+         injection pi_els as n_eq _ _.
+         now rewrite n_eq.
+       apply NatMapFacts.find_mapsto_iff in H0.
+       destruct (PiMapsToEqIff (JFLoc n1) (JFLoc n) (JFLoc n2) (JFLoc n2) pi) as (_ & n_eq); try easy.
+       injection n_eq; trivial; clear n_eq; intros n_eq.
+       exfalso.
+       apply n1_not_in_els.
+       rewrite n_eq.
+       exists o.
+       now apply in_eq.
+    ++ intros (o2 & n2_o2).
+       apply in_inv in n2_o2.
+       destruct n2_o2.
+         apply H.
+         now injection H0.
+       unfold not in IHels.
+       apply IHels with (new_els := new_els) (pi := pi); try easy.
+       +++ simpl in pi_els.
+           destruct (NatMap.find n (fst pi)),
+                    (TryPermuteObj o pi),
+                    (TryPermuteHeapElements els pi); try discriminate pi_els.
+           injection pi_els as _ _ l_eq.
+           now rewrite l_eq.
+       +++ intros (o1 & n1_o1).
+           apply n1_not_in_els.
+           exists o1.
+           now apply in_cons.
+       +++ now exists o2.
+Qed.
 
 Lemma EqFoldFromEqHeaps : forall els h1 h2 h',
   HeapEq h1 h2 ->
@@ -501,33 +592,187 @@ Proof.
        now apply in_eq.
 Qed.
 
-Lemma FoldOnSubheapDoesntRemoveElements : forall n (h h' : Heap) l,
-  JFISubheap h h' ->
-  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h) ->
-  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h').
+Lemma InFoldIff : forall l n (h : Heap),
+  Heap.In n (fold_left (fun h o => Heap.add (fst o) (snd o) h) l h) <->
+  ((exists o, In (n, o) l) \/ Heap.In n h).
 Proof.
-Admitted.
+  intros l.
+  induction l; intros n h.
+  + simpl.
+    split.
+    ++ intros n_h.
+       now apply or_intror.
+    ++ now destruct 1; try now (destruct H; destruct H).
+  + simpl.
+    split.
+    ++ intros n_h.
+       apply IHl in n_h.
+       destruct n_h.
+       +++ destruct H as (o & n_o_l).
+           apply or_introl.
+           exists o.
+           now apply or_intror.
+       +++ apply HeapFacts.elements_in_iff in H.
+           destruct H as (o & n_o_h).
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_o_h.
+           destruct (Classical_Prop.classic (fst a = n)).
+           - rewrite HeapFacts.add_eq_o in n_o_h; try easy.
+             apply or_introl.
+             exists o.
+             apply or_introl.
+             injection n_o_h as o_eq.
+             destruct a.
+             simpl in *.
+             now rewrite o_eq, H.
+           - rewrite HeapFacts.add_neq_o in n_o_h; try easy.
+             apply or_intror, HeapFacts.elements_in_iff.
+             exists o.
+             now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+    ++ intros H.
+       apply IHl.
+       destruct H;  [ destruct H as (o & H); destruct H |].
+       +++ apply or_intror.
+           rewrite H.
+           simpl.
+           apply HeapFacts.elements_in_iff.
+           exists o.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           now rewrite HeapFacts.add_eq_o.
+       +++ apply or_introl.
+           now exists o.
+       +++ apply or_intror.
+           apply HeapFacts.elements_in_iff.
+           destruct (Classical_Prop.classic (fst a = n)).
+           - exists (snd a).
+             apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+             now rewrite HeapFacts.add_eq_o.
+           - apply HeapFacts.elements_in_iff in H.
+             destruct H as (o & n_o_h).
+             exists o.
+             apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_o_h.
+             apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+             now rewrite HeapFacts.add_neq_o.
+Qed.
 
-Lemma FoldStepDoesntRemoveElements : forall n (h : Heap) l n' o',
-  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h) ->
-  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l (Heap.add n' o' h)).
+Lemma FoldStepDoesntRemoveElements : forall l n (h : Heap) n' o',
+  Heap.In n (fold_left (fun h o => Heap.add (fst o) (snd o) h) l h) ->
+  Heap.In n (fold_left (fun h o => Heap.add (fst o) (snd o) h) l (Heap.add n' o' h)).
 Proof.
-Admitted.
+  intros l.
+  induction l; intros n h n' o' in_h.
+  + simpl in *.
+    apply HeapFacts.elements_in_iff in in_h.
+    destruct in_h as (o & n_e_h).
+    apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_e_h.
+    apply HeapFacts.elements_in_iff.
+    destruct (Classical_Prop.classic (n' = n)).
+    ++ exists o'.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_eq_o.
+    ++ exists o.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_neq_o.
+  + destruct a as (nn & oo).
+    simpl in *.
+    apply IHl with (n' := n') (o' := o') in in_h.
+    apply InFoldIff in in_h.
+    apply InFoldIff.
+    destruct in_h as [(o & n_o_l) | n_in_h].
+    ++ apply or_introl.
+       now exists o.
+    ++ apply or_intror.
+       apply HeapFacts.elements_in_iff in n_in_h as (o & n_o_h).
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_o_h.
+       apply HeapFacts.elements_in_iff.
+       destruct (Classical_Prop.classic (n' = n)) as [n'_eq | n'_neq],
+                (Classical_Prop.classic (nn = n)) as [nn_eq | nn_neq].
+       +++ exists oo.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           now rewrite HeapFacts.add_eq_o.
+       +++ exists o'.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           rewrite HeapFacts.add_neq_o, HeapFacts.add_eq_o; try easy.
+       +++ exists oo.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           rewrite HeapFacts.add_eq_o; try easy.
+       +++ exists o.
+           rewrite !HeapFacts.add_neq_o in n_o_h; try easy.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           now rewrite !HeapFacts.add_neq_o.
+Qed.
 
-Lemma FoldDoesntRemoveElements : forall n (h : Heap) l,
+Lemma FoldDoesntRemoveElements : forall l n (h : Heap),
   Heap.In n h ->
-  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h).
+  Heap.In n (fold_left (fun h o => Heap.add (fst o) (snd o) h) l h).
 Proof.
-Admitted.
+  intros l.
+  induction l; intros n h n_h; try easy.
+  simpl.
+  apply FoldStepDoesntRemoveElements.
+  now apply IHl.
+Qed.
 
-Lemma RemoveFromFold : forall n n' o' o2 cn2 els,
+Lemma RemoveFromFold : forall els n n' o' o2 cn2 (h : Heap),
   n <> n' ->
   Heap.find n (fold_left (fun h o => Heap.add (fst o) (snd o) h)
-                els (Heap.add n' o' (Heap.empty Obj))) = Some (o2, cn2) ->
+                els (Heap.add n' o' h)) = Some (o2, cn2) ->
   Heap.find n (fold_left (fun h o => Heap.add (fst o) (snd o) h)
-                els (Heap.empty Obj)) = Some (o2, cn2).
+                els h) = Some (o2, cn2).
 Proof.
-Admitted.
+  intros els.
+  induction els; intros n n' o' o2 cn2 h n_neq find_n.
+  + simpl in *.
+    apply neq_symmetry in n_neq.
+    now rewrite HeapFacts.add_neq_o in find_n.
+  + simpl in *.
+    destruct (Classical_Prop.classic (n' = fst a)).
+    ++ rewrite <-H in *.
+       set (h' := (fold_left
+              (fun h o =>
+               Heap.add (fst o) (snd o) h) els
+              (Heap.add n' (snd a) (Heap.add n' o' h)))).
+       assert (heap_eq : HeapEq
+         (fold_left
+            (fun (h : Heap.t Obj) (o : Heap.key * Obj) =>
+             Heap.add (fst o) (snd o) h) els
+            (Heap.add n' (snd a) (Heap.add n' o' h))) h').
+         fold h'.
+         now apply EqImpliesHeapEq.
+       apply EqFoldFromEqHeaps with (h2 := (Heap.add n' (snd a) h)) in heap_eq.
+       +++ unfold h' in heap_eq.
+           unfold HeapEq in heap_eq.
+           now rewrite heap_eq.
+       +++ intros nn.
+           destruct (Classical_Prop.classic (n' = nn)).
+           - now rewrite !HeapFacts.add_eq_o.
+           - now rewrite !HeapFacts.add_neq_o.
+    ++ apply IHels with (n' := n') (o' := o'); try easy.
+       set (h' := (fold_left
+              (fun h o =>
+               Heap.add (fst o) (snd o) h) els
+              (Heap.add (fst a) (snd a) (Heap.add n' o' h)))).
+       assert (heap_eq : HeapEq
+         (fold_left
+            (fun (h : Heap.t Obj) (o : Heap.key * Obj) =>
+             Heap.add (fst o) (snd o) h) els
+            (Heap.add (fst a) (snd a) (Heap.add n' o' h))) h').
+         fold h'.
+         now apply EqImpliesHeapEq.
+       apply EqFoldFromEqHeaps with (h2 := (Heap.add n' o' (Heap.add (fst a) (snd a) h))) in heap_eq.
+       +++ unfold h' in heap_eq.
+           unfold HeapEq in heap_eq.
+           now rewrite heap_eq.
+       +++ intros nn.
+           destruct (Classical_Prop.classic (fst a = nn)).
+           - rewrite HeapFacts.add_eq_o, HeapFacts.add_neq_o, HeapFacts.add_eq_o; try easy.
+             intros n'_eq.
+             apply H.
+             now rewrite H0.
+           - rewrite HeapFacts.add_neq_o; try easy.
+             destruct (Classical_Prop.classic (n' = nn)).
+             now rewrite !HeapFacts.add_eq_o.
+             now rewrite !HeapFacts.add_neq_o.
+Qed.
 
 Lemma SuccessfulPermutationIsLocsPermutation : forall h pi n1 obj h',
   match TryPermuteHeapElements (Heap.elements h) pi with
@@ -670,19 +915,6 @@ Proof.
            now exists n0.
 Qed.
 
-Lemma MapsToEq : forall (pi : HeapInjection) n1 n2 n2',
-  NatMap.MapsTo n1 n2  pi ->
-  NatMap.MapsTo n1 n2' pi ->
-  n2 = n2'.
-Proof.
-  intros pi n1 n2 n2'.
-  intros n1_n2_pi n1_n2'_pi.
-  apply NatMapFacts.find_mapsto_iff in n1_n2_pi.
-  apply NatMapFacts.find_mapsto_iff in n1_n2'_pi.
-  rewrite n1_n2'_pi in n1_n2_pi.
-  now injection n1_n2_pi.
-Qed.
-
 Lemma BijectionIsInjective : forall pi n1 n1' n2,
   Bijection pi ->
   NatMap.MapsTo n1  n2 (fst pi) ->
@@ -735,6 +967,7 @@ Proof.
 Qed.
 
 Lemma HeadOfPermutedElementsIsPermuted : forall n1 n2 o1 o2 cn1 cn2 pi els h',
+  Bijection pi ->
   match TryPermuteHeapElements ((n1, (o1, cn1)) :: els) pi with
   | Some new_els =>
       Some (fold_left (fun h o => Heap.add (fst o) (snd o) h) new_els (Heap.empty Obj))
@@ -746,7 +979,7 @@ Lemma HeadOfPermutedElementsIsPermuted : forall n1 n2 o1 o2 cn1 cn2 pi els h',
   exists els', TryPermuteHeapElements ((n1, (o1, cn1)) :: els) pi = Some ((n2, (o2, cn2)) :: els').
 Proof.
   intros n1 n2 o1 o2 cn1 cn2 pi els h'.
-  intros pi_elements n1_not_in_els pi_n n2_o2_h'.
+  intros bijection pi_elements n1_not_in_els pi_n n2_o2_h'.
   unfold TryPermuteHeapElements in *.
   fold TryPermuteHeapElements in *.
   apply NatMapFacts.find_mapsto_iff in pi_n.
@@ -1151,8 +1384,6 @@ Proof.
            now rewrite StrMapFacts.add_neq_o.
 Admitted.
 
-
-
 Lemma PermutationSubsetTrans : forall pi1 pi2 pi3,
   PermutationSubset pi1 pi2 ->
   PermutationSubset pi2 pi3 ->
@@ -1160,32 +1391,6 @@ Lemma PermutationSubsetTrans : forall pi1 pi2 pi3,
 Proof.
   intros pi1 pi2 pi3 pi1_pi2 pi2_pi3 x l pi1_x_l.
   now apply pi2_pi3, pi1_pi2.
-Qed.
-
-Lemma PiMapsToEqIff : forall l1 l2 l1' l2' pi,
-  Bijection pi ->
-  PiMapsTo l1 l1' pi ->
-  PiMapsTo l2 l2' pi ->
-  (l1 = l2 <-> l1' = l2').
-Proof.
-  intros l1 l2 l1' l2' pi bijection pi_l1 pi_l2.
-  split.
-  + intros l_eq.
-    unfold PiMapsTo in *.
-    destruct l1, l2, l1', l2'; try easy.
-    injection l_eq as n_eq.
-    rewrite <-n_eq in pi_l2.
-    assert (n1_eq := MapsToEq (fst pi) n n1 n2 pi_l1 pi_l2).
-    now rewrite n1_eq.
-  + intros l_eq.
-    unfold PiMapsTo in *.
-    destruct l1, l2, l1', l2'; try easy.
-    apply bijection in pi_l1.
-    apply bijection in pi_l2.
-    injection l_eq as n1_eq.
-    rewrite <-n1_eq in pi_l2.
-    assert (n_eq := MapsToEq (snd pi) n1 n n0 pi_l1 pi_l2).
-    now rewrite n_eq.
 Qed.
 
 Lemma ExistsPermutedResult : forall res A stn_ext pi',
