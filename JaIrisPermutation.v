@@ -21,11 +21,26 @@ Require Export FMapAVL.
 Require Export Coq.Structures.OrderedTypeEx.
 Require Import FMapFacts.
 
-
 Module HeapFacts := Facts Heap.
 Module StrMapFacts := JaIrisCommon.StrMapFacts.
 Module NatMapFacts := JaIrisCommon.NatMapFacts.
 Module JFXIdMapFacts := Facts JFXIdMap.
+
+Ltac induction2 l1 l2 length_eq head1 head2 tail1 tail2 :=
+  set (_l1 := l1);
+  set (_l2 := l2);
+  (replace l1 with _l1 in *; try now unfold _l1);
+  (replace l2 with _l2 in *; try now unfold _l2);
+  (replace _l1 with l1 in length_eq; try now unfold _l1);
+  (replace _l2 with l2 in length_eq; try now unfold _l2);
+  (replace _l1 with (fst (split (combine l1 l2))) in *; try now rewrite combine_split);
+  (replace _l2 with (snd (split (combine l1 l2))) in *; try now rewrite combine_split);
+  clear _l1 _l2;
+  induction (combine l1 l2) as [ | _a _l];
+    [unfold split in *
+    | simpl in *; destruct _a as (head1 & head2), (split _l) as (tail1 & tail2)
+    ];
+  unfold fst, snd in *.
 
 
 Definition PiMapsTo l1 l2 (pi : HeapPermutation) :=
@@ -41,7 +56,7 @@ Definition Bijection (pi : HeapPermutation) :=
 Definition PiCoversHeap (pi : HeapPermutation) (h : Heap) :=
   forall n1, Heap.In n1 h -> exists n2, NatMap.MapsTo n1 n2 (fst pi).
 
-Definition LocsPermuted (f : HeapInjection) (h1 h2 : Heap) :=
+Definition HeapLocsPermuted (f : HeapInjection) (h1 h2 : Heap) :=
   forall n1, Heap.In n1 h1 ->
   exists n2, NatMap.MapsTo n1 n2 f /\ Heap.In n2 h2.
 
@@ -60,8 +75,8 @@ Definition ObjsPermuted (pi : HeapPermutation) (h1 h2 : Heap) :=
 
 Definition HeapsPermuted (h1 h2 : Heap) pi :=
   Bijection pi /\
-  LocsPermuted (fst pi) h1 h2 /\
-  LocsPermuted (snd pi) h2 h1 /\
+  HeapLocsPermuted (fst pi) h1 h2 /\
+  HeapLocsPermuted (snd pi) h2 h1 /\
   ObjsPermuted pi h1 h2.
 
 Definition EnvsPermuted env1 env2 pi :=
@@ -70,6 +85,76 @@ Definition EnvsPermuted env1 env2 pi :=
   forall x l1 l2,
     StrMap.MapsTo x l1 env1 -> StrMap.MapsTo x l2 env2 ->
     PiMapsTo l1 l2 pi.
+
+Fixpoint LocsPermuted ls ls' pi :=
+  match (ls, ls') with
+  | ([], []) => True
+  | (l::ls, l'::ls') => PiMapsTo l l' pi /\ LocsPermuted ls ls' pi
+  | _ => False
+  end.
+
+Fixpoint ValsPermuted vs vs' pi :=
+  match (vs, vs') with
+  | ([], []) => True
+  | (JFVLoc v::vs, JFVLoc v'::vs') => PiMapsTo v v' pi /\ ValsPermuted vs vs' pi
+  | _ => False
+  end.
+
+Fixpoint ExprsPermuted e e' pi :=
+  match (e, e') with
+  | (JFNew mu cn vs, JFNew mu' cn' vs') =>
+      mu = mu' /\ cn = cn' /\
+      ValsPermuted vs vs' pi
+  | (JFLet cn x e1 e2, JFLet cn' x' e1' e2') =>
+      cn = cn' /\ x = x' /\
+      ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi
+  | (JFIf (JFVLoc v1) (JFVLoc v2) e1 e2, JFIf (JFVLoc v1') (JFVLoc v2') e1' e2') =>
+      ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi /\
+      PiMapsTo v1 v1' pi /\ PiMapsTo v2 v2' pi
+  | (JFInvoke (JFVLoc v1) m vs, JFInvoke (JFVLoc v1') m' vs') =>
+      PiMapsTo v1 v1' pi /\ ValsPermuted vs vs' pi /\ m = m'
+  | (JFAssign ((JFVLoc v1), _) (JFVLoc v2), JFAssign ((JFVLoc v1'), _) (JFVLoc v2')) =>
+      PiMapsTo v1 v1' pi /\ PiMapsTo v2 v2' pi
+  | (JFVal1 (JFVLoc v1), JFVal1 (JFVLoc v1')) =>
+      PiMapsTo v1 v1' pi
+  | (JFVal2 ((JFVLoc v1), _), JFVal2 ((JFVLoc v1'), _)) =>
+      PiMapsTo v1 v1' pi
+  | (JFThrow (JFVLoc v1), JFThrow (JFVLoc v1')) =>
+      PiMapsTo v1 v1' pi
+  | (JFTry e1 _ _ _ e2, JFTry e1' _ _ _ e2') =>
+      ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi
+  | _ => False
+  end.
+
+Definition CtxPermuted ctx ctx' pi :=
+  match (ctx, ctx') with
+  | (JFCtxLet cn x _ e2, JFCtxLet cn' x' _ e2') => cn = cn' /\ x = x' /\ ExprsPermuted e2 e2' pi
+  | (JFCtxTry _ _ cn x e2, JFCtxTry _ _ cn' x' e2') => cn = cn' /\ x = x' /\ ExprsPermuted e2 e2' pi
+  | _ => False
+  end.
+
+Fixpoint CtxsPermuted ctxs ctxs' pi :=
+  match (ctxs, ctxs') with
+  | ([], []) => True
+  | (ctx::ctxs, ctx'::ctxs') => CtxPermuted ctx ctx' pi /\ CtxsPermuted ctxs ctxs' pi
+  | _ => False
+  end.
+
+Definition FramesPermuted f f' pi :=
+  match (f, f') with
+  | (MkFrame ctxs e A, MkFrame ctxs' e' A') =>
+      ExprsPermuted e e' pi /\ CtxsPermuted ctxs ctxs' pi /\ A = A'
+  end.
+
+Fixpoint StacksPermuted st st' pi :=
+  match (st, st') with
+  | ([], []) => True
+  | (f::st, f'::st') => FramesPermuted f f' pi /\ StacksPermuted st st' pi
+  | _ => False
+  end.
+
+Definition PermutationSubset (pi pi' : HeapPermutation) :=
+  forall l1 l2, PiMapsTo l1 l2 pi -> PiMapsTo l1 l2 pi'.
 
 
 Lemma ExtendedEnvsPermuted : forall env1 env2 x l1 l2 pi,
@@ -182,10 +267,10 @@ Definition TryPermuteLoc (loc : Loc) (pi : HeapPermutation) :=
 
 Fixpoint TryPermuteObjFlds (flds : list (JFXId * Loc)) (pi : HeapPermutation) :=
   match flds with
-  | [] => Some (JFXIdMap.empty Loc)
+  | [] => Some []
   | (field_name, loc)::flds =>
     match (TryPermuteLoc loc pi, TryPermuteObjFlds flds pi) with
-    | (Some new_loc, Some new_flds) => Some (JFXIdMap.add field_name new_loc new_flds)
+    | (Some new_loc, Some new_flds) => Some ((field_name, new_loc)::new_flds)
     | _ => None
     end
   end.
@@ -193,25 +278,28 @@ Fixpoint TryPermuteObjFlds (flds : list (JFXId * Loc)) (pi : HeapPermutation) :=
 Definition TryPermuteObj (obj : Obj) (pi : HeapPermutation) :=
   match obj with
   | (o, cn) => match TryPermuteObjFlds (JFXIdMap.elements o) pi with
-    | Some new_obj => Some (new_obj, cn)
+    | Some new_flds => Some ((fold_left (fun o f => JFXIdMap.add (fst f) (snd f) o) new_flds (JFXIdMap.empty Loc)), cn)
     | None => None
     end
   end.
 
 Fixpoint TryPermuteHeapElements (objs : list (nat * Obj)) (pi : HeapPermutation) :=
   match objs with
-  | [] => Some (Heap.empty Obj)
+  | [] => Some []
   | (n, obj)::objs =>
     match (NatMap.find n (fst pi), TryPermuteObj obj pi, TryPermuteHeapElements objs pi) with
-    | (Some new_n, Some new_obj, Some new_heap) => Some (Heap.add new_n new_obj new_heap)
+    | (Some new_n, Some new_obj, Some new_els) => Some ((new_n, new_obj)::new_els)
     | _ => None
     end
   end.
 
 Definition TryPermuteHeap (h : Heap) (pi : HeapPermutation) :=
-  TryPermuteHeapElements (Heap.elements h) pi.
+  match (TryPermuteHeapElements (Heap.elements h) pi) with
+  | Some new_els => Some (fold_left (fun h o => Heap.add (fst o) (snd o) h) new_els (Heap.empty Obj))
+  | None => None
+  end.
 
-Lemma ObjFldsAux : forall n (pi : HeapPermutation) field_name n' obj',
+Lemma ObjFldsAux : forall n (pi : HeapPermutation) field_name n' (flds' : list (string * Loc)),
 NatMap.find (elt:=nat) n (fst pi) = Some n' ->
 match
   match NatMap.find (elt:=nat) n (fst pi) with
@@ -219,9 +307,9 @@ match
   | None => None
   end
 with
-| Some new_loc => Some (JFXIdMap.add field_name new_loc obj')
+| Some new_loc => Some ((field_name, new_loc)::flds')
 | None => None
-end = Some (JFXIdMap.add field_name (JFLoc n') obj').
+end = Some ((field_name, (JFLoc n'))::flds').
 Proof.
   intros n pi field_name n' obj' n_n'_pi.
   now rewrite n_n'_pi.
@@ -233,20 +321,20 @@ Lemma SuccessfulObjFldsPermutation : forall flds pi,
 Proof.
   intros flds pi flds_in_p.
   induction flds.
-  now exists (JFXIdMap.empty Loc).
+  now exists [].
   destruct a as (field_name & loc).
   destruct IHflds as (obj' & flds_perm).
   + intros f n in_flds.
     apply (flds_in_p f n).
     now apply in_cons.
   + destruct loc.
-    ++ exists (JFXIdMap.add field_name null obj').
+    ++ exists ((field_name, null)::obj').
        simpl.
        now rewrite flds_perm.
     ++ destruct (flds_in_p field_name n) as (n' & n'_perm).
        now apply in_eq.
        simpl.
-       exists (JFXIdMap.add field_name (JFLoc n') obj').
+       exists ((field_name, (JFLoc n'))::obj').
        apply NatMapFacts.find_mapsto_iff in n'_perm.
        rewrite flds_perm.
        now apply ObjFldsAux.
@@ -266,16 +354,16 @@ Proof.
     rewrite JFXIdMapFacts.elements_mapsto_iff.
     apply In_InA with (x := (f, JFLoc n)); trivial.
     now exact JFXIdMapEqKeyEltEquivalence.
-  + exists (obj', cn).
-    now rewrite obj_perm.
+  + rewrite obj_perm.
+    now exists (fold_left (fun o f => JFXIdMap.add (fst f) (snd f) o) obj' (JFXIdMap.empty Loc), cn).
 Qed.
 
-Lemma HeapPermutationAux : forall n (pi : HeapPermutation) n' obj' (h' : Heap),
+Lemma HeapPermutationAux : forall n (pi : HeapPermutation) n' obj' (h' : list (nat * Obj)),
   NatMap.find (elt:=nat) n (fst pi) = Some n' ->
   match NatMap.find (elt:=nat) n (fst pi) with
-  | Some new_n => Some (Heap.add new_n obj' h')
+  | Some new_n => Some ((new_n, obj') :: h')
   | None => None
-  end = Some (Heap.add n' obj' h').
+  end = Some ((n', obj') :: h').
 Proof.
   intros.
   now rewrite H.
@@ -292,7 +380,7 @@ Lemma SuccessfulHeapElementsPermutation : forall objs pi,
 Proof.
   intros objs pi.
   induction objs.
-  now exists (Heap.empty Obj).
+  now exists [].
   intros flds_in_pi a_objs_in_pi.
   destruct IHobjs as (h' & objs_perm); trivial.
   + intros n obj f f_n n_obj_obj f_fn_obj.
@@ -308,7 +396,7 @@ Proof.
        now apply in_eq.
     ++ destruct (a_objs_in_pi n obj) as (n' & n_n'_pi).
        now apply in_eq.
-    exists (Heap.add n' obj' h').
+    exists ((n', obj')::h').
     simpl.
     rewrite NatMapFacts.find_mapsto_iff in n_n'_pi.
     rewrite obj_perm, objs_perm.
@@ -323,7 +411,7 @@ Proof.
   intros h pi consistent covers.
   unfold TryPermuteHeap.
   destruct (SuccessfulHeapElementsPermutation (Heap.elements h) pi)
-    as (h' & h_perm).
+    as (els' & els_perm).
   + unfold PiCoversHeap in covers.
     intros n obj f f_n n_obj_h f_fn_obj.
     destruct (consistent n obj f f_n).
@@ -343,11 +431,109 @@ Proof.
        apply In_InA; trivial.
        exact HeapEqKeyEltEquivalence.
     ++ now exists x. 
-  + now exists h'.
+  + rewrite els_perm.
+    now exists (fold_left (fun h0 o => Heap.add (fst o) (snd o) h0) els'  (Heap.empty Obj)).
 Qed.
 
+Lemma PermutationDoesntAddNewHeapElements : forall n1 n2 els new_els pi,
+  TryPermuteHeapElements els pi = Some new_els ->
+  (~exists o1', In (n1, o1') els) ->
+  NatMap.MapsTo n1 n2 (fst pi) ->
+  (~exists o2', In (n2, o2') new_els).
+Proof.
+Admitted.
+
+Lemma EqFoldFromEqHeaps : forall els h1 h2 h',
+  HeapEq h1 h2 ->
+  HeapEq (fold_left (fun h o => Heap.add (fst o) (snd o) h) els h1) h' ->
+  HeapEq (fold_left (fun h o => Heap.add (fst o) (snd o) h) els h2) h'.
+Proof.
+  intros els.
+  induction els; intros h1 h2 h' h_eq fold_eq.
+  + simpl in *.
+    apply HeapEqSym in h_eq.
+    now apply HeapEqTrans with (h2 := h1).
+  + simpl in *.
+    apply IHels with (h1 := (Heap.add (fst a) (snd a) h1)); trivial.
+    intros n.
+    destruct (Classical_Prop.classic (n = fst a)).
+    ++ now rewrite 2!HeapFacts.add_eq_o.
+    ++ rewrite 2!HeapFacts.add_neq_o; try easy; try now apply neq_symmetry.
+Qed.
+
+Lemma ChangeHeapAddOrder : forall n1 n2 o1 o2 h,
+  n1 <> n2 ->
+  HeapEq (Heap.add n1 o1 (Heap.add n2 o2 h)) (Heap.add n2 o2 (Heap.add n1 o1 h)).
+Proof.
+  intros n1 n2 o1 o2 h n_neq.
+  intros n.
+  destruct (Classical_Prop.classic (n1 = n)) as [n1_eq | n1_neq], (Classical_Prop.classic (n2 = n)) as [n2_eq | n2_neq].
+  ++ now rewrite <-n2_eq in n1_eq.
+  ++ now rewrite n1_eq, HeapFacts.add_eq_o, HeapFacts.add_neq_o, HeapFacts.add_eq_o.
+  ++ now rewrite HeapFacts.add_neq_o, 2!HeapFacts.add_eq_o.
+  ++ now rewrite 4!HeapFacts.add_neq_o.
+Qed.
+
+Lemma HeapMapsToLastAddedObj : forall els n obj (h h' : Heap),
+  (~exists o, In (n, o) els) ->
+  HeapEq (fold_left (fun h o  => Heap.add (fst o) (snd o) h) els (Heap.add n obj h)) h' ->
+  Heap.MapsTo n obj h'.
+Proof.
+  intros els.
+  induction els; intros n obj h h' n_not_in_els h'_eq.
+  + simpl in h'_eq.
+    rewrite <-h'_eq.
+    now apply HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+  + simpl in h'_eq.
+    apply IHels with (h := Heap.add (fst a) (snd a) h).
+    ++ intros (o & n_in_els).
+       apply n_not_in_els.
+       exists o.
+       now apply in_cons.
+    ++ apply EqFoldFromEqHeaps with (h1 := Heap.add (fst a) (snd a) (Heap.add n obj h)); trivial.
+       apply ChangeHeapAddOrder.
+       destruct a.
+       simpl.
+       intros k_eq_n.
+       apply n_not_in_els.
+       exists o.
+       rewrite k_eq_n.
+       now apply in_eq.
+Qed.
+
+Lemma FoldOnSubheapDoesntRemoveElements : forall n (h h' : Heap) l,
+  JFISubheap h h' ->
+  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h) ->
+  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h').
+Proof.
+Admitted.
+
+Lemma FoldStepDoesntRemoveElements : forall n (h : Heap) l n' o',
+  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h) ->
+  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l (Heap.add n' o' h)).
+Proof.
+Admitted.
+
+Lemma FoldDoesntRemoveElements : forall n (h : Heap) l,
+  Heap.In n h ->
+  Heap.In n (fold_left (fun h o  => Heap.add (fst o) (snd o) h) l h).
+Proof.
+Admitted.
+
+Lemma RemoveFromFold : forall n n' o' o2 cn2 els,
+  n <> n' ->
+  Heap.find n (fold_left (fun h o => Heap.add (fst o) (snd o) h)
+                els (Heap.add n' o' (Heap.empty Obj))) = Some (o2, cn2) ->
+  Heap.find n (fold_left (fun h o => Heap.add (fst o) (snd o) h)
+                els (Heap.empty Obj)) = Some (o2, cn2).
+Proof.
+Admitted.
+
 Lemma SuccessfulPermutationIsLocsPermutation : forall h pi n1 obj h',
-  TryPermuteHeapElements (Heap.elements h) pi = Some h' ->
+  match TryPermuteHeapElements (Heap.elements h) pi with
+  | Some new_els => Some (fold_left (fun h o => Heap.add (fst o) (snd o) h) new_els (Heap.empty Obj))
+  | None => None
+  end = Some h' ->
   In (n1, obj) (Heap.elements h) ->
   exists n2,
     NatMap.MapsTo n1 n2 (fst pi) /\
@@ -355,9 +541,9 @@ Lemma SuccessfulPermutationIsLocsPermutation : forall h pi n1 obj h',
 Proof.
   intros h pi n1 obj.
   induction (Heap.elements h); intros h'.
-  intros _ in_empty.
-  exfalso.
-  now apply in_nil in in_empty.
+    intros _ in_empty.
+    exfalso.
+    now apply in_nil in in_empty.
   intros perm n1_in_al.
   destruct (Classical_Prop.classic ((n1, obj) = a)).
   + rewrite <-H in perm.
@@ -371,26 +557,31 @@ Proof.
        destruct (TryPermuteObj obj pi), (TryPermuteHeapElements l pi); try discriminate perm.
        injection perm as h'_eq.
        rewrite <- h'_eq.
-       apply HeapFacts.add_in_iff.
-       now apply or_introl.
+       apply FoldDoesntRemoveElements.
+       apply HeapFacts.elements_in_iff.
+       exists p.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_eq_o.
     ++ destruct (NatMap.find n1 (fst pi)); try discriminate perm.
        exfalso.
        apply H0.
        now exists n.
   + simpl in perm.
-       destruct a.
-       destruct (NatMap.find (elt:=nat) k (fst pi)); try discriminate perm.
-       destruct (TryPermuteObj o pi); try discriminate perm.
-       destruct (TryPermuteHeapElements l pi); try discriminate perm.
-       injection perm as h'_eq.
-       rewrite <-h'_eq.
-       apply in_inv in n1_in_al.
-       destruct n1_in_al.
-       now symmetry in H0.
-       destruct (IHl t) as (n2 & n1_n2_pi & n2_in_t); trivial.
-       exists n2.
-       split; trivial.
-       now apply HeapFacts.add_in_iff, or_intror.
+    destruct a.
+    destruct (NatMap.find (elt:=nat) k (fst pi)); try discriminate perm.
+    destruct (TryPermuteObj o pi); try discriminate perm.
+    destruct (TryPermuteHeapElements l pi); try discriminate perm.
+    injection perm as h'_eq.
+    rewrite <-h'_eq.
+    apply in_inv in n1_in_al.
+    destruct n1_in_al.
+    now symmetry in H0.
+    set (rest_h' := (fold_left (fun h o => Heap.add (fst o) (snd o) h) l0 (Heap.empty Obj))).
+    destruct (IHl rest_h') as (n2 & n1_n2_pi & n2_in_rest); trivial.
+    exists n2.
+    split; trivial.
+    unfold rest_h' in n2_in_rest.
+    now apply FoldStepDoesntRemoveElements.
 Qed.
 
 Lemma InElementsAdd : forall n n' o p t,
@@ -446,7 +637,7 @@ Proof.
          as [(n' & n_n'_pi1) | ].
        +++ assert (n_eq := n_n'_pi1).
            apply NatMapFacts.find_mapsto_iff in n_n'_pi1.
-           destruct (NatMap.find n pi1); try discriminate pi_h.
+           rewrite n_eq in pi_h.
            destruct (TryPermuteObj obj_n (pi1, pi2)); try discriminate pi_h.
            destruct (TryPermuteHeapElements l (pi1, pi2)); try discriminate pi_h.
            injection pi_h as h'_eq.
@@ -455,12 +646,24 @@ Proof.
            intros a a_in_l.
            apply in_cons with (a := (n, obj_n)) in a_in_l.
            apply (in_h a a_in_l).
-           apply (IHl next_in_h t n2 obj); trivial.
-           apply InElementsAdd with (n' := n0) (p := p); trivial.
-           injection n_eq as n_eq.
-           intros n2_eq.
-           apply H.
-           now rewrite n2_eq, n_eq.
+           set (rest_h' := (fold_left (fun h o => Heap.add (fst o) (snd o) h)
+                  l0 (Heap.empty Obj))).
+           apply (IHl next_in_h rest_h' n2 obj); trivial.
+           apply In_InA with (eqA := Heap.eq_key_elt (elt:=Obj)) in n2_obj_h'; [ | apply HeapEqKeyEltEquivalence].
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n2_obj_h'.
+           fold Obj in n2_obj_h'.
+           destruct obj.
+           apply RemoveFromFold in n2_obj_h'.
+           - apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff in n2_obj_h'.
+             apply InA_alt in n2_obj_h'.
+             destruct n2_obj_h' as (y & y_eq & n2_obj_h').
+             destruct y, p0.
+             unfold Heap.eq_key_elt, Heap.Raw.Proofs.PX.eqke in y_eq.
+             simpl in y_eq.
+             now rewrite <-(proj1 y_eq), <-(proj2 y_eq) in n2_obj_h'.
+           - intros n2_eq.
+             apply H.
+             now rewrite <-n2_eq in n_n'_pi1.
        +++ destruct (NatMap.find n pi1); try discriminate pi_h.
            exfalso.
            apply H0.
@@ -493,11 +696,18 @@ Proof.
   now apply (MapsToEq (snd pi) n2 n1 n1').
 Qed.
 
-Lemma SuccessfulPermutationIsObjPermutation : forall h o1 cn1 n1 objs n2 o2 cn2 h' pi,
-  TryPermuteHeapElements ((n1, (o1, cn1)) :: objs) pi = Some h' ->
+Lemma SuccessfulPermutationIsObjPermutation : forall o1 o2 cn1 cn2 pi,
+  TryPermuteObj (o1, cn1) pi = Some (o2, cn2) ->
+  forall f : JFXIdMap.key,
+    (forall v1 : Loc, JFXIdMap.MapsTo f v1 o1 -> exists v2 : Loc, JFXIdMap.MapsTo f v2 o2) /\
+    (forall v2 : Loc, JFXIdMap.MapsTo f v2 o2 -> exists v1 : Loc, JFXIdMap.MapsTo f v1 o1) /\
+    (forall v1 v2 : Loc, JFXIdMap.MapsTo f v1 o1 -> JFXIdMap.MapsTo f v2 o2 -> PiMapsTo v1 v2 pi).
+Proof.
+Admitted.
+
+Lemma SuccessfulPermutationIsHeapElementsPermutation : forall o1 cn1 n1 objs objs' n2 o2 cn2 pi,
+  TryPermuteHeapElements ((n1, (o1, cn1)) :: objs) pi = Some ((n2, (o2, cn2)) :: objs') ->
   NatMap.MapsTo n1 n2 (fst pi) ->
-  Heap.MapsTo n1 (o1, cn1) h ->
-  Heap.MapsTo n2 (o2, cn2) h' ->
   (cn1 = cn2 /\ forall f,
       (forall v1, JFXIdMap.MapsTo f v1 o1 -> exists v2, JFXIdMap.MapsTo f v2 o2) /\
       (forall v2, JFXIdMap.MapsTo f v2 o2 -> exists v1, JFXIdMap.MapsTo f v1 o1) /\
@@ -506,163 +716,116 @@ Lemma SuccessfulPermutationIsObjPermutation : forall h o1 cn1 n1 objs n2 o2 cn2 
         JFXIdMap.MapsTo f v2 o2 ->
         PiMapsTo v1 v2 pi)).
 Proof.
-  intros h o1.
-  assert (elements_eq : forall f l l',
-    In (f, l) (JFXIdMap.elements o1) -> JFXIdMap.MapsTo f l' o1 -> l = l').
-    intros f' l l' f'_in_o1 l_l'_o1.
-    apply In_InA with (eqA := JFXIdMap.eq_key_elt (elt := Loc)) in f'_in_o1; trivial.
-    apply JFXIdMapFacts.elements_mapsto_iff in f'_in_o1.
-    apply JFXIdMapFacts.find_mapsto_iff in f'_in_o1.
-    apply JFXIdMapFacts.find_mapsto_iff in l_l'_o1.
-    rewrite l_l'_o1 in f'_in_o1.
-    now injection f'_in_o1.
-    now apply JFXIdMapEqKeyEltEquivalence.
-  assert (in_o1 : forall a, In a (JFXIdMap.elements o1) -> JFXIdMap.In (fst a) o1).
-    intros (a1, a2) a_in_h.
-    apply JFXIdMapFacts.elements_in_iff.
-    apply In_InA with (eqA := JFXIdMap.eq_key_elt (elt:=Loc)) in a_in_h.
-    now exists a2.
-    now apply JFXIdMapEqKeyEltEquivalence.
-  simpl.
-  induction (JFXIdMap.elements o1).
-  + intros cn1 n1 objs n2 o2 cn2 h' pi.
-    intros pi_h n1_n2_pi n1_o1_h n2_o2_h'.
-    simpl in pi_h.
-    apply NatMapFacts.find_mapsto_iff in n1_n2_pi.
-    rewrite n1_n2_pi in pi_h.
-    destruct (TryPermuteHeapElements objs pi); try discriminate pi_h.
-    injection pi_h as h'_eq.
-    rewrite <-h'_eq in n2_o2_h'.
-    apply NatMapFacts.find_mapsto_iff in n2_o2_h'.
-    rewrite NatMapFacts.add_eq_o in n2_o2_h'; trivial.
-    injection n2_o2_h'.
-    intros cn_eq o2_eq.
-    split; trivial.
-    intros f.
-    split; [ | split].
-    ++ intros v1 f_v1_o1.
-       rewrite <-o2_eq in *.
-       exfalso.
-       admit.
-    ++ intros v2 f_v2_o2.
-       rewrite <-o2_eq in f_v2_o2.
-       now apply JFXIdMapFacts.empty_mapsto_iff in f_v2_o2.
-    ++ intros v1 v2 f_v1_o1 f_v2_o2.
-       rewrite <-o2_eq in f_v2_o2.
-       now apply JFXIdMapFacts.empty_mapsto_iff in f_v2_o2.
-  + intros cn1 n1 objs n2 o2 cn2 h' pi.
-    intros pi_h n1_n2_pi n1_o1_h n2_o2_h'.
-    simpl in pi_h.
-    apply NatMapFacts.find_mapsto_iff in n1_n2_pi.
-    rewrite n1_n2_pi in pi_h.
-    destruct a as (f' & loc).
+  intros o1 cn1 n1 objs objs' n2 o2 cn2 pi pi_h pi_n.
+  unfold TryPermuteHeapElements in pi_h.
+  fold TryPermuteHeapElements in pi_h.
+  apply NatMapFacts.find_mapsto_iff in pi_n.
+  rewrite pi_n in pi_h.
+  split.
+  +  simpl in pi_h.
+     destruct (TryPermuteObjFlds (JFXIdMap.elements (elt:=Loc) o1) pi),
+              (TryPermuteHeapElements objs pi); try discriminate pi_h.
+     now injection pi_h.
+  + apply SuccessfulPermutationIsObjPermutation with (cn1 := cn1) (cn2 := cn2).
+    destruct (TryPermuteObj (o1, cn1) pi), (TryPermuteHeapElements objs pi) in pi_h;
+    try discriminate pi_h.
+    injection pi_h.
+    intros _ p_eq.
+    now rewrite p_eq.
+Qed.
 
-    simpl in pi_h.
-    assert (new_elements_eq : forall f l0 l',
-      In (f, l0) l -> JFXIdMap.MapsTo f l' o1 -> l0 = l').
-      intros f0 l1 l' l0_in_l.
-      now apply elements_eq, in_cons.
-    assert (new_in_o1 : forall a, In a l -> JFXIdMap.In (elt:=Loc) (fst a) o1).
-      intros a a_in_l.
-      now apply in_o1, in_cons.
-    assert (try_permute_loc : exists loc', TryPermuteLoc loc pi = Some loc').
-    destruct (TryPermuteLoc loc pi); try discriminate pi_h.
-    now exists l0.
-    destruct try_permute_loc as (loc' & loc_loc'_pi).
-    rewrite loc_loc'_pi in pi_h.
-    assert (try_permute_flds : exists new_flds, TryPermuteObjFlds l pi = Some new_flds).
-    destruct (TryPermuteObjFlds l pi); try discriminate pi_h.
-    now exists t.
-    destruct try_permute_flds as (new_flds & new_flds_pi).
-    rewrite new_flds_pi in pi_h.
-    assert (try_permute_heap : exists new_heap, TryPermuteHeapElements objs pi = Some new_heap).
-    destruct (TryPermuteHeapElements objs pi); try discriminate pi_h.
-    now exists t.
-    destruct try_permute_heap as (new_heap & new_heap_pi).
+Lemma HeadOfPermutedElementsIsPermuted : forall n1 n2 o1 o2 cn1 cn2 pi els h',
+  match TryPermuteHeapElements ((n1, (o1, cn1)) :: els) pi with
+  | Some new_els =>
+      Some (fold_left (fun h o => Heap.add (fst o) (snd o) h) new_els (Heap.empty Obj))
+  | None => None
+  end = Some h' ->
+ (~exists o1', In (n1, o1') els) ->
+  NatMap.MapsTo n1 n2 (fst pi) ->
+  Heap.MapsTo n2 (o2, cn2) h' ->
+  exists els', TryPermuteHeapElements ((n1, (o1, cn1)) :: els) pi = Some ((n2, (o2, cn2)) :: els').
+Proof.
+  intros n1 n2 o1 o2 cn1 cn2 pi els h'.
+  intros pi_elements n1_not_in_els pi_n n2_o2_h'.
+  unfold TryPermuteHeapElements in *.
+  fold TryPermuteHeapElements in *.
+  apply NatMapFacts.find_mapsto_iff in pi_n.
+  rewrite pi_n in *.
 
-    assert (IH := IHl new_elements_eq new_in_o1 cn1 n1 objs n2 new_flds cn2
-      (Heap.add n2 (new_flds, cn1) new_heap) pi).
-    clear IHl.
+  destruct (TryPermuteObj (o1, cn1) pi) as [new_obj | ]; try discriminate pi_elements.
+  assert (exists els', TryPermuteHeapElements els pi = Some els').
+    destruct (TryPermuteHeapElements els pi); try discriminate pi_elements.
+    now exists l.
+  destruct H as (els' & pi_els).
+  rewrite pi_els in *.
+  exists els'.
+  injection pi_elements as pi_elements.
+  apply NatMapFacts.find_mapsto_iff in pi_n.
+  apply EqImpliesHeapEq in pi_elements.
+  apply HeapMapsToLastAddedObj in pi_elements as n2_new_h';
+    [ | now apply PermutationDoesntAddNewHeapElements with (n1 := n1) (els := els) (pi := pi)].
+  apply HeapFacts.find_mapsto_iff in n2_new_h'.
+  apply HeapFacts.find_mapsto_iff in n2_o2_h'.
+  fold RawObj Obj in n2_o2_h'.
+  rewrite n2_new_h' in n2_o2_h'.
+  injection n2_o2_h' as obj_eq.
+  now rewrite obj_eq.
+Qed.
 
-    rewrite new_heap_pi in pi_h.
-    injection pi_h as h'_eq.
-    rewrite <-h'_eq in n2_o2_h'.
-    apply HeapFacts.find_mapsto_iff in n2_o2_h'.
-    rewrite HeapFacts.add_eq_o in n2_o2_h'; trivial.
-    rewrite n1_n2_pi, new_flds_pi, new_heap_pi in IH.
-    apply NatMapFacts.find_mapsto_iff in n1_n2_pi.
-    destruct IH; trivial.
-    apply HeapFacts.find_mapsto_iff.
-    rewrite HeapFacts.add_eq_o; trivial.
-    injection n2_o2_h'.
-    intros cn_eq o2_eq.
-    now rewrite cn_eq.
-    split; trivial.
-    intros f.
-    destruct (Classical_Prop.classic (f = f')).
-    ++ clear H0.
-       rewrite <-H1 in *.
-       split; [ | split].
-       +++ intros v1 f_v1_o1.
-           rewrite (elements_eq f loc v1) in *; trivial; try apply in_eq.
-           exists loc'.
-           injection n2_o2_h' as o2_eq.
-           apply JFXIdMapFacts.find_mapsto_iff.
-           rewrite <-o2_eq.
-           now rewrite JFXIdMapFacts.add_eq_o.
-       +++ intros v2 f_v2_o2.
-           assert (f_in_o1 := in_o1 (f, loc) (in_eq (f, loc) l)).
-           simpl in f_in_o1.
-           destruct ((proj1 (JFXIdMapFacts.elements_in_iff o1 f)) f_in_o1) as (v1 & f_v1_o1).
-           apply JFXIdMapFacts.elements_mapsto_iff in f_v1_o1.
-           now exists v1.
-       +++ intros v1 v2 f_v1_o1 f_v2_o2.
-           rewrite (elements_eq f loc v1) in *; trivial; try apply in_eq.
-           injection n2_o2_h'.
-           intros _ o2_eq.
-           rewrite <-o2_eq in f_v2_o2.
-           apply JFXIdMapFacts.find_mapsto_iff in f_v2_o2.
-           rewrite JFXIdMapFacts.add_eq_o in f_v2_o2; trivial.
-           injection f_v2_o2 as v2_eq.
-           rewrite <-v2_eq in *.
-           unfold TryPermuteLoc in loc_loc'_pi.
-           destruct v1.
-           - injection loc_loc'_pi as loc'_eq.
-             now rewrite <-loc'_eq.
-           - destruct (Classical_Prop.classic (exists n0, NatMap.find n (fst pi) = Some n0));
-             [ | exfalso; apply H0; destruct (NatMap.find n (fst pi)); try discriminate loc_loc'_pi; now exists n0].
-             destruct H0 as  (n0 & n_n0_pi).
-             rewrite n_n0_pi in loc_loc'_pi.
-             injection loc_loc'_pi as loc_eq.
-             rewrite <-loc_eq.
-             unfold PiMapsTo.
-             now apply NatMapFacts.find_mapsto_iff in n_n0_pi.
-    ++ injection n2_o2_h'.
-       intros _ o2_eq.
-       apply neq_symmetry in H1.
-       split; [ | split].
-       +++ intros v1 f_v1_o1.
-           destruct (H0 f) as (IH & _).
-           destruct (IH v1 f_v1_o1) as (v2 & f_v2_new_flds).
-           exists v2.
-           rewrite <-o2_eq.
-           apply JFXIdMapFacts.find_mapsto_iff.
-           rewrite JFXIdMapFacts.add_neq_o; trivial.
-           now apply JFXIdMapFacts.find_mapsto_iff.
-       +++ intros v2 f_v2_o2.
-           destruct (H0 f) as (_ & IH & _).
-           apply IH with (v2 := v2).
-           rewrite <-o2_eq in f_v2_o2.
-           apply JFXIdMapFacts.find_mapsto_iff in f_v2_o2.
-           rewrite JFXIdMapFacts.add_neq_o in f_v2_o2; trivial.
-           now apply JFXIdMapFacts.find_mapsto_iff.
-       +++ intros v1 v2 f_v1_o1 f_v2_o2.
-           apply (H0 f); trivial.
-           rewrite <-o2_eq in f_v2_o2.
-           apply JFXIdMapFacts.find_mapsto_iff in f_v2_o2.
-           rewrite JFXIdMapFacts.add_neq_o in f_v2_o2; trivial.
-           now apply JFXIdMapFacts.find_mapsto_iff.
-Admitted.
+Lemma AppNoDupA : forall l1 l2,
+  NoDupA (Heap.eq_key (elt:=Obj)) (l1 ++ l2) ->
+  NoDupA (Heap.eq_key (elt:=Obj))  l2.
+Proof.
+  intros l1.
+  induction l1; trivial.
+  intros l2 no_dup.
+  apply IHl1.
+  now inversion no_dup.
+Qed.
+
+Lemma HeapElementsUnique : forall (h : Heap) els1 els2,
+  (Heap.elements h) = els1 ++ els2 ->
+  match els2 with
+  | [] => True
+  | ((n, _) :: els) => ~exists o, In (n, o) els
+  end.
+Proof.
+  intros h els1 els2.
+  assert (no_dup := Heap.elements_3w h).
+  intros h_eq.
+  destruct els2; trivial.
+  destruct p as (n & o).
+  rewrite h_eq in no_dup.
+  apply AppNoDupA in no_dup.
+  intros (o' & n_in_els2).
+  inversion no_dup.
+  apply H1.
+  apply InA_eqA with (x := (n, o')); try easy.
+  now apply HeapEqKeyEquivalence.
+  apply In_InA; trivial.
+  now apply HeapEqKeyEquivalence.
+Qed.
+
+Lemma HeapElementsUniqueStep : forall (a : (Heap.key * Obj)) l,
+  (forall els1 els2,
+    a::l = els1 ++ els2 ->
+    match els2 with
+    | [] => True
+    | ((n, _) :: els) => ~exists o, In (n, o) els
+    end) ->
+  (forall els1 els2,
+    l = els1 ++ els2 ->
+    match els2 with
+    | [] => True
+    | ((n, _) :: els) => ~exists o, In (n, o) els
+    end).
+Proof.
+  intros a l elements_unique.
+  intros els1 els2 l_eq.
+  apply elements_unique with (els1 := a::els1).
+  rewrite <-app_comm_cons.
+  now rewrite l_eq.
+Qed.
 
 Lemma SuccessfulPermutationIsObjsPermutation : forall h h' pi,
   Bijection pi ->
@@ -672,10 +835,11 @@ Proof.
   intros h.
   unfold TryPermuteHeap.
   assert (in_els_mapsto : forall n obj, In (n, obj) (Heap.elements h) -> Heap.MapsTo n obj h).
-  intros n obj n_in_h.
-  apply HeapFacts.elements_mapsto_iff.
-  apply In_InA with (eqA := Heap.eq_key_elt (elt := Obj)) in n_in_h; trivial.
-  apply HeapEqKeyEltEquivalence.
+    intros n obj n_in_h.
+    apply HeapFacts.elements_mapsto_iff.
+    apply In_InA with (eqA := Heap.eq_key_elt (elt := Obj)) in n_in_h; trivial.
+    now apply HeapEqKeyEltEquivalence.
+  assert (els_unique := HeapElementsUnique h).
   induction (Heap.elements h).
   + intros h' pi bijection pi_h.
     intros n1 n2 o1 cn1 o2 cn2.
@@ -691,15 +855,18 @@ Proof.
     destruct a as (n & obj).
     destruct (Classical_Prop.classic (n = n1)).
     ++ rewrite H in *.
+       clear H.
        assert (n1_obj_h := in_els_mapsto n1 obj (in_eq (n1, obj) l)).
        assert (obj_eq : obj = (o1, cn1)).
-       apply HeapFacts.find_mapsto_iff in n1_o1_h.
-       apply HeapFacts.find_mapsto_iff in n1_obj_h.
-       unfold Obj in n1_obj_h.
-       rewrite n1_obj_h in n1_o1_h.
-       now injection n1_o1_h.
+         apply HeapFacts.find_mapsto_iff in n1_o1_h.
+         apply HeapFacts.find_mapsto_iff in n1_obj_h.
+         unfold Obj in n1_obj_h.
+         rewrite n1_obj_h in n1_o1_h.
+         now injection n1_o1_h.
        rewrite obj_eq in pi_h.
-       now apply (SuccessfulPermutationIsObjPermutation h o1 cn1 n1 l n2 o2 cn2 h' pi).
+       destruct (HeadOfPermutedElementsIsPermuted n1 n2 o1 o2 cn1 cn2 pi l h') as (l' & pi_elements); trivial.
+         now apply els_unique with (els1 := []) (els2 := (n1, obj)::l).
+       now apply SuccessfulPermutationIsHeapElementsPermutation with (n1 := n1) (n2 := n2) (objs := l) (objs' := l').
     ++ simpl in pi_h.
        assert (exists n', NatMap.find n (fst pi) = Some n').
        destruct (NatMap.find n (fst pi)); try discriminate pi_h.
@@ -709,22 +876,30 @@ Proof.
        destruct (TryPermuteObj obj pi); try discriminate pi_h.
        assert (exists h', TryPermuteHeapElements l pi = Some h').
        destruct (TryPermuteHeapElements l pi); try discriminate pi_h.
-       now exists t.
-       destruct H0 as (rest_h & l_pi_rest_h).
-       rewrite l_pi_rest_h in *.
+       now exists l0.
+       destruct H0 as (rest_els_h' & pi_rest_els_h').
+       rewrite pi_rest_els_h' in *.
        injection pi_h as h'_eq.
        unfold ObjsPermuted in IHl.
        rewrite <-h'_eq in n2_o2_h'.
        assert (next_in_els : forall n obj, In (n, obj) l -> Heap.MapsTo n obj h).
-       intros n0 obj0 n0_in_l.
-       now apply in_els_mapsto, in_cons.
-       apply (IHl next_in_els rest_h pi bijection l_pi_rest_h n1 n2 o1 cn1 o2 cn2); trivial.
+         intros n0 obj0 n0_in_l.
+         now apply in_els_mapsto, in_cons.
+       assert (next_els_unique := HeapElementsUniqueStep (n, obj) l els_unique).
+       set (rest_h' := fold_left (fun h o => Heap.add (fst o) (snd o) h) rest_els_h' (Heap.empty Obj)).
+       assert (pi_rest_h' : match TryPermuteHeapElements l pi with 
+           | Some new_els => Some   (fold_left (fun h o => Heap.add (fst o) (snd o) h) new_els (Heap.empty Obj))
+           | None => None
+           end = Some rest_h').
+         now rewrite pi_rest_els_h'.
+       apply (IHl next_in_els next_els_unique rest_h' pi bijection pi_rest_h' n1 n2 o1 cn1 o2 cn2); trivial.
        apply HeapFacts.find_mapsto_iff in n2_o2_h'.
        apply HeapFacts.find_mapsto_iff.
-       rewrite HeapFacts.add_neq_o in n2_o2_h'; trivial.
+       unfold rest_h'.
+       apply RemoveFromFold with (n' := n') (o' := p); trivial.
        apply NatMapFacts.find_mapsto_iff in n_pi_n'.
        intros n'_eq_n2.
-       rewrite n'_eq_n2 in n_pi_n'.
+       rewrite <-n'_eq_n2 in n_pi_n'.
        apply H.
        now apply (BijectionIsInjective pi n n1 n2).
 Qed.
@@ -737,7 +912,7 @@ Proof.
   intros h h' pi bijection h_pi_h'.
   unfold HeapsPermuted.
   split; [ | split; [ | split]]; trivial.
-  + unfold LocsPermuted.
+  + unfold HeapLocsPermuted.
     intros n1 n1_in_h.
     unfold TryPermuteHeap in h_pi_h'.
     apply HeapFacts.elements_in_iff in n1_in_h.
@@ -748,7 +923,7 @@ Proof.
     unfold Heap.eq_key_elt, Heap.Raw.Proofs.PX.eqke in y_eq.
     simpl in y_eq.
     now rewrite (proj1 y_eq), (proj2 y_eq).
-  + unfold LocsPermuted.
+  + unfold HeapLocsPermuted.
     intros n1 n1_in_h'.
     destruct pi as (pi1 & pi2).
     unfold TryPermuteHeap in h_pi_h'.
@@ -773,6 +948,11 @@ Proof.
   destruct (SuccessfulPermutation h pi consistent covers) as (h' & try_permute_h_h').
   exists h'.
   now apply SuccessfulPermutationIsPermutation.
+Admitted.
+
+Lemma ExistsPermutedExpr : forall e pi,
+  exists e', ExprsPermuted e e' pi.
+Proof.
 Admitted.
 
 Lemma DisjointPermuted : forall h1 h1_perm h2 h2_perm pi,
@@ -803,7 +983,7 @@ Lemma PermutedHeapCovered : forall h1 h2 pi,
 Proof.
   intros h1 h2 pi (_ & locs_permuted & _ & _).
   intros n n_in_h1.
-  unfold LocsPermuted in *.
+  unfold HeapLocsPermuted in *.
   destruct (locs_permuted n n_in_h1) as (n2 & n1_n2_pi & n2_in_h2).
   now exists n2.
 Qed.
@@ -862,7 +1042,7 @@ Proof.
     assert (n_o_h := subheap_h1 n o n_o_h1).
     apply bijection in n'_n_pi.
     destruct pi_h as (_ & locs_fst_h & locs_snd_h & _).
-    unfold LocsPermuted in locs_fst_h.
+    unfold HeapLocsPermuted in locs_fst_h.
     destruct (locs_fst_h n) as (n'' & n_n''_pi & n''_in_h2).
     admit.
     apply NatMapFacts.find_mapsto_iff in n'_n_pi.
@@ -970,3 +1150,358 @@ Proof.
            apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in x_l'_env.
            now rewrite StrMapFacts.add_neq_o.
 Admitted.
+
+
+
+Lemma PermutationSubsetTrans : forall pi1 pi2 pi3,
+  PermutationSubset pi1 pi2 ->
+  PermutationSubset pi2 pi3 ->
+  PermutationSubset pi1 pi3.
+Proof.
+  intros pi1 pi2 pi3 pi1_pi2 pi2_pi3 x l pi1_x_l.
+  now apply pi2_pi3, pi1_pi2.
+Qed.
+
+Lemma PiMapsToEqIff : forall l1 l2 l1' l2' pi,
+  Bijection pi ->
+  PiMapsTo l1 l1' pi ->
+  PiMapsTo l2 l2' pi ->
+  (l1 = l2 <-> l1' = l2').
+Proof.
+  intros l1 l2 l1' l2' pi bijection pi_l1 pi_l2.
+  split.
+  + intros l_eq.
+    unfold PiMapsTo in *.
+    destruct l1, l2, l1', l2'; try easy.
+    injection l_eq as n_eq.
+    rewrite <-n_eq in pi_l2.
+    assert (n1_eq := MapsToEq (fst pi) n n1 n2 pi_l1 pi_l2).
+    now rewrite n1_eq.
+  + intros l_eq.
+    unfold PiMapsTo in *.
+    destruct l1, l2, l1', l2'; try easy.
+    apply bijection in pi_l1.
+    apply bijection in pi_l2.
+    injection l_eq as n1_eq.
+    rewrite <-n1_eq in pi_l2.
+    assert (n_eq := MapsToEq (snd pi) n1 n n0 pi_l1 pi_l2).
+    now rewrite n_eq.
+Qed.
+
+Lemma ExistsPermutedResult : forall res A stn_ext pi',
+  StacksPermuted [ [] [[JFVal1 (JFVLoc res) ]]_ A] stn_ext pi' ->
+  exists res', PiMapsTo res res' pi' /\
+       stn_ext = [ [] [[JFVal1 (JFVLoc res') ]]_ A].
+Proof.
+  intros res A stn_ext pi'.
+  intros pi_st.
+  unfold StacksPermuted in pi_st.
+  destruct stn_ext; try destruct pi_st.
+  destruct stn_ext; try destruct H0.
+  unfold FramesPermuted in H.
+  destruct f.
+  destruct H as (pi_val & pi_ctxs & A_eq).
+  simpl in pi_ctxs.
+  destruct Ctx; try destruct pi_ctxs.
+  unfold ExprsPermuted in pi_val.
+  destruct E; try destruct pi_val.
+  destruct v; try destruct pi_val.
+  exists l.
+  now rewrite A_eq.
+Qed.
+
+Lemma PermutationPreservesClassName : forall h0 h0' h0_perm h0_ext n n_perm C pi,
+  PiMapsTo (JFLoc n) (JFLoc n_perm) pi ->
+  HeapsPermuted h0 h0_perm pi ->
+  JFIDisjointUnion h0_perm h0' h0_ext ->
+  getClassName h0 n = Some C ->
+  getClassName h0_ext n_perm = Some C.
+Proof.
+  intros h0 h0' h0_perm h0_ext n n_perm C pi.
+  intros pi_n pi_h union class_name.
+  unfold getClassName in *.
+  assert (exists o, Heap.find n h0 = Some o).
+    destruct (Heap.find n h0); try discriminate class_name.
+    now exists o.
+  destruct H as (o & n_o_h).
+  rewrite n_o_h in class_name.
+  destruct pi_h as (_ & locs_fst & _ & objs).
+  unfold PiMapsTo in pi_n.
+  assert (n_in_h : Heap.In n h0).
+    apply HeapFacts.elements_in_iff.
+    exists o.
+    now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+  destruct (locs_fst n n_in_h) as (n_perm' & n_nperm'_pi & n_perm'_in_h_perm).
+  rewrite <-(MapsToEq (fst pi) n n_perm n_perm') in *; trivial.
+  apply HeapFacts.elements_in_iff in n_perm'_in_h_perm.
+  destruct n_perm'_in_h_perm as (o' & n'_o'_h').
+  apply HeapFacts.elements_mapsto_iff in n'_o'_h'.
+
+  apply HeapFacts.find_mapsto_iff in n_o_h.
+  destruct o as (o & cn), o' as (o' & cn').
+  injection class_name as C_eq.
+  destruct (objs n n_perm o cn o' cn') as (cn_eq & _); trivial.
+
+  apply HeapFacts.find_mapsto_iff in n_o_h.
+  assert (subheap : JFISubheap h0_perm h0_ext). apply union.
+  assert (n'_o'_h_ext := subheap n_perm (o', cn') n'_o'_h').
+  apply HeapFacts.find_mapsto_iff in n'_o'_h_ext.
+  now rewrite n'_o'_h_ext, <-cn_eq, C_eq.
+Qed.
+
+Lemma PermutationPreservesSubstExpr : forall e e' pi f l l' e_body e_body',
+  ExprsPermuted e_body e_body' pi ->
+  ExprsPermuted e e' pi ->
+  PiMapsTo l l' pi ->
+  substExpr f l e_body = e ->
+  substExpr f l' e_body' = e'.
+Proof.
+Admitted.
+
+Lemma SubstPermutedExpr : forall f l l' e e' pi,
+  ExprsPermuted e e' pi ->
+  PiMapsTo l l' pi ->
+  ExprsPermuted (substExpr f l e) (substExpr f l' e') pi.
+Proof.
+Admitted.
+
+Lemma PermutationPreservesSubstList : forall fs vs vs',
+  (forall f, In f fs -> f <> JFThis) ->
+  length fs = length vs ->
+  length vs = length vs' -> forall e_body e_body' n n' e pi,
+  ValsPermuted vs vs' pi ->
+  ExprsPermuted e_body e_body' pi ->
+  PiMapsTo (JFLoc n) (JFLoc n') pi ->
+  substList fs vs  (substExpr JFThis (JFLoc n) e_body) = Some e ->
+  exists e',
+  ExprsPermuted e e' pi /\
+  substList fs vs' (substExpr JFThis (JFLoc n') e_body') = Some e'.
+Proof.
+  intros fs vs vs' fs_not_this fs_length_eq vs_length_eq.
+  set (_fs := fs).
+  replace fs with _fs in fs_not_this; try now unfold _fs.
+  set (_vs := vs).
+  set (_vs' := vs').
+  replace _fs  with (fst (split (combine fs (combine vs vs')))) in *.
+  replace _vs  with (fst (split (snd (split (combine fs (combine vs vs')))))).
+  replace _vs' with (snd (split (snd (split (combine fs (combine vs vs')))))).
+  clear fs_length_eq vs_length_eq _fs _vs _vs'.
+  induction (combine fs (combine vs vs')); clear fs vs vs'.
+  + intros e_body e_body' n n' e pi.
+    intros pi_vs pi_body pi_n subst.
+    simpl in *.
+         destruct (ExistsPermutedExpr e pi) as (e' & pi_e).
+    exists e'.
+    split; trivial.
+    unfold substList in *.
+    injection subst as subst.
+    apply PermutationPreservesSubstExpr
+      with (e' := e') (e_body' := e_body') (l' := (JFLoc n')) (pi := pi) in subst; trivial.
+    now rewrite subst.
+  + intros e_body e_body' n n' e pi.
+    intros pi_vs pi_body pi_n subst.
+    destruct a as (f & (v & v')).
+    simpl in *.
+    destruct (split l) as (fs & vs_vs').
+    unfold fst, snd in *.
+    simpl in *.
+    unfold fst, snd in *.
+    destruct (split vs_vs') as (vs & vs').
+    destruct v; try discriminate subst.
+    destruct v'; try destruct pi_vs.
+    assert (next_f_not_this : (forall f : JFRef, In f fs -> f <> JFThis)).
+      intros f0 f0_in_fs. apply (fs_not_this f0). now apply or_intror.
+    rewrite SubstExprComm in subst; [ | now apply fs_not_this, or_introl].
+    destruct (IHl next_f_not_this (substExpr f l0 e_body) (substExpr f l1 e_body') n n' e pi)
+      as (e' & pi_e & subst'); trivial.
+    now apply SubstPermutedExpr.
+    rewrite SubstExprComm in subst'; [ | now apply neq_symmetry, fs_not_this, or_introl].
+    now exists e'.
+  + rewrite combine_split; trivial.
+    ++ unfold snd.
+       rewrite combine_split; trivial.
+    ++ rewrite combine_length.
+       rewrite <-vs_length_eq, <-fs_length_eq.
+       now rewrite min_r.
+  + rewrite combine_split; trivial.
+    ++ unfold snd.
+       rewrite combine_split; trivial.
+    ++ rewrite combine_length.
+       rewrite <-vs_length_eq, <-fs_length_eq.
+       now rewrite min_r.
+  + rewrite combine_split; trivial.
+    rewrite combine_length.
+    rewrite <-vs_length_eq, <-fs_length_eq.
+    now rewrite min_r.
+Qed.
+
+Lemma PermutedValsLength: forall vs vs' pi,
+  ValsPermuted vs vs' pi ->
+  length vs = length vs'.
+Proof.
+  intros vs.
+  induction vs;
+    intros vs' pi pi_vs;
+    destruct vs';
+    try destruct a;
+    try now destruct pi_vs.
+  simpl in *.
+  destruct j; try destruct pi_vs.
+  now rewrite IHvs with (vs' := vs') (pi := pi).
+Qed.
+
+Lemma PermutedCtxsLength : forall ctxs ctxs_perm pi,
+  CtxsPermuted ctxs ctxs_perm pi ->
+  length ctxs = length ctxs_perm.
+Proof.
+  intros ctxs.
+  induction ctxs;
+    intros ctxs_perm pi pi_ctxs;
+    destruct ctxs_perm; try now destruct pi_ctxs.
+  simpl in *.
+  now rewrite IHctxs with (ctxs_perm := ctxs_perm) (pi := pi).
+Qed.
+
+Lemma PermutedStacksLength : forall st st_perm pi,
+  StacksPermuted st st_perm pi ->
+  length st = length st_perm.
+Proof.
+  intros st.
+  induction st;
+    intros st_perm pi pi_st;
+    destruct st_perm; try now destruct pi_st.
+  simpl in *.
+  now rewrite (IHst st_perm pi).
+Qed.
+
+(* Lemmas about extending permutations *)
+
+Lemma ExtendValsPermutation : forall vs vs_perm pi pi',
+  ValsPermuted vs vs_perm pi ->
+  PermutationSubset pi pi' ->
+  ValsPermuted vs vs_perm pi'.
+Proof.
+  intros vs vs_perm pi pi' pi_vs pi_subset.
+  assert (length_eq : length vs = length vs_perm).
+    now apply PermutedValsLength with (pi := pi).
+  induction2 vs vs_perm length_eq v v_perm vs' vs'_perm; try easy.
+  simpl in *.
+  destruct v, v_perm; try destruct pi_vs.
+  split.
+  + now apply pi_subset.
+  + now apply IH_l.
+Qed.
+
+Lemma ExtendExprsPermutation : forall e e_perm pi pi',
+  ExprsPermuted e e_perm pi ->
+  PermutationSubset pi pi' ->
+  ExprsPermuted e e_perm pi'.
+Proof.
+  intros e.
+  induction e;
+    intros e_perm pi pi' pi_e pi_subset;
+    destruct e_perm;
+    try now (
+    try destruct v;  try destruct v0;
+    try destruct v1; try destruct v2;
+    try destruct v3; try destruct vx, j;
+    destruct pi_e).
+  + simpl in *.
+    split; try split; try easy.
+    now apply ExtendValsPermutation with (pi := pi).
+  + simpl in *.
+    split; try split; try split; try easy.
+    now apply IHe1 with (pi := pi).
+    now apply IHe2 with (pi := pi).
+  + simpl in *.
+    destruct v0, v1, v2, v3; try destruct pi_e.
+    split; try split; try split; try now apply pi_subset.
+    now apply IHe1 with (pi := pi).
+    now apply IHe2 with (pi := pi).
+  + simpl in *.
+    destruct v, v0; try destruct pi_e.
+    split; try split; try easy.
+    now apply pi_subset.
+    now apply ExtendValsPermutation with (pi := pi).
+  + simpl in *.
+    destruct vx, v, vx0, j1, v0, j; try destruct pi_e.
+    split; now apply pi_subset.
+  + simpl in *.
+    destruct v, v0; try destruct pi_e.
+    now apply pi_subset.
+  + simpl in *.
+    destruct vx, vx0, j, j1; try destruct pi_e.
+    now apply pi_subset.
+  + simpl in *.
+    destruct v, v0; try destruct pi_e.
+    now apply pi_subset.
+  + simpl in *.
+    split.
+    now apply IHe1 with (pi := pi).
+    now apply IHe2 with (pi := pi).
+Qed.
+
+Lemma ExtendCtxPermutation : forall ctx ctx_perm pi pi',
+  CtxPermuted ctx ctx_perm pi ->
+  PermutationSubset pi pi' ->
+  CtxPermuted ctx ctx_perm pi'.
+Proof.
+  intros ctx ctx_perm pi pi' pi_ctx pi_subset.
+  destruct ctx, ctx_perm; try now destruct pi_ctx.
+  + unfold CtxPermuted in *.
+    destruct pi_ctx.
+    split; try split; try easy.
+    now apply ExtendExprsPermutation with (pi := pi).
+  + unfold CtxPermuted in *.
+    destruct pi_ctx.
+    split; try split; try easy.
+    now apply ExtendExprsPermutation with (pi := pi).
+Qed.
+
+Lemma ExtendCtxsPermutation : forall ctxs ctxs_perm pi pi',
+  CtxsPermuted ctxs ctxs_perm pi ->
+  PermutationSubset pi pi' ->
+  CtxsPermuted ctxs ctxs_perm pi'.
+Proof.
+  intros ctxs ctxs_perm pi pi' pi_ctx pi_subset.
+  assert (length_eq : length ctxs = length ctxs_perm).
+    now apply PermutedCtxsLength with (pi := pi).
+
+  induction2 ctxs ctxs_perm length_eq ctx ctx_perm ctxs' ctxs'_perm; try easy.
+  simpl in *.
+  destruct pi_ctx as (pi_ctx & pi_ctxs).
+  split.
+  now apply ExtendCtxPermutation with (pi := pi).
+  now apply IH_l.
+Qed.
+
+Lemma ExtendFramePermutation : forall f f_perm pi pi',
+  FramesPermuted f f_perm pi ->
+  PermutationSubset pi pi' ->
+  FramesPermuted f f_perm pi'.
+Proof.
+  intros f f_perm pi pi' pi_f pi_subset.
+  unfold FramesPermuted in *.
+  destruct f, f_perm.
+  destruct pi_f as (pi_e & pi_ctx & a_eq).
+  split; try split; try easy.
+  now apply ExtendExprsPermutation with (pi := pi).
+  now apply ExtendCtxsPermutation with (pi := pi).
+Qed.
+
+Lemma ExtendStacksPermutation : forall st st_perm pi pi',
+  StacksPermuted st st_perm pi ->
+  PermutationSubset pi pi' ->
+  StacksPermuted st st_perm pi'.
+Proof.
+  intros st st_perm pi pi' pi_st pi_subset.
+  assert (length_eq : length st = length st_perm).
+    now apply PermutedStacksLength with (pi := pi).
+
+  induction2 st st_perm length_eq f f_perm st' st'_perm; try easy.
+  simpl in *.
+  destruct pi_st as (pi_f & pi_st).
+  split.
+  now apply ExtendFramePermutation with (pi := pi).
+  now apply IH_l.
+Qed.

@@ -1216,9 +1216,6 @@ Hint Resolve ExistsElimRuleSoundness : core.
 
 (* =============== Separation rules soundness ===============*)
 
-Definition HeapEq (h1 h2 : Heap) :=
-  forall n, Heap.find n h1 = Heap.find n h2.
-
 Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env,
   (HeapEq h1 h2) ->
     ((JFIHeapSatisfiesInEnv h1 t env CC) <-> (JFIHeapSatisfiesInEnv h2 t env CC)).

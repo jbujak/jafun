@@ -234,6 +234,26 @@ Proof.
   + now rewrite H1, H2.
 Qed.
 
+Definition HeapEq (h1 h2 : Heap) :=
+  forall n, Heap.find n h1 = Heap.find n h2.
+
+Lemma EqImpliesHeapEq : forall h1 h2,
+  h1 = h2 -> HeapEq h1 h2.
+Proof.
+Admitted.
+
+Lemma HeapEqTrans : forall h1 h2 h3,
+  HeapEq h1 h2 ->
+  HeapEq h2 h3 ->
+  HeapEq h1 h3.
+Proof.
+Admitted.
+
+Lemma HeapEqSym : forall h1 h2,
+  HeapEq h1 h2 -> HeapEq h2 h1.
+Proof.
+Admitted.
+
 Lemma HeapEqKeyEquivalence : Equivalence (Heap.eq_key (elt:=Obj)).
 Proof.
   unfold Heap.eq_key.
