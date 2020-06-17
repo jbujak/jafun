@@ -93,10 +93,17 @@ Fixpoint LocsPermuted ls ls' pi :=
   | _ => False
   end.
 
+Definition ValPermuted v v' pi :=
+  match (v, v') with
+  | (JFSyn x, JFSyn y) => x = y
+  | (JFVLoc l, JFVLoc l') => PiMapsTo l l' pi
+  | _ => False
+  end.
+
 Fixpoint ValsPermuted vs vs' pi :=
   match (vs, vs') with
   | ([], []) => True
-  | (JFVLoc v::vs, JFVLoc v'::vs') => PiMapsTo v v' pi /\ ValsPermuted vs vs' pi
+  | (v::vs, v'::vs') => ValPermuted v v' pi /\ ValsPermuted vs vs' pi
   | _ => False
   end.
 
@@ -108,19 +115,19 @@ Fixpoint ExprsPermuted e e' pi :=
   | (JFLet cn x e1 e2, JFLet cn' x' e1' e2') =>
       cn = cn' /\ x = x' /\
       ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi
-  | (JFIf (JFVLoc v1) (JFVLoc v2) e1 e2, JFIf (JFVLoc v1') (JFVLoc v2') e1' e2') =>
+  | (JFIf v1 v2 e1 e2, JFIf v1' v2' e1' e2') =>
       ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi /\
-      PiMapsTo v1 v1' pi /\ PiMapsTo v2 v2' pi
-  | (JFInvoke (JFVLoc v1) m vs, JFInvoke (JFVLoc v1') m' vs') =>
-      PiMapsTo v1 v1' pi /\ ValsPermuted vs vs' pi /\ m = m'
-  | (JFAssign ((JFVLoc v1), _) (JFVLoc v2), JFAssign ((JFVLoc v1'), _) (JFVLoc v2')) =>
-      PiMapsTo v1 v1' pi /\ PiMapsTo v2 v2' pi
-  | (JFVal1 (JFVLoc v1), JFVal1 (JFVLoc v1')) =>
-      PiMapsTo v1 v1' pi
-  | (JFVal2 ((JFVLoc v1), _), JFVal2 ((JFVLoc v1'), _)) =>
-      PiMapsTo v1 v1' pi
-  | (JFThrow (JFVLoc v1), JFThrow (JFVLoc v1')) =>
-      PiMapsTo v1 v1' pi
+      ValPermuted v1 v1' pi /\ ValPermuted v2 v2' pi
+  | (JFInvoke v1 m vs, JFInvoke v1' m' vs') =>
+      ValPermuted v1 v1' pi /\ ValsPermuted vs vs' pi /\ m = m'
+  | (JFAssign (v1, f) v2, JFAssign (v1', f') v2') =>
+      f = f' /\ ValPermuted v1 v1' pi /\ ValPermuted v2 v2' pi
+  | (JFVal1 v1, JFVal1 v1') =>
+      ValPermuted v1 v1' pi
+  | (JFVal2 (v1, f), JFVal2 (v1', f')) =>
+      f = f' /\ ValPermuted v1 v1' pi
+  | (JFThrow v1, JFThrow v1') =>
+      ValPermuted v1 v1' pi
   | (JFTry e1 _ _ _ e2, JFTry e1' _ _ _ e2') =>
       ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi
   | _ => False
@@ -1257,9 +1264,35 @@ Proof.
   now apply SuccessfulPermutationIsPermutation.
 Admitted.
 
+Lemma ExistsPermutedVal : forall v pi,
+  exists v', ValPermuted v v' pi.
+Proof.
+  intros v pi.
+  destruct v.
+  + destruct l.
+    ++ now exists JFnull.
+    ++ admit.
+  + now exists (JFSyn x).
+Admitted.
+
+Lemma ExistsPermutedVals : forall vs pi,
+  exists vs', ValsPermuted vs vs' pi.
+Proof.
+  intros vs pi.
+  induction vs.
+  + now exists [].
+  + destruct IHvs as (vs' & pi_vs).
+    destruct (ExistsPermutedVal a pi) as (a' & pi_a).
+    now exists (a'::vs').
+Qed.
+
 Lemma ExistsPermutedExpr : forall e pi,
   exists e', ExprsPermuted e e' pi.
 Proof.
+  intros e pi.
+  induction e.
+  + destruct (ExistsPermutedVals vs pi) as (vs' & pi_vs).
+    now exists (JFNew mu cn vs').
 Admitted.
 
 Lemma DisjointPermuted : forall h1 h1_perm h2 h2_perm pi,
@@ -1596,6 +1629,7 @@ Proof.
     now apply SubstPermutedExpr.
     rewrite SubstExprComm in subst'; [ | now apply neq_symmetry, fs_not_this, or_introl].
     now exists e'.
+    now exists e.
   + rewrite combine_split; trivial.
     ++ unfold snd.
        rewrite combine_split; trivial.
@@ -1619,14 +1653,16 @@ Lemma PermutedValsLength: forall vs vs' pi,
   length vs = length vs'.
 Proof.
   intros vs.
-  induction vs;
-    intros vs' pi pi_vs;
+  induction vs.
+ + intros vs' pi pi_vs;
     destruct vs';
     try destruct a;
     try now destruct pi_vs.
-  simpl in *.
-  destruct j; try destruct pi_vs.
-  now rewrite IHvs with (vs' := vs') (pi := pi).
+  + intros vs' pi pi_vs.
+    destruct vs', a;
+    try now destruct pi_vs;
+    simpl in *;
+    now rewrite IHvs with (vs' := vs') (pi := pi).
 Qed.
 
 Lemma PermutedCtxsLength : forall ctxs ctxs_perm pi,
@@ -1665,10 +1701,9 @@ Proof.
     now apply PermutedValsLength with (pi := pi).
   induction2 vs vs_perm length_eq v v_perm vs' vs'_perm; try easy.
   simpl in *.
-  destruct v, v_perm; try destruct pi_vs.
-  split.
-  + now apply pi_subset.
-  + now apply IH_l.
+  destruct v, v_perm; try now destruct pi_vs; split.
+  + split; [now apply pi_subset | now apply IH_l].
+  + split; [now apply pi_vs | now apply IH_l].
 Qed.
 
 Lemma ExtendExprsPermutation : forall e e_perm pi pi',
@@ -1693,26 +1728,42 @@ Proof.
     now apply IHe1 with (pi := pi).
     now apply IHe2 with (pi := pi).
   + simpl in *.
-    destruct v0, v1, v2, v3; try destruct pi_e.
-    split; try split; try split; try now apply pi_subset.
-    now apply IHe1 with (pi := pi).
-    now apply IHe2 with (pi := pi).
+    destruct v0, v1, v2, v3; simpl in pi_e; try now destruct pi_e.
+    ++ split; try split; try split; try now apply pi_subset.
+       now apply IHe1 with (pi := pi).
+       now apply IHe2 with (pi := pi).
+    ++ split; try split; try split; try now apply pi_subset.
+       now apply IHe1 with (pi := pi).
+       now apply IHe2 with (pi := pi).
+       now apply pi_e.
+    ++ split; try split; try split; try now apply pi_subset.
+       now apply IHe1 with (pi := pi).
+       now apply IHe2 with (pi := pi).
+       now apply pi_e.
+    ++ split; try split; try split; try now apply pi_subset.
+       now apply IHe1 with (pi := pi).
+       now apply IHe2 with (pi := pi).
+       now apply pi_e.
+       now apply pi_e.
   + simpl in *.
-    destruct v, v0; try destruct pi_e.
-    split; try split; try easy.
+    destruct v, v0; try now destruct pi_e.
+    ++ split; try split; try easy.
+       now apply pi_subset.
+       now apply ExtendValsPermutation with (pi := pi).
+    ++ split; try split; try easy.
+       now apply ExtendValsPermutation with (pi := pi).
+  + simpl in *.
+    destruct vx, v, vx0, j1, v0, j; try now destruct pi_e;
+    split; try split; try easy; now apply pi_subset.
+  + simpl in *.
+    destruct v, v0; try now destruct pi_e.
     now apply pi_subset.
-    now apply ExtendValsPermutation with (pi := pi).
   + simpl in *.
-    destruct vx, v, vx0, j1, v0, j; try destruct pi_e.
-    split; now apply pi_subset.
+    destruct vx, vx0, j, j1; try now destruct pi_e.
+    destruct pi_e.
+    split; try easy; now apply pi_subset.
   + simpl in *.
-    destruct v, v0; try destruct pi_e.
-    now apply pi_subset.
-  + simpl in *.
-    destruct vx, vx0, j, j1; try destruct pi_e.
-    now apply pi_subset.
-  + simpl in *.
-    destruct v, v0; try destruct pi_e.
+    destruct v, v0; try now destruct pi_e.
     now apply pi_subset.
   + simpl in *.
     split.

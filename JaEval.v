@@ -282,7 +282,7 @@ Proof.
     injection locs_of_vs as locs_eq.
     now rewrite <- locs_eq.
   + simpl in *.
-    destruct a, vs_perm; try destruct j; try destruct pi_vs.
+    destruct a, vs_perm; try destruct j; try now destruct pi_vs.
     simpl in locs_of_vs.
     destruct locs as [ | loc locs].
       destruct (list_map_opt loc_of_val vs); try discriminate locs_of_vs.
@@ -387,8 +387,8 @@ Proof.
     destruct f.
     destruct pi_f as (pi_if & pi_ctx & A_eq).
     simpl in pi_if.
-    destruct v1, v2, E; try destruct v1, v2; try now destruct pi_if.
-    destruct pi_if as (pi_e1 & pi_e2 & pi_l & pi_l0).
+    destruct v1, v2, E; try destruct v1, v2; try now destruct pi_if;
+      try now (destruct Ctx; try destruct j; discriminate red_st).
     destruct A.
       destruct Ctx; try destruct j0; try discriminate red_st.
     destruct (Classical_Prop.classic (l = l0)) as [l_eq | l_neq].
@@ -426,7 +426,8 @@ Proof.
     destruct f.
     destruct pi_f as (pi_invoke & pi_ctx & A_eq).
     simpl in pi_invoke.
-    destruct v, E; try destruct v; try now destruct pi_invoke.
+    destruct v, E; try destruct v; try now destruct pi_invoke;
+      try now (destruct Ctx; try destruct j; discriminate red_st).
     destruct pi_invoke as (pi_l & pi_vs & m_eq).
     destruct A.
       destruct Ctx, l; try destruct j0; try discriminate red_st.
