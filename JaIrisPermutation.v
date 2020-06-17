@@ -1290,10 +1290,25 @@ Lemma ExistsPermutedExpr : forall e pi,
   exists e', ExprsPermuted e e' pi.
 Proof.
   intros e pi.
-  induction e.
-  + destruct (ExistsPermutedVals vs pi) as (vs' & pi_vs).
-    now exists (JFNew mu cn vs').
-Admitted.
+  induction e;
+    try destruct IHe1 as (e1' & pi_e1);
+    try destruct IHe2 as (e2' & pi_e2);
+    try destruct vx as (vx & f);
+    try destruct (ExistsPermutedVal v1 pi) as (v1' & pi_v1);
+    try destruct (ExistsPermutedVal v2 pi) as (v2' & pi_v2);
+    try destruct (ExistsPermutedVal vx pi) as (vx' & pi_vx);
+    try destruct (ExistsPermutedVal v pi) as (v' & pi_v);
+    try destruct (ExistsPermutedVals vs pi) as (vs' & pi_vs).
+  + now exists (JFNew mu cn vs').
+  + now exists (JFLet cn x e1' e2').
+  + now exists (JFIf v1' v2' e1' e2').
+  + now exists (JFInvoke v' m vs').
+  + now exists (JFAssign (vx', f) v').
+  + now exists (JFVal1 v').
+  + now exists (JFVal2 (vx', f)).
+  + now exists (JFThrow v').
+  + now exists (JFTry e1' mu cn x e2').
+Qed.
 
 Lemma DisjointPermuted : forall h1 h1_perm h2 h2_perm pi,
   JFIHeapsDisjoint h1 h2 ->
