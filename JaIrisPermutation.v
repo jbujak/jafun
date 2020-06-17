@@ -928,6 +928,79 @@ Proof.
   now apply (MapsToEq (snd pi) n2 n1 n1').
 Qed.
 
+Lemma SuccessfulPermutationIsObjPermutation_elements : forall o1 o2 cn1 cn2 pi,
+  TryPermuteObj (o1, cn1) pi = Some (o2, cn2) ->
+  forall f : JFXIdMap.key,
+    (forall v1 : Loc, InA (JFXIdMap.eq_key_elt (elt:=Loc)) (f, v1) (JFXIdMap.elements o1) -> exists v2 : Loc, JFXIdMap.MapsTo f v2 o2) /\
+    (forall v2 : Loc, JFXIdMap.MapsTo f v2 o2 -> exists v1 : Loc, InA (JFXIdMap.eq_key_elt (elt:=Loc)) (f, v1) (JFXIdMap.elements o1) ) /\
+    (forall v1 v2 : Loc, InA (JFXIdMap.eq_key_elt (elt:=Loc)) (f, v1) (JFXIdMap.elements o1)  -> JFXIdMap.MapsTo f v2 o2 -> PiMapsTo v1 v2 pi).
+Proof.
+  intros o1.
+  unfold TryPermuteObj.
+  induction (JFXIdMap.elements o1) as [ | fld flds]; intros o2 cn1 cn2 pi pi_o1 f.
+  + simpl in *.
+    injection pi_o1 as o2_eq cn_eq.
+    split; [ | split].
+    ++ intros v1 f_v1.
+       inversion f_v1.
+    ++ intros v2 f_v2.
+       exfalso.
+       rewrite <-o2_eq in f_v2.
+       now apply JFXIdMapFacts.empty_mapsto_iff in f_v2.
+    ++ intros v1 v2 f_v1 f_v2.
+       exfalso.
+       rewrite <-o2_eq in f_v2.
+       now apply JFXIdMapFacts.empty_mapsto_iff in f_v2.
+  + simpl in *. clear o1.
+    destruct fld as (f1 & l1).
+    assert (exists l1', TryPermuteLoc l1 pi = Some l1').
+      destruct (TryPermuteLoc l1 pi); try discriminate pi_o1.
+      now exists l.
+    destruct H as (l1' & pi_l1).
+    rewrite pi_l1 in pi_o1.
+    assert (exists flds', TryPermuteObjFlds flds pi = Some flds').
+      destruct (TryPermuteObjFlds flds pi); try discriminate pi_o1.
+      now exists l.
+    destruct H as (flds' & pi_flds).
+    rewrite pi_flds in pi_o1.
+    injection pi_o1 as o_eq cn_eq.
+    set (o' := fold_left (fun o f => JFXIdMap.add (fst f) (snd f) o) flds' (JFXIdMap.empty Loc)).
+    assert (H := IHflds o' cn1 cn1 pi).
+    rewrite pi_flds in H.
+    fold o' in H.
+    assert (IH := H eq_refl f).
+    clear H IHflds.
+    destruct IH as (IH1 & IH2 & IH3).
+    split; [ | split].
+    ++ intros v1 f_v1.
+       destruct (Classical_Prop.classic (f1 = f)).
+       +++ admit.
+       +++ inversion f_v1.
+             exfalso.
+             apply H.
+             now unfold JFXIdMap.eq_key_elt, JFXIdMap.Raw.PX.eqke, fst, snd in H1.
+           apply IH1 in H1 as (v2 & f_v2).
+           exists v2.
+           admit.
+    ++ intros v2 f_v2.
+       destruct (Classical_Prop.classic (f1 = f)).
+       +++ exists l1.
+           now apply InA_cons_hd.
+       +++ assert (f_v2' : JFXIdMap.MapsTo f v2 o'). admit.
+           apply IH2 in f_v2' as (v1 & f_v1).
+           exists v1.
+           now apply InA_cons_tl.
+    ++ intros v1 v2 f_v1 f_v2.
+       destruct (Classical_Prop.classic (f1 = f)).
+       +++ admit.
+       +++ assert (f_v2' : JFXIdMap.MapsTo f v2 o'). admit.
+           inversion f_v1.
+             exfalso.
+             apply H.
+             now unfold JFXIdMap.eq_key_elt, JFXIdMap.Raw.PX.eqke, fst, snd in H1.
+           now apply IH3.
+Admitted.
+
 Lemma SuccessfulPermutationIsObjPermutation : forall o1 o2 cn1 cn2 pi,
   TryPermuteObj (o1, cn1) pi = Some (o2, cn2) ->
   forall f : JFXIdMap.key,
@@ -935,7 +1008,8 @@ Lemma SuccessfulPermutationIsObjPermutation : forall o1 o2 cn1 cn2 pi,
     (forall v2 : Loc, JFXIdMap.MapsTo f v2 o2 -> exists v1 : Loc, JFXIdMap.MapsTo f v1 o1) /\
     (forall v1 v2 : Loc, JFXIdMap.MapsTo f v1 o1 -> JFXIdMap.MapsTo f v2 o2 -> PiMapsTo v1 v2 pi).
 Proof.
-Admitted.
+  apply SuccessfulPermutationIsObjPermutation_elements.
+Qed.
 
 Lemma SuccessfulPermutationIsHeapElementsPermutation : forall o1 cn1 n1 objs objs' n2 o2 cn2 pi,
   TryPermuteHeapElements ((n1, (o1, cn1)) :: objs) pi = Some ((n2, (o2, cn2)) :: objs') ->
