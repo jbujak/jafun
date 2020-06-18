@@ -638,3 +638,82 @@ Proof.
   + apply UnionHasNoExtraElements.
 Qed.
 
+Lemma FindInUnion : forall h1 h2 h n o,
+  JFIDisjointUnion h1 h2 h ->
+  Heap.find n h1 = Some o ->
+  Heap.find n h = Some o.
+Proof.
+  intros h1 h2 h n o.
+  intros disjoint n_o.
+  destruct disjoint as ((subheap & _) & _).
+  rewrite <-HeapFacts.find_mapsto_iff in *.
+  now apply subheap.
+Qed.
+
+Lemma ExtendDisjointUnion : forall h1 h2 h n o,
+  JFIDisjointUnion h1 h2 h ->
+  (~Heap.In n h2) ->
+  JFIDisjointUnion (Heap.add n o h1) h2 (Heap.add n o h).
+Proof.
+  intros h1 h2 h n o.
+  intros union n_not_in_h2.
+  destruct union as ((h1_subheap & h2_subheap & union) & disjoint).
+  split; [ split; [| split] |].
+  + intros n' o'.
+    rewrite !HeapFacts.find_mapsto_iff.
+    destruct (Classical_Prop.classic (n = n')).
+    ++ now rewrite !HeapFacts.add_eq_o.
+    ++ rewrite !HeapFacts.add_neq_o; trivial.
+       assert (subheap := h1_subheap n' o').
+       now rewrite !HeapFacts.find_mapsto_iff in subheap.
+  + intros n' o' n'_o'.
+    destruct (Classical_Prop.classic (n = n')).
+    ++ exfalso.
+       apply n_not_in_h2.
+       rewrite <-H in n'_o'.
+       apply HeapFacts.elements_in_iff.
+       apply HeapFacts.elements_mapsto_iff in n'_o'.
+       now exists o'.
+    ++ apply HeapFacts.find_mapsto_iff.
+       rewrite !HeapFacts.add_neq_o; trivial.
+       apply HeapFacts.find_mapsto_iff.
+       now apply h2_subheap.
+  + intros l l_in_add.
+    apply HeapFacts.elements_in_iff in l_in_add as (o' & l_o').
+    apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in l_o'.
+    destruct (Classical_Prop.classic (n = l)).
+    ++ apply or_introl.
+       rewrite H.
+       apply HeapFacts.elements_in_iff.
+       exists o.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_eq_o.
+    ++ rewrite HeapFacts.add_neq_o in l_o'; trivial.
+       destruct (union l).
+       +++ apply HeapFacts.elements_in_iff.
+           exists o'.
+           now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       +++ apply or_introl.
+           apply HeapFacts.elements_in_iff in H0 as (o'' & l_o'').
+           apply HeapFacts.elements_in_iff.
+           exists o''.
+           apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+           rewrite HeapFacts.add_neq_o; trivial.
+           now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in l_o''.
+       +++ now apply or_intror.
+  + intros l l_in_both.
+    destruct (Classical_Prop.classic (n = l)).
+    ++ rewrite H in *.
+       now apply n_not_in_h2.
+    ++ destruct l_in_both as (l_in_h1 & l_in_h2).
+       apply (disjoint l).
+       split; trivial.
+       apply HeapFacts.elements_in_iff in l_in_h1 as (o' & l_o').
+       apply HeapFacts.elements_in_iff.
+       exists o'.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in l_o'.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_neq_o in l_o'.
+Qed.
+
+
