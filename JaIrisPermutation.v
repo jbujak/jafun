@@ -1472,7 +1472,7 @@ Proof.
     now exists o.
 Qed.
 
-Lemma AddVarToPermutedEnvs : forall x l1 l2 env1 env2 pi,
+Lemma ExtendPermutedEnvs : forall x l1 l2 env1 env2 pi,
   EnvsPermuted env1 env2 pi ->
   PiMapsTo l1 l2 pi ->
   EnvsPermuted (StrMap.add x l1 env1) (StrMap.add x l2 env2) pi.
@@ -1504,7 +1504,36 @@ Proof.
            apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff.
            apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in x_l'_env.
            now rewrite StrMapFacts.add_neq_o.
-Admitted.
+     ++ destruct (Classical_Prop.classic (x = y)).
+        +++ intros _.
+            apply StrMapFacts.elements_in_iff.
+            exists l1.
+            now rewrite <-StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff,
+                StrMapFacts.add_eq_o.
+        +++ intros in_env2.
+            apply StrMapFacts.elements_in_iff in in_env2 as (l' & y_l').
+            rewrite <-StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff,
+                StrMapFacts.add_neq_o, <-StrMapFacts.find_mapsto_iff in y_l'; trivial.
+            assert (in_env2 : StrMap.In y env2).
+              apply StrMapFacts.elements_in_iff.
+              exists l'.
+              now apply StrMapFacts.elements_mapsto_iff.
+            apply same_keys in in_env2 as in_env1.
+            apply StrMapFacts.elements_in_iff in in_env1 as (l'' & y_l'').
+            apply StrMapFacts.elements_in_iff.
+            exists l''.
+            now rewrite <-StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff,
+                StrMapFacts.add_neq_o, <-StrMapFacts.find_mapsto_iff, StrMapFacts.elements_mapsto_iff.
+  + intros y l l' y_l y_l'.
+    destruct (Classical_Prop.classic (x = y)).
+    ++ rewrite StrMapFacts.find_mapsto_iff, StrMapFacts.add_eq_o in y_l, y_l'; trivial.
+       injection y_l as l_eq.
+       injection y_l' as l'_eq.
+       now rewrite <-l_eq, <-l'_eq.
+    ++ rewrite StrMapFacts.find_mapsto_iff, StrMapFacts.add_neq_o,
+           <-StrMapFacts.find_mapsto_iff in y_l, y_l'; trivial.
+       now apply var_mapsto with (x := y).
+Qed.
 
 Lemma PermutationSubsetTrans : forall pi1 pi2 pi3,
   PermutationSubset pi1 pi2 ->

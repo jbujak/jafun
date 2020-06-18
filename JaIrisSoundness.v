@@ -2598,7 +2598,7 @@ Proof.
   + apply union_hn_perm_hr.
   + apply union_hn_perm_hr.
   + apply (PermutationPreservesHeapSatisfying _  hn _ (StrMap.add v res env) _ pi CC); try easy.
-    now apply AddVarToPermutedEnvs.
+    now apply ExtendPermutedEnvs.
   + destruct res_ext.
     ++ now apply AddingNullPreservesHeapSatisfying.
     ++ now apply AddingFreshVarPreservesHeapSatisfiying.
