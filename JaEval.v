@@ -533,7 +533,106 @@ Proof.
   intros h0 h0_perm h0' h0_ext Ctx A st h' st' st_perm pi CC.
   intros pi_npe pi_st pi_h0 red_st union.
   unfold red in red_st.
-Admitted.
+  simpl in pi_st.
+  destruct st_perm; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_val1 & pi_ctx & A_eq).
+  simpl in pi_val1.
+  destruct E; try now destruct pi_val1.
+  destruct A.
+  + destruct Ctx; [ | destruct j0].
+    ++ destruct v, st; try destruct f; try destruct E, A; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct pi_ctx.
+       destruct st_perm; try destruct f; try now destruct pi_st.
+       simpl in pi_st.
+       destruct pi_st as (pi_f & pi_st).
+       destruct E, A; try now destruct pi_f.
+       unfold FramesPermuted in pi_f.
+       destruct pi_f as (pi_e & pi_ctx & _).
+       destruct pi_e as (pi_v & pi_vs & m_eq).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-m_eq, <-h0_eq, <-st_eq, <-A_eq.
+       now exists h0_perm, h0_ext, (Ctx0 [[JFVal1 (JFVLoc l') ]]_ Some j :: st_perm), pi.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq, <-A_eq.
+       now exists h0_perm, h0_ext, (Ctx0 [[JFVal1 (JFVLoc l') ]]_ Some j :: st_perm), pi.
+    ++ destruct v; try discriminate red_st.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       rewrite <-C_eq, <-x_eq, <-A_eq in *.
+       replace h' with h0;
+         [ | destruct (subtype_bool CC (JFClass j) (JFClass C)); now injection red_st].
+       destruct (Classical_Prop.classic (Is_true (subtype_bool CC (JFClass j) (JFClass C)))).
+       +++ unfold red.
+           destruct (subtype_bool CC (JFClass j) (JFClass C)); try destruct H.
+           injection red_st as h_eq st_eq.
+           rewrite <-st_eq.
+           exists h0_perm, h0_ext,
+            ((Ctx0 [[substExpr (JFVar x) l' E0 ]]_ None) :: st_perm), pi.
+           unfold red.
+           split; [ | split; [ | split; [ | split]]]; try easy.
+           split; try easy.
+           unfold FramesPermuted.
+           split; try split; try easy.
+           now apply SubstPermutedExpr.
+       +++ unfold red.
+           destruct (subtype_bool CC (JFClass j) (JFClass C)); try now (exfalso; now apply H).
+           injection red_st as h_eq st_eq.
+           rewrite <-st_eq.
+           now exists h0_perm, h0_ext,
+            ((Ctx0 [[JFVal1 (JFVLoc l') ]]_ Some j) :: st_perm), pi.
+  + destruct Ctx; [ | destruct j].
+    ++ destruct v, st; try destruct f; try destruct E, A; try discriminate red_st.
+       injection red_st as h_eq st_eq.
+       destruct Ctx0; try destruct pi_ctx.
+       destruct st_perm; try destruct f; try now destruct pi_st.
+       simpl in pi_st.
+       destruct pi_st as (pi_f & pi_st).
+       destruct E, A; try now destruct pi_f.
+       unfold FramesPermuted in pi_f.
+       destruct pi_f as (pi_e & pi_ctx & _).
+       destruct pi_e as (pi_v & pi_vs & m_eq).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-m_eq, <-h_eq, <-st_eq, <-A_eq.
+       now exists h0_perm, h0_ext, (Ctx0 [[ JFVal1 (JFVLoc l') ]]_ None:: st_perm), pi.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq, <-A_eq, <-x_eq.
+       exists h0_perm, h0_ext, (Ctx0 [[ substExpr (JFVar x) l' E0 ]]_ None:: st_perm), pi.
+       split; [ | split; [ | split; [ | split]]]; try easy.
+       split; try easy.
+       unfold FramesPermuted.
+       split; try split; try easy.
+       now apply SubstPermutedExpr.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq, <-A_eq.
+       now exists h0_perm, h0_ext, (Ctx0 [[ JFVal1 (JFVLoc l') ]]_ None:: st_perm), pi;
+          destruct j.
+Qed.
 
 Lemma Val2ReductionPreservesHeapPermutation : forall vx,
    ExprReductionPreservesHeapPermutation (JFVal2 vx).
