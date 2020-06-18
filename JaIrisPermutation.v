@@ -1617,7 +1617,7 @@ Proof.
   + intros e_body e_body' n n' e pi.
     intros pi_vs pi_body pi_n subst.
     simpl in *.
-         destruct (ExistsPermutedExpr e pi) as (e' & pi_e).
+    destruct (ExistsPermutedExpr e pi) as (e' & pi_e).
     exists e'.
     split; trivial.
     unfold substList in *.
@@ -1849,4 +1849,202 @@ Proof.
   split.
   now apply ExtendFramePermutation with (pi := pi).
   now apply IH_l.
+Qed.
+
+Lemma ExtendPermutedHeaps : forall n n' f l l' ro ro' cid h h' pi,
+  HeapsPermuted h h' pi ->
+  NatMap.MapsTo n n' (fst pi) ->
+  Heap.find n h = Some (ro, cid) ->
+  Heap.find n' h' = Some (ro', cid) ->
+  PiMapsTo l l' pi ->
+  HeapsPermuted (Heap.add n  (JFXIdMap.add f l  ro , cid) h)
+                (Heap.add n' (JFXIdMap.add f l' ro', cid) h') pi.
+Proof.
+  intros n n' f l l' ro ro' cid h h' pi.
+  intros pi_h pi_n n_ro n'_ro' pi_l.
+  destruct pi_h as (bijection & locs_fst & locs_snd & objs).
+  unfold HeapsPermuted.
+  split; [ | split; [ | split]]; trivial.
+  + unfold HeapLocsPermuted.
+    intros n1 n1_in_add.
+    destruct (Classical_Prop.classic (n = n1)).
+    ++ rewrite <-H in *.
+       exists n'.
+       split; trivial.
+       apply HeapFacts.elements_in_iff.
+       exists (JFXIdMap.add f l' ro', cid).
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_eq_o.
+    ++ apply HeapFacts.elements_in_iff in n1_in_add as (o1 & n1_o1).
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n1_o1.
+       rewrite HeapFacts.add_neq_o in n1_o1; trivial.
+       destruct (locs_fst n1) as (n2 & pi_n1 & n2_in_h').
+         apply HeapFacts.elements_in_iff.
+         apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff in n1_o1.
+         now exists o1.
+       exists n2.
+       split; trivial.
+       apply HeapFacts.elements_in_iff in n2_in_h' as (o2 & n2_o2).
+       apply HeapFacts.elements_in_iff.
+       exists o2.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       assert (n' <> n2).
+         intros n1_eq.
+         apply H.
+         apply bijection in pi_n1.
+         apply bijection in pi_n.
+         rewrite <-n1_eq in pi_n1.
+         now apply MapsToEq with (n2 := n1) in pi_n.
+       rewrite HeapFacts.add_neq_o; trivial.
+       now apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff.
+  + unfold HeapLocsPermuted.
+    intros n1 n1_in_add.
+    destruct (Classical_Prop.classic (n' = n1)).
+    ++ rewrite <-H in *.
+       exists n.
+       apply bijection in pi_n.
+       split; trivial.
+       apply HeapFacts.elements_in_iff.
+       exists (JFXIdMap.add f l ro, cid).
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       now rewrite HeapFacts.add_eq_o.
+    ++ apply HeapFacts.elements_in_iff in n1_in_add as (o1 & n1_o1).
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n1_o1.
+       rewrite HeapFacts.add_neq_o in n1_o1; trivial.
+       destruct (locs_snd n1) as (n2 & pi_n1 & n2_in_h').
+         apply HeapFacts.elements_in_iff.
+         apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff in n1_o1.
+         now exists o1.
+       exists n2.
+       split; trivial.
+       apply HeapFacts.elements_in_iff in n2_in_h' as (o2 & n2_o2).
+       apply HeapFacts.elements_in_iff.
+       exists o2.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+       assert (n <> n2).
+         intros n1_eq.
+         apply H.
+         apply bijection in pi_n1.
+         rewrite <-n1_eq in pi_n1.
+         now apply MapsToEq with (n2 := n1) in pi_n.
+       rewrite HeapFacts.add_neq_o; trivial.
+       now apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff.
+  + unfold ObjsPermuted.
+    intros n1 n2 o1 cn1 o2 cn2.
+    intros pi_n1 n1_o1 n2_o2.
+    destruct (Classical_Prop.classic (n = n1)).
+    ++ rewrite <-H in *.
+       apply HeapFacts.find_mapsto_iff in n1_o1.
+       apply HeapFacts.find_mapsto_iff in n2_o2.
+       assert (n' = n2).
+         now apply MapsToEq with (n2 := n2) in pi_n.
+       rewrite HeapFacts.add_eq_o in n1_o1, n2_o2; trivial.
+       injection n1_o1 as o1_eq cn1_eq.
+       injection n2_o2 as o2_eq cn2_eq.
+       rewrite <-cn1_eq, <-cn2_eq, <-o1_eq, <-o2_eq.
+       split; trivial.
+       intros f'.
+       destruct (Classical_Prop.classic (f = f')).
+       +++ split; [ | split].
+           - intros v1 f'_v1.
+             exists l'.
+             now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o in f'_v1 |-*.
+           - intros v2 f'_v2.
+             exists l.
+             now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o in f'_v2 |-*.
+           - intros v1 v2 f'_v1 f'_v2.
+             rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o in f'_v1, f'_v2; trivial.
+             injection f'_v1 as v1_eq.
+             injection f'_v2 as v2_eq.
+             now rewrite <-v1_eq, <-v2_eq.
+       +++ apply HeapFacts.find_mapsto_iff in n_ro.
+           apply HeapFacts.find_mapsto_iff in n'_ro'.
+           destruct (objs n n' ro cid ro' cid) as (_ & H2); trivial.
+           destruct (H2 f') as (IH1 & IH2 & IH3); clear H2.
+           split; [ | split].
+           - intros v1 f'_v1.
+             rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o in f'_v1; trivial.
+             rewrite <-JFXIdMapFacts.find_mapsto_iff in f'_v1.
+             destruct (IH1 v1) as (v2 & f'_v2); trivial.
+             exists v2.
+             now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o, <-JFXIdMapFacts.find_mapsto_iff.
+           - intros v2 f'_v2.
+             rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o in f'_v2; trivial.
+             rewrite <-JFXIdMapFacts.find_mapsto_iff in f'_v2.
+             destruct (IH2 v2) as (v1 & f'_v1); trivial.
+             exists v1.
+             now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o, <-JFXIdMapFacts.find_mapsto_iff.
+           - intros v1 v2 f'_v1 f'_v2.
+             rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o, <-JFXIdMapFacts.find_mapsto_iff in f'_v1, f'_v2; trivial.
+             now apply IH3.
+    ++ assert (n' <> n2).
+         intros n'_eq_n2.
+         apply H.
+         rewrite n'_eq_n2 in *.
+         apply bijection in pi_n.
+         apply bijection in pi_n1.
+         now apply MapsToEq with (n2 := n1) in pi_n.
+    rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff in n1_o1, n2_o2; trivial.
+    now apply (objs n1 n2 o1 cn1 o2 cn2).
+Qed.
+
+Lemma ExistsInPermutedHeap : forall n n' h h' pi ro cid,
+  HeapsPermuted h h' pi ->
+  NatMap.MapsTo n n' (fst pi) ->
+  Heap.find n h = Some (ro, cid) ->
+  exists ro', Heap.find n' h' = Some (ro', cid).
+Proof.
+  intros n n' h h' pi ro cid.
+  intros pi_h pi_n n_ro.
+  destruct pi_h as (bijection & locs_fst & locs_snd & objs).
+  destruct (locs_fst n) as (n'' & pi_n'' & n'_h').
+    rewrite HeapFacts.elements_in_iff.
+    exists (ro, cid).
+    now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+  apply MapsToEq with (n2 := n'') in pi_n as n''_eq; trivial.
+  rewrite n''_eq in *.
+  apply HeapFacts.elements_in_iff in n'_h' as (o' & n'_o').
+  apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n'_o'.
+  destruct o' as (ro', cid').
+  rewrite <-HeapFacts.find_mapsto_iff in n_ro, n'_o'.
+  unfold ObjsPermuted in objs.
+  destruct (objs n n' ro cid ro' cid') as (cid_eq & _); trivial.
+  rewrite <-cid_eq in *.
+  apply HeapFacts.find_mapsto_iff in n'_o'.
+  now exists ro'.
+Qed.
+
+Lemma LocOfValsPermutation : forall vs locs vs_perm pi,
+  list_map_opt loc_of_val vs = Some locs ->
+  ValsPermuted vs vs_perm pi ->
+  exists locs', 
+    list_map_opt loc_of_val vs_perm = Some locs' /\
+    LocsPermuted locs locs' pi.
+Proof.
+  intros vs.
+  induction vs; intros locs vs_perm pi locs_of_vs pi_vs.
+  + exists [].
+    simpl in *.
+    destruct vs_perm; try destruct pi_vs.
+    injection locs_of_vs as locs_eq.
+    now rewrite <- locs_eq.
+  + simpl in *.
+    destruct a, vs_perm; try destruct j; try now destruct pi_vs.
+    simpl in locs_of_vs.
+    destruct locs as [ | loc locs].
+      destruct (list_map_opt loc_of_val vs); try discriminate locs_of_vs.
+    assert (locs_of_vs' : list_map_opt loc_of_val vs = Some locs).
+      destruct (list_map_opt loc_of_val vs); try discriminate locs_of_vs.
+      injection locs_of_vs.
+      intros locs_eq _.
+      now rewrite locs_eq.
+    assert (l_eq : l = loc).
+      destruct (list_map_opt loc_of_val vs); try discriminate locs_of_vs.
+      now injection locs_of_vs.
+    rewrite l_eq in *.
+    destruct (IHvs locs vs_perm pi) as (locs' & locs'_of_vs_perm & pi_locs) ; try easy.
+    exists (l0::locs').
+    split; try easy.
+    simpl.
+    now rewrite locs'_of_vs_perm.
 Qed.
