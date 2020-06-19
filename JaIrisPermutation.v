@@ -60,21 +60,23 @@ Definition HeapLocsPermuted (f : HeapInjection) (h1 h2 : Heap) :=
   forall n1, Heap.In n1 h1 ->
   exists n2, NatMap.MapsTo n1 n2 f /\ Heap.In n2 h2.
 
-Definition ObjPermuted (o1 o2 : RawObj) (cn1 cn2 : JFClassName) pi :=
+Definition ObjPermuted (o1 o2 : Obj) pi :=
+  let (ro1, cn1) := o1 in
+  let (ro2, cn2) := o2 in
   cn1 = cn2 /\ forall f,
-    (forall v1, JFXIdMap.MapsTo f v1 o1 -> exists v2, JFXIdMap.MapsTo f v2 o2) /\
-    (forall v2, JFXIdMap.MapsTo f v2 o2 -> exists v1, JFXIdMap.MapsTo f v1 o1) /\
+    (forall v1, JFXIdMap.MapsTo f v1 ro1 -> exists v2, JFXIdMap.MapsTo f v2 ro2) /\
+    (forall v2, JFXIdMap.MapsTo f v2 ro2 -> exists v1, JFXIdMap.MapsTo f v1 ro1) /\
     (forall v1 v2,
-      JFXIdMap.MapsTo f v1 o1 ->
-      JFXIdMap.MapsTo f v2 o2 ->
+      JFXIdMap.MapsTo f v1 ro1 ->
+      JFXIdMap.MapsTo f v2 ro2 ->
       PiMapsTo v1 v2 pi).
 
 Definition ObjsPermuted (pi : HeapPermutation) (h1 h2 : Heap) :=
-  forall n1 n2 o1 cn1 o2 cn2,
+  forall n1 n2 o1 o2,
     NatMap.MapsTo n1 n2 (fst pi) ->
-    Heap.MapsTo n1 (o1, cn1) h1 ->
-    Heap.MapsTo n2 (o2, cn2) h2 ->
-    ObjPermuted o1 o2 cn1 cn2 pi.
+    Heap.MapsTo n1 o1 h1 ->
+    Heap.MapsTo n2 o2 h2 ->
+    ObjPermuted o1 o2 pi.
 
 Definition HeapsPermuted (h1 h2 : Heap) pi :=
   Bijection pi /\
@@ -214,10 +216,11 @@ Proof.
     intros n1 n2.
     split; apply (bijection n2 n1).
   + unfold ObjsPermuted in *.
-    intros n2 n1 o2 cn2 o1 cn1.
+    intros n2 n1 o2 o1.
     intros n2_n1_snd n2_o2_h2 n1_o1_h1.
     apply bijection in n2_n1_snd as n1_n2_fst.
-    destruct (pi_h n1 n2 o1 cn1 o2 cn2 n1_n2_fst n1_o1_h1 n2_o2_h2)
+    destruct o1 as (o1 & cn1), o2 as (o2 & cn2).
+    destruct (pi_h n1 n2 (o1, cn1) (o2, cn2) n1_n2_fst n1_o1_h1 n2_o2_h2)
       as (cn_eq & field_mapsto).
     symmetry in cn_eq.
     split; trivial.
@@ -322,7 +325,6 @@ Proof.
   rewrite n1_n2'_pi in n1_n2_pi.
   now injection n1_n2_pi.
 Qed.
-
 
 Lemma PiMapsToEqIff : forall l1 l2 l1' l2' pi,
   Bijection pi ->
@@ -1159,7 +1161,7 @@ Proof.
   assert (els_unique := HeapElementsUnique h).
   induction (Heap.elements h).
   + intros h' pi bijection pi_h.
-    intros n1 n2 o1 cn1 o2 cn2.
+    intros n1 n2 (o1 & cn1) (o2 & cn2).
     intros n1_n2_pi n1_o1_h n2_o2_h'.
     exfalso.
     simpl in pi_h.
@@ -1167,7 +1169,7 @@ Proof.
     rewrite <-h'_eq in n2_o2_h'.
     now apply HeapFacts.empty_mapsto_iff in n2_o2_h'.
   + intros h' pi bijection pi_h.
-    intros n1 n2 o1 cn1 o2 cn2.
+    intros n1 n2 (o1 & cn1) (o2 & cn2).
     intros n1_n2_pi n1_o1_h n2_o2_h'.
     destruct a as (n & obj).
     destruct (Classical_Prop.classic (n = n1)).
@@ -1177,7 +1179,6 @@ Proof.
        assert (obj_eq : obj = (o1, cn1)).
          apply HeapFacts.find_mapsto_iff in n1_o1_h.
          apply HeapFacts.find_mapsto_iff in n1_obj_h.
-         unfold Obj in n1_obj_h.
          rewrite n1_obj_h in n1_o1_h.
          now injection n1_o1_h.
        rewrite obj_eq in pi_h.
@@ -1209,7 +1210,7 @@ Proof.
            | None => None
            end = Some rest_h').
          now rewrite pi_rest_els_h'.
-       apply (IHl next_in_els next_els_unique rest_h' pi bijection pi_rest_h' n1 n2 o1 cn1 o2 cn2); trivial.
+       apply (IHl next_in_els next_els_unique rest_h' pi bijection pi_rest_h' n1 n2 (o1, cn1) (o2, cn2)); trivial.
        apply HeapFacts.find_mapsto_iff in n2_o2_h'.
        apply HeapFacts.find_mapsto_iff.
        unfold rest_h'.
@@ -1468,7 +1469,7 @@ Proof.
        rewrite n_o_h in l_of_type.
        apply HeapFacts.find_mapsto_iff in n_o_h.
        rewrite <-l_of_type in *.
-       now apply (objs_h n n' o type o' type').
+       now apply (objs_h n n' (o, type) (o', type')).
   + exfalso; apply H.
     unfold JFILocOfType in l_of_type.
     destruct (Heap.find n h); try destruct l_of_type.
@@ -1599,7 +1600,7 @@ Proof.
   apply HeapFacts.find_mapsto_iff in n_o_h.
   destruct o as (o & cn), o' as (o' & cn').
   injection class_name as C_eq.
-  destruct (objs n n_perm o cn o' cn') as (cn_eq & _); trivial.
+  destruct (objs n n_perm (o, cn) (o', cn')) as (cn_eq & _); trivial.
 
   apply HeapFacts.find_mapsto_iff in n_o_h.
   assert (subheap : JFISubheap h0_perm h0_ext). apply union.
@@ -1883,7 +1884,15 @@ Proof.
   now apply IH_l.
 Qed.
 
-Lemma ExtendPermutedHeaps : forall n n' f l l' ro ro' cid h h' pi,
+Lemma ExtendPermutedHeaps : forall h h' n n' o o' pi,
+  HeapsPermuted h h' pi ->
+  NatMap.MapsTo n n' (fst pi) ->
+(*   ObjPermuted o o' pi -> *)
+  HeapsPermuted (Heap.add n o h) (Heap.add n' o' h') pi.
+Proof.
+Admitted.
+
+Lemma ChangeFieldInPermutedHeaps : forall n n' f l l' ro ro' cid h h' pi,
   HeapsPermuted h h' pi ->
   NatMap.MapsTo n n' (fst pi) ->
   Heap.find n h = Some (ro, cid) ->
@@ -1962,7 +1971,7 @@ Proof.
        rewrite HeapFacts.add_neq_o; trivial.
        now apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff.
   + unfold ObjsPermuted.
-    intros n1 n2 o1 cn1 o2 cn2.
+    intros n1 n2 (o1, cn1) (o2, cn2).
     intros pi_n1 n1_o1 n2_o2.
     destruct (Classical_Prop.classic (n = n1)).
     ++ rewrite <-H in *.
@@ -1991,7 +2000,7 @@ Proof.
              now rewrite <-v1_eq, <-v2_eq.
        +++ apply HeapFacts.find_mapsto_iff in n_ro.
            apply HeapFacts.find_mapsto_iff in n'_ro'.
-           destruct (objs n n' ro cid ro' cid) as (_ & H2); trivial.
+           destruct (objs n n' (ro, cid) (ro', cid)) as (_ & H2); trivial.
            destruct (H2 f') as (IH1 & IH2 & IH3); clear H2.
            split; [ | split].
            - intros v1 f'_v1.
@@ -2017,7 +2026,7 @@ Proof.
          apply bijection in pi_n1.
          now apply MapsToEq with (n2 := n1) in pi_n.
     rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff in n1_o1, n2_o2; trivial.
-    now apply (objs n1 n2 o1 cn1 o2 cn2).
+    now apply (objs n1 n2 (o1, cn1) (o2, cn2)).
 Qed.
 
 Lemma ExistsInPermutedHeap : forall n n' h h' pi ro cid,
@@ -2040,7 +2049,7 @@ Proof.
   destruct o' as (ro', cid').
   rewrite <-HeapFacts.find_mapsto_iff in n_ro, n'_o'.
   unfold ObjsPermuted in objs.
-  destruct (objs n n' ro cid ro' cid') as (cid_eq & _); trivial.
+  destruct (objs n n' (ro, cid) (ro', cid')) as (cid_eq & _); trivial.
   rewrite <-cid_eq in *.
   apply HeapFacts.find_mapsto_iff in n'_o'.
   now exists ro'.

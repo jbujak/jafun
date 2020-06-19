@@ -509,7 +509,7 @@ Proof.
     assert (pi_h' : HeapsPermuted h' h'_perm pi).
       unfold h'_perm.
       rewrite <-h_eq.
-      now apply ExtendPermutedHeaps.
+      now apply ChangeFieldInPermutedHeaps.
     exists h'_perm, (Heap.add n' (JFXIdMap.add f' l' ro', cid) h0_ext), ((Ctx0 [[JFVal1 (JFVLoc l') ]]_ None) :: st_perm), pi.
     rewrite <-st_eq, <-h_eq, <-A_eq.
     unfold h'_perm.
