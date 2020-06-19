@@ -60,18 +60,21 @@ Definition HeapLocsPermuted (f : HeapInjection) (h1 h2 : Heap) :=
   forall n1, Heap.In n1 h1 ->
   exists n2, NatMap.MapsTo n1 n2 f /\ Heap.In n2 h2.
 
+Definition ObjPermuted (o1 o2 : RawObj) (cn1 cn2 : JFClassName) pi :=
+  cn1 = cn2 /\ forall f,
+    (forall v1, JFXIdMap.MapsTo f v1 o1 -> exists v2, JFXIdMap.MapsTo f v2 o2) /\
+    (forall v2, JFXIdMap.MapsTo f v2 o2 -> exists v1, JFXIdMap.MapsTo f v1 o1) /\
+    (forall v1 v2,
+      JFXIdMap.MapsTo f v1 o1 ->
+      JFXIdMap.MapsTo f v2 o2 ->
+      PiMapsTo v1 v2 pi).
+
 Definition ObjsPermuted (pi : HeapPermutation) (h1 h2 : Heap) :=
   forall n1 n2 o1 cn1 o2 cn2,
     NatMap.MapsTo n1 n2 (fst pi) ->
     Heap.MapsTo n1 (o1, cn1) h1 ->
     Heap.MapsTo n2 (o2, cn2) h2 ->
-    (cn1 = cn2 /\ forall f,
-      (forall v1, JFXIdMap.MapsTo f v1 o1 -> exists v2, JFXIdMap.MapsTo f v2 o2) /\
-      (forall v2, JFXIdMap.MapsTo f v2 o2 -> exists v1, JFXIdMap.MapsTo f v1 o1) /\
-      (forall v1 v2,
-        JFXIdMap.MapsTo f v1 o1 ->
-        JFXIdMap.MapsTo f v2 o2 ->
-        PiMapsTo v1 v2 pi)).
+    ObjPermuted o1 o2 cn1 cn2 pi.
 
 Definition HeapsPermuted (h1 h2 : Heap) pi :=
   Bijection pi /\

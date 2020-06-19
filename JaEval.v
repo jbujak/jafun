@@ -265,6 +265,11 @@ Lemma AllocOnExtendedHeap : forall h0 h0_perm h0' h0_ext pi CC cn locs locs_perm
      JFIDisjointUnion hp_perm h0' hp_ext /\
      alloc_init CC h0_ext cn locs_perm = Some (l0_perm, hp_ext)).
 Proof.
+  intros h0 h0_perm h0' h0_ext pi CC cn locs locs_perm l0 hp.
+  intros alloc pi_h pi_locs (union & disjoint).
+  unfold alloc_init in *.
+  destruct (flds CC (JFClass cn)) as [flds | ]; try discriminate alloc.
+  unfold init_obj in *.
 Admitted.
 
 Definition ExprReductionPreservesHeapPermutation (e : JFExpr) := forall h0 h0_perm h0' h0_ext Ctx A st h' st' st_perm pi CC,
