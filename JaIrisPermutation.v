@@ -165,9 +165,15 @@ Fixpoint StacksPermuted st st' pi :=
   | _ => False
   end.
 
+Fixpoint ZipPermuted (flds flds' : list (JFXId * Loc)) pi :=
+  match (flds, flds') with
+  | ([], []) => True
+  | ((f, loc)::flds, (f', loc')::flds') => f = f' /\ PiMapsTo loc loc' pi /\ ZipPermuted flds flds' pi
+  | _ => False
+  end.
+
 Definition PermutationSubset (pi pi' : HeapPermutation) :=
   forall l1 l2, PiMapsTo l1 l2 pi -> PiMapsTo l1 l2 pi'.
-
 
 Lemma ExtendedEnvsPermuted : forall env1 env2 x l1 l2 pi,
   EnvsPermuted env1 env2 pi ->
@@ -1737,6 +1743,24 @@ Proof.
   now rewrite (IHst st_perm pi).
 Qed.
 
+Lemma PermutedZipLength: forall fs fs' pi,
+  ZipPermuted fs fs' pi ->
+  length fs = length fs'.
+Proof.
+  intros vs.
+  induction vs.
+ + intros vs' pi pi_vs;
+    destruct vs';
+    try destruct a;
+    try now destruct pi_vs.
+  + intros vs' pi pi_vs.
+    destruct vs';
+    try now destruct a, pi_vs.
+    simpl in *;
+    rewrite IHvs with (fs' := vs') (pi := pi); try easy.
+    now destruct a, p, pi_vs as (_ & _ & pi_zip).
+Qed.
+
 (* Lemmas about extending permutations *)
 
 Lemma ExtendValsPermutation : forall vs vs_perm pi pi',
@@ -1883,6 +1907,20 @@ Proof.
   now apply ExtendFramePermutation with (pi := pi).
   now apply IH_l.
 Qed.
+
+Lemma ExtendObjPermutation : forall o o_perm pi pi',
+  ObjPermuted o o_perm pi ->
+  PermutationSubset pi pi' ->
+  ObjPermuted o o_perm pi'.
+Proof.
+Admitted.
+
+Lemma ExtendHeapsPermutation : forall h h_perm pi pi',
+  HeapsPermuted h h_perm pi ->
+  PermutationSubset pi pi' ->
+  HeapsPermuted h h_perm pi'.
+Proof.
+Admitted.
 
 Lemma ExtendPermutedHeaps : forall h h' n n' o o' pi,
   HeapsPermuted h h' pi ->
@@ -2094,3 +2132,125 @@ Proof.
     simpl.
     now rewrite locs'_of_vs_perm.
 Qed.
+
+Lemma ExistsPermutedZip : forall flds locs locs_perm flds_locs pi,
+  JaUtils.zip flds locs = Some flds_locs ->
+  LocsPermuted locs locs_perm pi ->
+  exists flds_locs_perm,
+    JaUtils.zip flds locs_perm = Some flds_locs_perm /\ ZipPermuted flds_locs flds_locs_perm pi.
+Proof.
+  intros flds.
+  induction flds as [ | fld]; intros locs locs_perm flds_locs pi zip_flds_locs pi_locs.
+  + destruct locs, flds_locs; try discriminate zip_flds_locs.
+    destruct locs_perm; try now destruct pi_locs.
+    now exists [].
+  + destruct locs as [ | loc]; try discriminate zip_flds_locs.
+    simpl in zip_flds_locs.
+    destruct flds_locs as [ | fld_loc]; try now (destruct (JaUtils.zip flds locs); discriminate zip_flds_locs).
+    destruct locs_perm as [ | loc_perm]; try now destruct pi_locs.
+    destruct pi_locs as (pi_loc & pi_locs).
+    assert (exists flds_locs', JaUtils.zip flds locs = Some flds_locs').
+      destruct (JaUtils.zip flds locs) as [flds_locs' | ]; try discriminate zip_flds_locs.
+      now exists flds_locs'.
+    destruct H as (flds_locs' & zip_flds).
+    rewrite zip_flds in zip_flds_locs.
+    injection zip_flds_locs as fld_loc_eq flds_locs_eq.
+    rewrite flds_locs_eq in *.
+    destruct (IHflds locs locs_perm flds_locs pi)
+      as (flds_locs_perm & zip_perm & pi_zip); try easy.
+    exists ((fld, loc_perm)::flds_locs_perm).
+    simpl.
+    rewrite zip_perm.
+    split; trivial.
+    now rewrite <-fld_loc_eq.
+Qed.
+
+Lemma PermutedZipIsPermutedInit : forall flds_locs flds_locs_perm cn o o_perm pi,
+  ZipPermuted flds_locs flds_locs_perm pi ->
+  ObjPermuted (o, cn) (o_perm, cn) pi ->
+  ObjPermuted (init_obj_aux o flds_locs, cn)
+              (init_obj_aux o_perm flds_locs_perm, cn) pi.
+Proof.
+  intros flds_locs flds_locs_perm.
+  intros cn o o_perm pi pi_zip.
+  generalize cn o o_perm.
+  clear o_perm o cn.
+  assert (length_eq : length flds_locs = length flds_locs_perm).
+    now apply PermutedZipLength with (pi := pi).
+  induction2 flds_locs flds_locs_perm length_eq fld_loc fld_loc_perm flds_locs' flds_locs_perm';
+    intros cn o o_perm pi_o.
+  + simpl.
+    split; trivial.
+    intros f.
+    destruct pi_o as (_ & pi_o).
+    apply pi_o.
+  + split; trivial.
+    intros f.
+    simpl in pi_zip.
+    destruct fld_loc as (fld & loc), fld_loc_perm as (fld_perm & loc_perm).
+    destruct pi_zip as (fld_eq & pi_loc & pi_locs).
+    rewrite <-fld_eq; clear fld_eq fld_perm.
+    apply (IH_l pi_locs cn (JFXIdMap.add fld loc o) (JFXIdMap.add fld loc_perm o_perm)); trivial.
+    split; trivial.
+    intros f'.
+    destruct (Classical_Prop.classic (fld = f')).
+    ++ split; [ | split].
+       +++ intros v1 f'_v1.
+           exists loc_perm.
+           now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o.
+       +++ intros v2 f1'_v2.
+           exists loc.
+           now rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o.
+       +++ intros v1 v2 f'_v1 f'_v2.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o in f'_v1, f'_v2; trivial.
+           injection f'_v1 as v1_eq.
+           injection f'_v2 as v2_eq.
+           now rewrite <-v1_eq, <-v2_eq.
+    ++ destruct pi_o as (_ & H0).
+       destruct (H0 f') as (pi_fst & pi_snd & pi_o).
+       clear H0.
+       split; [ | split].
+       +++ intros v1 f'_v1.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o,
+                 <-JFXIdMapFacts.find_mapsto_iff in f'_v1; trivial.
+           apply pi_fst in f'_v1.
+           destruct f'_v1 as (v2 & f'_v2).
+           exists v2.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o,
+                 <-JFXIdMapFacts.find_mapsto_iff; trivial.
+       +++ intros v2 f'_v2.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o,
+                 <-JFXIdMapFacts.find_mapsto_iff in f'_v2; trivial.
+           apply pi_snd in f'_v2.
+           destruct f'_v2 as (v1 & f'_v1).
+           exists v1.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o,
+                 <-JFXIdMapFacts.find_mapsto_iff; trivial.
+      +++ intros v1 v2 f'_v1 f'_v2.
+          rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_neq_o,
+                <-JFXIdMapFacts.find_mapsto_iff in f'_v1, f'_v2; trivial.
+          now apply pi_o.
+Admitted.
+
+Lemma ExtendPiSubset : forall pi n0 n0_perm,
+  ~(NatMap.In n0 (fst pi)) ->
+  PermutationSubset pi (NatMap.add n0 n0_perm (fst pi), NatMap.add n0_perm n0 (snd pi)).
+Proof.
+  intros pi n0 n0_perm not_in_pi. 
+  destruct pi as (pi_fst & pi_snd).
+  simpl.
+  intros l l' l_l'.
+  destruct l as [ | n], l' as [ | n']; try now destruct l_l'; try easy.
+  destruct (Classical_Prop.classic (n0 = n)).
+  + exfalso.
+    rewrite H in *.
+    apply not_in_pi.
+    unfold PiMapsTo in l_l'.
+    apply NatMapFacts.elements_in_iff.
+    exists n'.
+    now apply HeapFacts.elements_mapsto_iff.
+  + unfold PiMapsTo.
+    simpl.
+    rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_neq_o, <-NatMapFacts.find_mapsto_iff; try easy.
+Qed.
+

@@ -268,8 +268,50 @@ Proof.
   intros h0 h0_perm h0' h0_ext pi CC cn locs locs_perm l0 hp.
   intros alloc pi_h pi_locs (union & disjoint).
   unfold alloc_init in *.
+  destruct pi_h as (bijection & locs_fst & locs_snd & objs).
   destruct (flds CC (JFClass cn)) as [flds | ]; try discriminate alloc.
   unfold init_obj in *.
+  assert (exists flds_locs, JaUtils.zip flds locs = Some flds_locs).
+    destruct (JaUtils.zip flds locs); try now discriminate alloc.
+    now exists l.
+  destruct H as (flds_locs & zip_locs).
+  destruct (ExistsPermutedZip flds locs locs_perm flds_locs pi)
+    as (flds_locs_perm & zip_locs_perm & pi_zip); trivial.
+  rewrite zip_locs in alloc.
+  rewrite zip_locs_perm.
+  injection alloc as l0_eq hp_eq.
+  destruct l0 as [ | n0]; try discriminate l0_eq.
+  injection l0_eq as n0_eq.
+  set (n0_perm := newloc h0_ext).
+  set (pi' := (NatMap.add n0 n0_perm (fst pi), NatMap.add n0_perm n0 (snd pi))).
+  assert (pi_subset : PermutationSubset pi pi').
+    apply ExtendPiSubset.
+    rewrite <-n0_eq.
+    admit. (* TODO newloc h0 not in pi *)
+  assert (pi_obj := PermutedZipIsPermutedInit flds_locs flds_locs_perm cn
+      (JFXIdMap.empty Loc) (JFXIdMap.empty Loc) pi pi_zip).
+  apply ExtendObjPermutation with (pi' := pi') in pi_obj; trivial.
+  exists pi', (JFLoc n0_perm),
+    (Heap.add n0_perm (init_obj_aux (JFXIdMap.empty Loc) flds_locs_perm, cn) h0_perm),
+    (Heap.add n0_perm (init_obj_aux (JFXIdMap.empty Loc) flds_locs_perm, cn) h0_ext).
+  split; [ | split; [ | split; [ | split]]]; try easy.
+  + rewrite <-hp_eq, n0_eq.
+    simpl.
+    apply ExtendPermutedHeaps; simpl; trivial.
+    now apply ExtendHeapsPermutation with (pi := pi).
+    now rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_eq_o.
+  + unfold PiMapsTo, pi', fst.
+    now rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_eq_o.
+  + apply ExtendDisjointUnion; try easy.
+    intros in_h0'.
+    apply HeapFacts.elements_in_iff in in_h0' as (o0_perm & n0_o0).
+    rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n0_o0.
+    assert (disjoint_union : JFIDisjointUnion h0_perm h0' h0_ext); try easy.
+    apply DisjointUnionSymmetry in disjoint_union.
+    apply FindInUnion with (h2 := h0_perm) (h := h0_ext) in n0_o0; trivial.
+    unfold n0_perm in n0_o0.
+    apply newloc_new in n0_o0.
+    now apply n0_o0.
 Admitted.
 
 Definition ExprReductionPreservesHeapPermutation (e : JFExpr) := forall h0 h0_perm h0' h0_ext Ctx A st h' st' st_perm pi CC,

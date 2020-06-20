@@ -273,6 +273,68 @@ Proof.
   + now rewrite H1, H2.
 Qed.
 
+Lemma JFIHeapsDisjointSym : forall h1 h2, JFIHeapsDisjoint h1 h2 -> JFIHeapsDisjoint h2 h1.
+Proof.
+  intros h1 h2 disjoint.
+  unfold JFIHeapsDisjoint.
+  intros l.
+  unfold not.
+  intros notDisjoint.
+  refine (disjoint l _).
+  apply and_comm.
+  exact notDisjoint.
+Qed.
+
+Lemma JFINotInEmptyHeap : forall l, Heap.In l (Heap.empty Obj) -> False.
+Proof.
+  intros l.
+  apply HeapFacts.empty_in_iff.
+Qed.
+
+Lemma JFIEmptyHeapDisjoint : forall h, JFIHeapsDisjoint (Heap.empty Obj) h.
+Proof.
+  intros h.
+  unfold JFIHeapsDisjoint.
+  intros l.
+  unfold not.
+  intros l_in_both.
+  case l_in_both.
+  intros in_empty in_h.
+  exact (JFINotInEmptyHeap l in_empty).
+Qed.
+
+Lemma HeapsUnionSymmetry : forall h1 h2 h,
+  JFIHeapsUnion h1 h2 h -> JFIHeapsUnion h2 h1 h.
+Proof.
+  intros h1 h2 h h1_h2_union.
+  unfold JFIHeapsUnion.
+  unfold JFIHeapsUnion in h1_h2_union.
+  split; [| split].
+  + apply h1_h2_union.
+  + apply h1_h2_union.
+  + intros l l_in_h.
+    apply or_comm.
+    apply h1_h2_union.
+    apply l_in_h.
+Qed.
+
+Lemma DisjointUnionSymmetry : forall h1 h2 h,
+  JFIDisjointUnion h1 h2 h -> JFIDisjointUnion h2 h1 h.
+Proof.
+  intros h1 h2 h (union & disjoint).
+  split.
+  now apply HeapsUnionSymmetry.
+  intros n (n_in_h2 & n_in_h1).
+  now apply (disjoint n).
+Qed.
+
+Lemma SubheapOfUnion : forall h1 h2 h, JFIHeapsUnion h1 h2 h -> JFISubheap h1 h.
+Proof.
+  intros h1 h2 h h_is_union.
+  unfold JFIHeapsUnion in h_is_union.
+  apply h_is_union.
+Qed.
+
 Lemma JFXIdMapEqKeyEltEquivalence : Equivalence (JFXIdMap.eq_key_elt (elt:=Loc)).
 Proof.
   unfold StrMap.eq_key_elt.
