@@ -2263,7 +2263,7 @@ Proof.
     apply NatMapFacts.find_mapsto_iff, bijection in n'_n''_pi as n_n'_pi.
     apply HeapFacts.find_mapsto_iff in n_o_h.
     apply HeapFacts.find_mapsto_iff in n'_o'_h'.
-    destruct (objs_h n n' o cn o' cn') as (cn_eq & fields_results); trivial.
+    destruct (objs_h n n' (o, cn) (o', cn')) as (cn_eq & fields_results); trivial.
     destruct (fields_results f) as (o1_fields & o2_fields & fields_map).
     apply JFXIdMapFacts.find_mapsto_iff in f_v_o.
     destruct (o1_fields v f_v_o) as (v'' & f_v''_o').
