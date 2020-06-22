@@ -2254,3 +2254,36 @@ Proof.
     rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_neq_o, <-NatMapFacts.find_mapsto_iff; try easy.
 Qed.
 
+Lemma PermutedClass : forall h h' n n' cn pi,
+  HeapsPermuted h h' pi ->
+  PiMapsTo (JFLoc n) (JFLoc n') pi ->
+  class h n = Some cn ->
+  class h' n' = Some cn.
+Proof.
+  intros h h' n n' cn pi.
+  intros pi_h pi_n n_cn.
+  unfold class in *.
+  assert (exists o, NatMap.find n h = Some o).
+    destruct (NatMap.find n h); try discriminate n_cn.
+    now exists o.
+  destruct H as (o & n_o).
+  rewrite n_o in n_cn.
+  destruct pi_h as (_ & locs_fst & _ & pi_o).
+  destruct (locs_fst n) as (n'' & n_n'' & n'_in_h).
+    apply HeapFacts.elements_in_iff.
+    exists o.
+    now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+  unfold PiMapsTo in pi_n.
+  apply MapsToEq with (n2 := n') in n_n''; trivial.
+  rewrite <-n_n'' in *; clear n_n'' n''.
+  apply HeapFacts.elements_in_iff in n'_in_h as (o' & n'_o').
+  apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n'_o'.
+  rewrite n'_o'.
+  destruct o as (ro, cn0), o' as (ro' & cn').
+  injection n_cn as cn_eq.
+  rewrite cn_eq in *; clear cn_eq cn0.
+  unfold ObjsPermuted in pi_o.
+  rewrite <-HeapFacts.find_mapsto_iff in n_o, n'_o'.
+  destruct (pi_o n n' (ro, cn) (ro', cn') pi_n n_o n'_o') as (cn_eq & _).
+  now rewrite cn_eq.
+Qed.

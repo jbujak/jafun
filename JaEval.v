@@ -761,7 +761,53 @@ Proof.
   intros h0 h0_perm h0' h0_ext Ctx A st h' st' st_perm pi CC.
   intros pi_npe pi_st pi_h0 red_st union.
   unfold red in red_st.
-Admitted.
+  simpl in pi_st.
+  destruct st_perm; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_throw & pi_ctx & A_eq).
+  simpl in pi_throw.
+  destruct E; try now destruct pi_throw.
+  destruct A; try now (destruct Ctx, v; try destruct j0; try destruct l; discriminate red_st).
+  destruct v as [ l | ]; try destruct l.
+  + assert (Some (h0, (Ctx [[JFVal1 NPE_val ]]_ NPE_mode) :: st) = Some (h', st')).
+      now destruct Ctx; try destruct j.
+    injection H as h_eq st_eq.
+    destruct v0; try destruct l; try now destruct pi_throw.
+    rewrite <-h_eq, <-st_eq, <-A_eq.
+    exists h0_perm, h0_ext, ((Ctx0 [[JFVal1 NPE_val ]]_ NPE_mode) :: st_perm), pi.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+    now destruct Ctx0; try destruct j.
+  + assert (exists cn, class h0 n = Some cn).
+      destruct (class h0 n); try now (destruct Ctx; try destruct j; discriminate red_st).
+      now exists j.
+    destruct H as (cn & n_cn).
+    rewrite n_cn in red_st.
+    destruct v0; try destruct l as [ | n']; try now destruct pi_throw.
+    unfold ValPermuted in pi_throw.
+    assert (n'_cn : class h0_ext n' = Some cn).
+      apply PermutedClass with (h' := h0_perm) (n' := n') (pi := pi) in n_cn; trivial.
+      unfold class in n_cn |- *.
+      assert (exists o, Heap.find n' h0_perm = Some o).
+        destruct (Heap.find n' h0_perm); try discriminate n_cn.
+        now exists o.
+      destruct H as (o' & n'_o').
+      rewrite n'_o' in n_cn.
+      apply FindInUnion with (h2 := h0') (h := h0_ext) in n'_o'; trivial.
+      rewrite n'_o'.
+      now destruct o' as (ro' & cn').
+    assert (Some (h0, (Ctx [[ JFVal1 (JFVLoc (JFLoc n)) ]]_ Some cn) :: st) = Some (h', st')).
+      now destruct Ctx; try destruct j.
+    injection H as h_eq st_eq.
+    rewrite <-h_eq, <-st_eq, <-A_eq.
+    exists h0_perm, h0_ext, ((Ctx0 [[JFVal1 (JFVLoc (JFLoc n')) ]]_ Some cn) :: st_perm), pi.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+    simpl.
+    rewrite n'_cn.
+    now destruct Ctx0; try destruct j.
+  + now destruct Ctx; try destruct j.
+Qed.
 
 Lemma TryReductionPreservesHeapPermutation : forall e1 mu cn x e2,
    ExprReductionPreservesHeapPermutation (JFTry e1 mu cn x e2).
