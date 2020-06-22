@@ -816,7 +816,26 @@ Proof.
   intros h0 h0_perm h0' h0_ext Ctx A st h' st' st_perm pi CC.
   intros pi_npe pi_st pi_h0 red_st union.
   unfold red in red_st.
-Admitted.
+  simpl in pi_st.
+  destruct st_perm; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_try & pi_ctx & A_eq).
+  simpl in pi_try.
+  destruct E; try now destruct pi_try.
+  destruct pi_try as (mu_eq & cn_eq & x_eq & pi_e1 & pi_e2).
+  rewrite <-mu_eq, <-cn_eq, <-x_eq, <-A_eq in *.
+  destruct A.
+    destruct Ctx; try destruct j0; try discriminate red_st.
+  assert (Some (h0, Ctx _[ JFCtxTry __ mu cn x e2 _[[_ e1 _]]_ None ]_ :: st) = Some (h', st')).
+    now destruct Ctx; try destruct j.
+  injection H as st_eq h_eq.
+  exists h0_perm, h0_ext, (Ctx0 _[ JFCtxTry __ mu cn x E2 _[[_ E1  _]]_ None]_ :: st_perm), pi.
+  rewrite <-st_eq, <-h_eq.
+  split; [ | split; [ | split; [| split]]]; try easy.
+  now destruct Ctx0; try destruct j.
+Qed.
 
 Lemma ReductionPreservesHeapPermutation : forall h0 h0_perm h0' h0_ext st h' st' st_perm pi CC,
   PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi ->

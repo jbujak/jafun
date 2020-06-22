@@ -133,7 +133,8 @@ Fixpoint ExprsPermuted e e' pi :=
       f = f' /\ ValPermuted v1 v1' pi
   | (JFThrow v1, JFThrow v1') =>
       ValPermuted v1 v1' pi
-  | (JFTry e1 _ _ _ e2, JFTry e1' _ _ _ e2') =>
+  | (JFTry e1 mu cn x e2, JFTry e1' mu' cn' x' e2') =>
+      mu = mu' /\ cn = cn' /\ x = x' /\
       ExprsPermuted e1 e1' pi /\ ExprsPermuted e2 e2' pi
   | _ => False
   end.
@@ -1838,7 +1839,8 @@ Proof.
     destruct v, v0; try now destruct pi_e.
     now apply pi_subset.
   + simpl in *.
-    split.
+    destruct pi_e as (mu_eq & cn_eq & x_eq & pi_e1 & pi_2).
+    split; [ | split; [ | split; [ | split]]]; trivial.
     now apply IHe1 with (pi := pi).
     now apply IHe2 with (pi := pi).
 Qed.
