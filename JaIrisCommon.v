@@ -75,13 +75,17 @@ Inductive JFITerm : Set :=
 | JFIAnd (t1 : JFITerm) (t2 : JFITerm)
 | JFIOr (t1 : JFITerm) (t2 : JFITerm)
 | JFIImplies (t1 : JFITerm) (t2 : JFITerm)
-| JFIExists (type : JFClassName) (name : string) (t : JFITerm)
-| JFIForall (type : JFClassName) (name : string) (t : JFITerm)
 | JFIHoare (t1 : JFITerm) (e : JFExpr) (ex : JFEvMode)  (value : string) (t2 : JFITerm)
 | JFIEq (val1 : JFIVal) (val2 : JFIVal)
 | JFIFieldEq (obj : JFIVal) (field : string) (v : JFIVal)
 | JFISep (t1 : JFITerm) (t2 : JFITerm)
 | JFIWand (t1 : JFITerm) (t2 : JFITerm).
+
+Inductive JFIOuterTerm : Set :=
+| JFIOuterAnd (t1 : JFIOuterTerm) (t2 : JFIOuterTerm)
+| JFIOuterOr (t1 : JFIOuterTerm) (t2 : JFIOuterTerm)
+| JFIExists (type : JFClassName) (name : string) (t : JFIOuterTerm)
+| JFIInner (t : JFITerm).
 
 (* Substitutions *)
 
@@ -146,26 +150,34 @@ Fixpoint JFIExprSubstituteVals (froms : list string) (tos: list JFVal) (e : JFEx
   end.
 
 Fixpoint JFITermSubstituteVal (from : string) (to : JFIVal) (t : JFITerm) : JFITerm :=
-    match t with
-    | JFITrue => JFITrue
-    | JFIFalse => JFIFalse
-    | JFIAnd t1 t2 => JFIAnd (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
-    | JFIOr t1 t2 => JFIOr (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
-    | JFIImplies t1 t2 => JFIImplies (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
-    | JFIExists class name term => if String.eqb name from then t else JFIExists class name (JFITermSubstituteVal from to term)
-    | JFIForall class name term => if String.eqb name from then t else JFIForall class name (JFITermSubstituteVal from to term)
-    | JFIHoare t1 e ex valueName t2 =>
-        JFIHoare
-          (JFITermSubstituteVal from to t1)
-          (JFIExprSubstituteVal from (JFIValToJFVal to) e)
-           ex
-           valueName
-          (JFITermSubstituteVal from to t2)
-    | JFIEq val1 val2 => JFIEq (JFIValSubstituteVal from to val1) (JFIValSubstituteVal from to val2)
-    | JFIFieldEq obj fieldName val => JFIFieldEq (JFIValSubstituteVal from to obj) fieldName (JFIValSubstituteVal from to val)
-    | JFISep t1 t2 => JFISep (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
-    | JFIWand t1 t2 => JFIWand (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
-    end.
+  match t with
+  | JFITrue => JFITrue
+  | JFIFalse => JFIFalse
+  | JFIAnd t1 t2 => JFIAnd (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
+  | JFIOr t1 t2 => JFIOr (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
+  | JFIImplies t1 t2 => JFIImplies (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
+
+  | JFIHoare t1 e ex valueName t2 =>
+      JFIHoare
+        (JFITermSubstituteVal from to t1)
+        (JFIExprSubstituteVal from (JFIValToJFVal to) e)
+         ex
+         valueName
+        (JFITermSubstituteVal from to t2)
+  | JFIEq val1 val2 => JFIEq (JFIValSubstituteVal from to val1) (JFIValSubstituteVal from to val2)
+  | JFIFieldEq obj fieldName val => JFIFieldEq (JFIValSubstituteVal from to obj) fieldName (JFIValSubstituteVal from to val)
+  | JFISep t1 t2 => JFISep (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
+  | JFIWand t1 t2 => JFIWand (JFITermSubstituteVal from to t1) (JFITermSubstituteVal from to t2)
+  end.
+
+Fixpoint JFIOuterTermSubstituteVal (from : string) (to : JFIVal) (t : JFIOuterTerm) : JFIOuterTerm :=
+  match t with
+  | JFIOuterAnd t1 t2 => JFIOuterAnd (JFIOuterTermSubstituteVal from to t1) (JFIOuterTermSubstituteVal from to t2)
+  | JFIOuterOr t1 t2 => JFIOuterOr (JFIOuterTermSubstituteVal from to t1) (JFIOuterTermSubstituteVal from to t2)
+  | JFIExists class name term =>
+      if String.eqb name from then t else JFIExists class name (JFIOuterTermSubstituteVal from to term)
+  | JFIInner t => JFIInner (JFITermSubstituteVal from to t)
+  end.
 
 Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFIVal) (t : JFITerm) : JFITerm :=
   match froms with

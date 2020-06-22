@@ -36,6 +36,12 @@ Definition JFISemanticallyImplies (gamma : JFITypeEnv) (s : JFITerm) (p : JFITer
     (JFIHeapSatisfiesInEnv h s env CC) ->
      JFIHeapSatisfiesInEnv h p env CC.
 
+Definition JFISemanticallyImpliesOuter (gamma : JFITypeEnv) (s : JFIOuterTerm) (p : JFIOuterTerm) (CC : JFProgram) :=
+  forall env h,
+    (JFIGammaMatchEnv h gamma env) ->
+    (JFIHeapSatisfiesOuterInEnv h s env CC) ->
+     JFIHeapSatisfiesOuterInEnv h p env CC.
+
 Ltac unfoldSubstitutions :=
   unfold JFITermSubstituteVals;
   unfold JFITermSubstituteVar;
@@ -145,6 +151,9 @@ Qed.
 Definition HeapEnvEquivalent h h' env env' t CC :=
   JFIHeapSatisfiesInEnv h t env CC <-> JFIHeapSatisfiesInEnv h' t env' CC.
 
+Definition HeapEnvEquivalentOuter h h' env env' t CC :=
+  JFIHeapSatisfiesOuterInEnv h t env CC <-> JFIHeapSatisfiesOuterInEnv h' t env' CC.
+
 Lemma TrueEquivalence : forall h h' env env' CC,
   HeapEnvEquivalent h h' env env' JFITrue CC.
 Proof.
@@ -223,22 +232,6 @@ Proof.
   apply f_equal with (f := fun x => JFIVar x) in v_eq_x.
   symmetry in v_eq_x.
   exact (w_is_not_v v_eq_x).
-Qed.
-
-Lemma FreshVarDifferentFromForallVar : forall x class name t,
-  (JFIVarFreshInTerm x (JFIForall class name t)) ->
-   x <> name.
-Proof.
-  intros x class name t.
-  intros x_fresh.
-  unfold not.
-  intros x_eq_name.
-  symmetry in x_eq_name.
-  apply (String.eqb_eq) in x_eq_name.
-  simpl in x_fresh.
-  destruct (String.eqb name x).
-  + destruct x_fresh.
-  + discriminate x_eq_name.
 Qed.
 
 Lemma AddingFreshVarPreservesValToLoc : forall x l val env,
@@ -325,6 +318,10 @@ Definition EnvEq (env1 : JFITermEnv) (env2 : JFITermEnv) :=
 Definition EqualEnvsEquivalentInTermForHeap (t : JFITerm) CC :=
   forall h env1 env2, 
     (EnvEq env1 env2) -> ((JFIHeapSatisfiesInEnv h t env1 CC) <-> (JFIHeapSatisfiesInEnv h t env2 CC)).
+
+Definition EqualEnvsEquivalentInOuterTermForHeap (t : JFIOuterTerm) CC :=
+  forall h env1 env2, 
+    (EnvEq env1 env2) -> ((JFIHeapSatisfiesOuterInEnv h t env1 CC) <-> (JFIHeapSatisfiesOuterInEnv h t env2 CC)).
 
 Lemma EnvEqSymmetry : forall env1 env2,
   (EnvEq env1 env2) -> (EnvEq env2 env1).
@@ -486,9 +483,9 @@ Qed.
 
 Lemma EnvEqGivesExistsImplication : forall h type x t env1 env2 CC,
   (EnvEq env1 env2) ->
-  (EqualEnvsEquivalentInTermForHeap t CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIExists type x t) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIExists type x t) env2 CC.
+  (EqualEnvsEquivalentInOuterTermForHeap t CC) ->
+  (JFIHeapSatisfiesOuterInEnv h (JFIExists type x t) env1 CC) ->
+   JFIHeapSatisfiesOuterInEnv h (JFIExists type x t) env2 CC.
 Proof.
   intros h type x t env1 env2 CC.
   intros env1_eq_env2 t_equivalence h_satisfies_exists_t.
@@ -503,23 +500,6 @@ Proof.
     ++ apply AddPreservesEnvEq.
        exact env1_eq_env2.
     ++ exact h_satisfies_t.
-Qed.
-
-Lemma EnvEqGivesForallImplication : forall h type x t env1 env2 CC,
-  (EnvEq env1 env2) ->
-  (EqualEnvsEquivalentInTermForHeap t CC) ->
-  (JFIHeapSatisfiesInEnv h (JFIForall type x t) env1 CC) ->
-   JFIHeapSatisfiesInEnv h (JFIForall type x t) env2 CC.
-Proof.
-  intros h type x t env1 env2 CC.
-  intros env1_eq_env2 t_equivalence h_satisfies_t.
-  simpl.
-  intros loc loc_of_type.
-  unfold EqualEnvsEquivalentInTermForHeap in t_equivalence.
-  apply (t_equivalence h (StrMap.add x loc env1) (StrMap.add x loc env2)).
-  + apply AddPreservesEnvEq.
-    exact env1_eq_env2.
-  + exact (h_satisfies_t loc loc_of_type).
 Qed.
 
 Lemma EnvEqGivesHoareImplication : forall h t1 e ex v t2 env1 env2 CC,
@@ -626,12 +606,6 @@ Lemma EqualEnvsAreEquivalent : forall t CC h env1 env2,
 Proof.
   intros t CC.
   induction t; intros h env1 env2 env1_eq_env2; auto.
-  (* JFIExists *)
-  + split; apply EnvEqGivesExistsImplication; try assumption.
-    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
-  (* JFIForall *)
-  + split; apply EnvEqGivesForallImplication; try assumption.
-    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
   (* JFIHoare *)
  + split; apply EnvEqGivesHoareImplication; try assumption.
    exact (EnvEqSymmetry env1 env2 env1_eq_env2).
@@ -774,59 +748,9 @@ Qed.
 Lemma AddingFreshVarPreservesHeapSatisfiying : forall q CC h x l env,
   JFIVarFreshInTerm x q ->
   HeapEnvEquivalent h h env (StrMap.add x l env) q CC.
-(*     ((JFIHeapSatisfiesInEnv h q env CC) <->
-      JFIHeapSatisfiesInEnv h q (StrMap.add x l env) CC). *)
 Proof.
   intros t CC.
   induction t; intros h x l env x_fresh; try destruct x_fresh; auto.
-  (* JFIExists *)
-  + split.
-    ++ simpl.
-       intros (loc & loc_of_type & h_satisfies_t).
-       exists loc.
-       split; try assumption.
-       apply EnvOrderChangePreservesHeapSatisfiying.
-       +++ apply neq_symmetry.
-           apply FreshVarDifferentFromForallVar with (class := name) (t := t).
-           exact x_fresh.
-       +++ apply (IHt h x l (StrMap.add name loc env)); try assumption.
-           simpl in x_fresh.
-           destruct (String.eqb name x); try assumption.
-           destruct x_fresh.
-    ++ simpl.
-       intros (loc & loc_of_type & h_satisfies_t).
-       exists loc.
-       split; try assumption.
-       apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t.
-       +++ apply (IHt h x l (StrMap.add name loc env)) in h_satisfies_t; try assumption.
-           simpl in x_fresh.
-           destruct (String.eqb name x); try assumption.
-           destruct x_fresh.
-       +++ apply FreshVarDifferentFromForallVar with (class := name) (t := t).
-           exact x_fresh.
-  (* JFIForall *)
-  + split.
-    ++ simpl.
-       intros h_satisfies_t loc loc_of_type.
-       apply EnvOrderChangePreservesHeapSatisfiying.
-       +++ apply neq_symmetry.
-           apply FreshVarDifferentFromForallVar with (class := name) (t := t).
-           exact x_fresh.
-       +++ apply (IHt h x l (StrMap.add name loc env)).
-           - simpl in x_fresh.
-             destruct (String.eqb name x); try assumption.
-             destruct x_fresh.
-           - exact (h_satisfies_t loc loc_of_type).
-    ++ simpl.
-       intros h_satisfies_t loc loc_of_type.
-       set (h_satisfies_t' := h_satisfies_t loc loc_of_type).
-       apply EnvOrderChangePreservesHeapSatisfiying in h_satisfies_t'.
-       +++ apply (IHt h x l (StrMap.add name loc env)) in h_satisfies_t'; try assumption.
-           simpl in x_fresh.
-           destruct (String.eqb name x); try assumption.
-           destruct x_fresh.
-       +++ apply FreshVarDifferentFromForallVar with (class := name) (t := t).
-           exact x_fresh.
   (* JFIHoare *)
   + apply FreshVarPreservesHoareSatystying; assumption.
   (* JFIEq *)
@@ -841,6 +765,12 @@ Proof.
   (* JFIWand *)
   + now apply FreshVarPreservesWandSatystying.
 Qed.
+
+Lemma AddingFreshVarPreservesHeapSatisfiyingOuter : forall q CC h x l env,
+  JFIVarFreshInOuterTerm x q ->
+  HeapEnvEquivalentOuter h h env (StrMap.add x l env) q CC.
+Proof.
+Admitted.
 
 Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env CC x0,
   (JFIVarFreshInTerm x0 p) ->
@@ -857,8 +787,8 @@ Admitted.
 
 Lemma HeapSatisfiesSubstIffVarMovedToEnv : forall h x v l p env CC,
   (StrMap.find v env = Some l) ->
-  (JFIHeapSatisfiesInEnv h (JFITermSubstituteVal x (JFIVar v) p) env CC <->
-   JFIHeapSatisfiesInEnv h p (StrMap.add x l env) CC).
+  (JFIHeapSatisfiesOuterInEnv h (JFIOuterTermSubstituteVal x (JFIVar v) p) env CC <->
+   JFIHeapSatisfiesOuterInEnv h p (StrMap.add x l env) CC).
 Proof.
 Admitted.
 
@@ -1051,63 +981,11 @@ Proof.
     ++ exact h_satisfies_r.
 Qed.
 
-Lemma ForallIntroRuleSoundness : forall x type gamma gamma_x p q CC,
-  (JFIVarFreshInTerm x q) ->
-  (JFIGammaAddNew x type gamma = Some gamma_x) ->
-  (JFISemanticallyImplies gamma_x q p CC) ->
-   JFISemanticallyImplies gamma q (JFIForall type x p) CC.
-Proof.
-  intros x type gamma gamma_x p q CC.
-  intros x_fresh_in_q gamma_add_new_x q_implies_p.
-  intros env h gamma_match_env h_satisfies_q.
-  simpl.
-  intros loc loc_of_type.
-  apply q_implies_p.
-  + apply StrictlyExtendedGammaMatchesExtendedEnv with (type := type) (gamma := gamma).
-    ++ exact gamma_match_env.
-    ++ exact loc_of_type.
-    ++ exact gamma_add_new_x.
-  + apply AddingFreshVarPreservesHeapSatisfiying. (* TODO replace with ,,extending env preserves heap satisfying *)
-    ++ exact x_fresh_in_q.
-    ++ exact h_satisfies_q.
-Qed.
-
-Lemma ForallElimRuleSoundness : forall decls gamma q type x p r v CC,
-  (r = JFITermSubstituteVal x v p) ->
-  (JFISemanticallyImplies gamma q (JFIForall type x p) CC) ->
-  (JFIValType decls gamma v = Some type) ->
-  (JFIValFreshInTerm v p) ->
-   JFISemanticallyImplies gamma q r CC.
-Proof.
-  intros decls gamma q type x p r v CC.
-  intros r_is_subst q_implies_forall type_of_v v_fresh.
-  intros env h gamma_match_env h_satisfies_q.
-  assert (h_satisfies_forall := q_implies_forall env h gamma_match_env h_satisfies_q).
-  simpl in h_satisfies_forall.
-  rewrite r_is_subst.
-  destruct v.
-  + discriminate type_of_v.
-  + admit. (* TODO this *)
-  + unfold JFIValType in type_of_v.
-    assert (var_same_in_gamma_env := gamma_match_env var).
-    destruct (Classical_Prop.classic (exists l, StrMap.MapsTo var l env)) as [(l & var_is_l) | ].
-    ++ apply EqualEnvsAreEquivalent with (env1 := env) (env2 := (StrMap.add var l (StrMap.remove var env))).
-       +++ admit. (* TODO remove and add same var is equivalent *)
-       +++ apply VarNameChangePreservesHeapSatisfiying.
-           unfold JFIValFreshInTerm in v_fresh.
-           rewrite <- StrMapFacts.find_mapsto_iff in type_of_v.
-           assert (l_of_type := (proj2 (var_same_in_gamma_env) l type type_of_v var_is_l)).
-           apply (h_satisfies_forall l) in l_of_type as h_satisfies_p_in_env_x.
-           apply RemovingFreshVarPreservesHeapSatisfyig; assumption.
-    ++ admit. (* TODO zapewnic zmienna w srodowisku *)
-Admitted.
-Hint Resolve ForallElimRuleSoundness : core.
-
 Lemma ExistsIntroRuleSoundness : forall x v type decls gamma p q CC,
   (JFIValType decls gamma v = Some type) ->
-  (JFISemanticallyImplies gamma q
-                (JFITermSubstituteVal x v p) CC) ->
-   JFISemanticallyImplies gamma q (JFIExists type x p) CC.
+  (JFISemanticallyImpliesOuter gamma q
+                (JFIOuterTermSubstituteVal x v p) CC) ->
+   JFISemanticallyImpliesOuter gamma q (JFIExists type x p) CC.
 Proof.
   intros x v type decls gamma p q CC.
   intros type_of_v q_implies_p.
@@ -1138,11 +1016,11 @@ Hint Resolve ExistsIntroRuleSoundness : core.
 
 Lemma ExistsElimRuleSoundness : forall gamma decls p q r type x,
   let CC := JFIDeclsProg decls in
-  JFIVarFreshInTerm x r ->
-  JFIVarFreshInTerm x q ->
-  JFISemanticallyImplies gamma r (JFIExists type x p) CC ->
-  JFISemanticallyImplies (JFIGammaAdd x type gamma) (JFIAnd r p) q CC ->
-  JFISemanticallyImplies gamma r q CC.
+  JFIVarFreshInOuterTerm x r ->
+  JFIVarFreshInOuterTerm x q ->
+  JFISemanticallyImpliesOuter gamma r (JFIExists type x p) CC ->
+  JFISemanticallyImpliesOuter (JFIGammaAdd x type gamma) (JFIOuterAnd r p) q CC ->
+  JFISemanticallyImpliesOuter gamma r q CC.
 Proof.
   intros gamma decls p q r type x CC.
   intros x_fresh_in_r x_fresh_in_q r_implies_exists and_implies_q.
@@ -1150,12 +1028,12 @@ Proof.
   assert (h_satisfies_exists := r_implies_exists env h gamma_match_env h_satisfies_r).
   destruct h_satisfies_exists as (l & l_of_type & h_satisfies_p).
   assert (h_satisfies_q := and_implies_q (StrMap.add x l env) h).
-  apply AddingFreshVarPreservesHeapSatisfiying with (x := x) (l := l); try assumption.
+  apply AddingFreshVarPreservesHeapSatisfiyingOuter with (x := x) (l := l); try assumption.
   apply h_satisfies_q.
   + apply ExtendedGammaMatchesExtendedEnv; assumption.
   + simpl.
     split.
-    ++ apply AddingFreshVarPreservesHeapSatisfiying; assumption.
+    ++ apply AddingFreshVarPreservesHeapSatisfiyingOuter; assumption.
     ++ exact h_satisfies_p.
 Qed.
 Hint Resolve ExistsElimRuleSoundness : core.
@@ -1954,15 +1832,6 @@ Lemma EnsureVarInEnv : forall x (env : JFITermEnv),
 Proof.
 Admitted.
 
-(* Lemma EnsureValIsLoc_real : forall prog class method e h hs hn v Xi Gamma C mu,
-  (JFIPartialEval e h hs hn (JFVal1 v)) ->
-  (types prog class method Xi Gamma e (C, mu)) ->
-   exists l, v = JFVLoc l.
-Proof.
-  intros prog class method e h hs hn v Xi Gamma C mu.
-  intros eval types_e.
-Admitted.
- *)
 Lemma EnsureValsMapIsLocsMap : forall vs env,
   exists ls, map (JFIValSubstituteEnv env) vs = map JFVLoc ls.
 Proof.
@@ -2012,9 +1881,15 @@ Definition PermutationPreservesSatisfying t :=
     EnvsPermuted env env_perm pi ->
     HeapEnvEquivalent h h_perm env env_perm t CC.
 
+Definition PermutationPreservesSatisfyingOuter t :=
+  forall h h_perm env env_perm pi CC,
+    HeapsPermuted h h_perm pi ->
+    EnvsPermuted env env_perm pi ->
+    HeapEnvEquivalentOuter h h_perm env env_perm t CC.
+
 Lemma PermutationPreservesExistsSatisfying : forall type x t,
-  PermutationPreservesSatisfying t ->
-  PermutationPreservesSatisfying (JFIExists type x t).
+  PermutationPreservesSatisfyingOuter t ->
+  PermutationPreservesSatisfyingOuter (JFIExists type x t).
 Proof.
   intros type name t IHt h h_perm env env_perm pi CC pi_h pi_env.
   split.
@@ -2043,35 +1918,6 @@ Proof.
     apply (IHt h_perm h env_perm' env' pi' CC); trivial.
     unfold env', env_perm'.
     now apply ExtendedEnvsPermuted.
-Qed.
-
-Lemma PermutationPreservesForallSatisfying : forall type x t,
-  PermutationPreservesSatisfying t ->
-  PermutationPreservesSatisfying (JFIForall type x t).
-Proof.
-  intros type name t IHt h h_perm env env_perm pi CC pi_h pi_env.
-  split.
-  + simpl.
-    intros h_satisfies_forall l_perm l_perm_of_type.
-    destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
-    assert (pi'_h := (proj1 (pi'_heaps h h_perm)) pi_h); clear pi'_heaps.
-    assert (pi'_env := (proj1 (pi'_envs env env_perm)) pi_env); clear pi'_envs.
-    destruct (PiMapsToSameType h_perm h pi' l_perm type pi'_h l_perm_of_type)
-      as (l & pi_l & l_of_type).
-    set (env' := StrMap.add name l env).
-    set (env_perm' := StrMap.add name l_perm env_perm).
-    apply (IHt h_perm h env_perm' env' pi' CC); trivial.
-    ++ now apply ExtendedEnvsPermuted.
-    ++ now apply h_satisfies_forall.
-  + simpl.
-    intros h_satisfies_forall l l_of_type.
-    destruct (PiMapsToSameType h h_perm pi l type pi_h l_of_type)
-      as (l_perm & pi_l & l_perm_of_type).
-    set (env' := StrMap.add name l env).
-    set (env_perm' := StrMap.add name l_perm env_perm).
-    apply (IHt h h_perm env' env_perm' pi CC); trivial.
-    ++ now apply ExtendedEnvsPermuted.
-    ++ now apply h_satisfies_forall.
 Qed.
 
 Lemma ExistsVarInEnvPerm : forall env env_perm pi var l,
@@ -2496,8 +2342,6 @@ Lemma PermutationPreservesHeapSatisfying : forall t,
 Proof.
   intros t.
   induction t; intros h h_perm env env_perm pi CC pi_h pi_env; eauto.
-  + now apply PermutationPreservesExistsSatisfying with (pi := pi).
-  + now apply PermutationPreservesForallSatisfying with (pi := pi).
   + admit. (* TODO hoare *)
   + now apply PermutationPreservesEqSatisfying with (pi := pi).
   + now apply PermutationPreservesFieldEqSatisfying with (pi := pi).
@@ -3235,14 +3079,6 @@ Proof.
   + now apply ImpliesIntroRuleSoundness.
   (* JFIImpliesElimRule *)
   + now apply ImpliesElimRuleSoundness with (p := p).
-  (* JFIForallIntroRule *)
-  + now apply ForallIntroRuleSoundness with (gamma := gamma) (gamma_x := gamma_x).
-  (* JFIForallElimRule *)
-  + eauto.
-  (* JFIExistsIntroRule *)
-  + eauto.
-  (* JFIExistsElimRule *)
-  + eauto.
   (* JFISepAssoc1Rule *)
   + eauto.
   (* JFISepAssoc2Rule *)

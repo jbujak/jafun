@@ -75,12 +75,6 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC :
     | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC /\ JFIHeapSatisfiesInEnv h t2 env CC
     | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC \/ JFIHeapSatisfiesInEnv h t2 env CC
     | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env CC) \/ JFIHeapSatisfiesInEnv h t2 env CC
-    | JFIExists class name term => exists l : Loc,
-        let env1 := StrMap.add name l env
-        in JFILocOfType l h class /\ JFIHeapSatisfiesInEnv h term env1 CC
-    | JFIForall class name term => forall l : Loc,
-        let env1 := StrMap.add name l env
-        in JFILocOfType l h class -> JFIHeapSatisfiesInEnv h term env1 CC
     | JFIHoare t1 e ex valueName t2 => JFIHeapSatisfiesInEnv h t1 env CC -> exists confs hn res_ex res,
         let newEnv := StrMap.add valueName res env
         in (JFIEvalInEnv h e confs hn res_ex res env CC) /\
@@ -106,6 +100,17 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC :
         (exists h_h', JFIHeapsUnion h h' h_h' /\ JFIHeapSatisfiesInEnv h_h' t2 env CC) 
   end.
 
+Fixpoint JFIHeapSatisfiesOuterInEnv (h : Heap) (t : JFIOuterTerm) (env : JFITermEnv) (CC : JFProgram) : Prop :=
+  match t with
+  | JFIOuterAnd t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env CC /\ JFIHeapSatisfiesOuterInEnv h t2 env CC
+  | JFIOuterOr t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env CC \/ JFIHeapSatisfiesOuterInEnv h t2 env CC
+  | JFIExists class name term => exists l : Loc,
+      let env1 := StrMap.add name l env
+      in JFILocOfType l h class /\ JFIHeapSatisfiesOuterInEnv h term env1 CC
+  | JFIInner t => JFIHeapSatisfiesInEnv h t env CC
+  end.
+
+
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
   forall var_name,
     (StrMap.In var_name gamma <-> StrMap.In var_name env) /\
@@ -126,13 +131,19 @@ Fixpoint JFITermPersistent (t : JFITerm) : Prop :=
   | JFIAnd t1 t2 => JFITermPersistent t1 /\ JFITermPersistent t2
   | JFIOr t1 t2 => JFITermPersistent t1 /\ JFITermPersistent t2
   | JFIImplies t1 t2 => JFITermPersistent t1 /\ JFITermPersistent t2
-  | JFIExists class name term => JFITermPersistent term
-  | JFIForall class name term => JFITermPersistent term
   | JFIHoare t1 e ex valueName t2 => JFITermPersistent t1 /\ JFITermPersistent t2
   | JFIEq val1 val2 => True
   | JFIFieldEq obj fieldName val => False
   | JFISep t1 t2 => False
   | JFIWand t1 t2 => False
+  end.
+
+Fixpoint JFIOuterTermPersistent (t : JFIOuterTerm) : Prop :=
+  match t with
+  | JFIOuterAnd t1 t2 => JFIOuterTermPersistent t1 /\ JFIOuterTermPersistent t2
+  | JFIOuterOr t1 t2 => JFIOuterTermPersistent t1 /\ JFIOuterTermPersistent t2
+  | JFIExists class name term => JFIOuterTermPersistent term
+  | JFIInner t => JFITermPersistent t
   end.
 
 (* Program structure for proofs *)
@@ -196,23 +207,29 @@ Fixpoint JFIVarFreshInExpr (x : string) (e : JFExpr) := (* TODO pewnie wywalic *
 
 Fixpoint JFIVarFreshInTerm (x : string) (t : JFITerm) :=
   match t with
-    | JFITrue => True
-    | JFIFalse => True
-    | JFIAnd t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
-    | JFIOr t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
-    | JFIImplies t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
-    | JFIExists class name term => (* TODO maybe allow x = name *)
-        if String.eqb name x then False else JFIVarFreshInTerm x term
-    | JFIForall class name term => (* TODO maybe allow x = name *)
-        if String.eqb name x then False else JFIVarFreshInTerm x term
-    | JFIHoare t1 e ex name t2 => (* TODO maybe allow x = name *)
-        if String.eqb name x then False else
-          (JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2 /\ JFIVarFreshInExpr x e)
-    | JFIEq val1 val2 => JFIVarFreshInVal x val1 /\ JFIVarFreshInVal x val2
-    | JFIFieldEq obj fieldName val => JFIVarFreshInVal x obj /\ JFIVarFreshInVal x val
-    | JFISep t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
-    | JFIWand t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
+  | JFITrue => True
+  | JFIFalse => True
+  | JFIAnd t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
+  | JFIOr t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
+  | JFIImplies t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
+  | JFIHoare t1 e ex name t2 => (* TODO maybe allow x = name *)
+      if String.eqb name x then False else
+        (JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2 /\ JFIVarFreshInExpr x e)
+  | JFIEq val1 val2 => JFIVarFreshInVal x val1 /\ JFIVarFreshInVal x val2
+  | JFIFieldEq obj fieldName val => JFIVarFreshInVal x obj /\ JFIVarFreshInVal x val
+  | JFISep t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
+  | JFIWand t1 t2 => JFIVarFreshInTerm x t1 /\ JFIVarFreshInTerm x t2
   end.
+
+Fixpoint JFIVarFreshInOuterTerm (x : string) (t : JFIOuterTerm) :=
+  match t with
+  | JFIOuterAnd t1 t2 => JFIVarFreshInOuterTerm x t1 /\ JFIVarFreshInOuterTerm x t2
+  | JFIOuterOr t1 t2 => JFIVarFreshInOuterTerm x t1 /\ JFIVarFreshInOuterTerm x t2
+  | JFIExists class name term => (* TODO maybe allow x = name *)
+      if String.eqb name x then False else JFIVarFreshInOuterTerm x term
+  | JFIInner t => JFIVarFreshInTerm x t
+  end.
+
 
 Definition JFIValFreshInTerm (v : JFIVal) (t : JFITerm) :=
   match v with
@@ -311,39 +328,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*-----------------------*)
       JFIProves decls gamma r q
 
-| JFIForallIntroRule :
-    forall decls gamma gamma_x p q x type,
-      (JFIVarFreshInTerm x q) ->
-      (JFIGammaAddNew x type gamma = Some gamma_x) ->
-      (JFIProves decls gamma_x q p) ->
-      (*-----------------------------------*)
-      JFIProves decls gamma q (JFIForall type x p)
-
-| JFIForallElimRule :
-    forall r decls gamma p q x v type,
-      (r = JFITermSubstituteVal x v p) ->
-      (JFIProves decls gamma q (JFIForall type x p)) ->
-      (JFIValType decls gamma v = Some type) ->
-      (JFIValFreshInTerm v p) ->
-      (*----------------------------------------*)
-      JFIProves decls gamma q r
-
-| JFIExistsIntroRule :
-    forall decls gamma p q x v type,
-      (JFIValType decls gamma v = Some type) ->
-      (JFIProves decls gamma q (JFITermSubstituteVal x v p)) ->
-      (*-----------------------------------*)
-      JFIProves decls gamma q (JFIExists type x p)
-
-| JFIExistsElimRule :
-    forall decls gamma p q r x type,
-      (JFIVarFreshInTerm x r) ->
-      (JFIVarFreshInTerm x q) ->
-      (JFIProves decls gamma r (JFIExists type x p)) ->
-      (JFIProves decls (JFIGammaAdd x type gamma) (JFIAnd r p) q) ->
-      (*----------------*)
-      JFIProves decls gamma r q
-
 (* Rules for separation logic *)
 
 | JFISepAssoc1Rule :
@@ -404,11 +388,14 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma s (JFIHoare JFITrue (JFVal1 w_expr) None v (JFIEq (JFIVar v) w))
 
 | JFIHTCsqRule:
-    forall p' q' cn u decls gamma s p q ex v e,
+    forall p' q' cn decls gamma s p q ex v e,
       (JFITermPersistent s) ->
       (JFIProves decls gamma s (JFIImplies p p')) ->
       (JFIProves decls gamma s (JFIHoare p' e ex v q')) ->
-      (JFIProves decls gamma s (JFIForall cn u (JFIImplies (JFITermSubstituteVar v u q') (JFITermSubstituteVar v u q)))) ->
+      (forall x gamma_x,
+         JFIVarFreshInTerm x s ->
+         JFIGammaAddNew x cn gamma = Some gamma_x ->
+         JFIProves decls gamma_x s (JFIImplies (JFITermSubstituteVar v x q') (JFITermSubstituteVar v x q))) ->
       (*------------------------------*)
       JFIProves decls gamma s (JFIHoare p e ex v q)
 
@@ -463,12 +450,13 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma s (JFIHoare p (JFNew mu cn vs) None v (JFIFieldEq (JFIVar v) field value))
 
 | JFIHTLetRule :
-    forall v q decls gamma p r s e1 e2 x ex u class,
+    forall q decls gamma p r s e1 e2 x ex u class,
       (JFITermPersistent s) ->
-      (JFIVarFreshInTerm v r) ->
       (JFIProves decls gamma s (JFIHoare p e1 None x q)) ->
-      (JFIProves decls gamma s (JFIForall class v
-          (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex u r))) ->
+      (forall v gamma_v,
+         JFIVarFreshInTerm v s ->
+         JFIGammaAddNew v class gamma = Some gamma_v ->
+         JFIProves decls gamma s (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex u r)) ->
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFLet class x e1 e2) ex u r )
 
@@ -520,7 +508,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma s (JFIHoare p (JFIf v1_expr v2_expr e1 e2) ex u q)
 
 | JFIHTInvokeRetRule :
-    forall cn method rettypeCN p' ex w q' x decls gamma s p q u v v_expr vs vs_expr mn,
+    forall cn method rettypeCN p' ex w q' decls gamma s p q u v v_expr vs vs_expr mn,
       (v_expr = JFIValToJFVal v) -> (vs_expr = JFIValsToJFVals vs) ->
       (JFIValType decls gamma v = Some cn) ->
       (methodLookup (JFIDeclsProg decls) cn mn = Some method) ->
@@ -528,10 +516,13 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (In (JFIInvariant cn mn p' ex w q') (JFIDeclsInvariants decls)) ->
       (JFIProves decls gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse)) ->
       (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) ->
-      (JFIProves decls gamma s (JFIForall rettypeCN x
-          (JFIImplies
-            (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
-            (JFITermSubstituteVar u x q)))) ->
+      (forall x gamma_x,
+         JFIVarFreshInTerm x s ->
+         JFIGammaAddNew x rettypeCN gamma = Some gamma_x ->
+         JFIProves decls gamma s
+           (JFIImplies
+             (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
+             (JFITermSubstituteVar u x q))) ->
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q) (* TODO null *)
 
@@ -582,12 +573,13 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) None u q )
 
 | JFIHTCatchExRule :
-    forall decls gamma s p r e1 mu x v e2 u q ex ex' ex'',
+    forall decls gamma s p r e1 mu x e2 u q ex ex' ex'',
       (JFITermPersistent s) ->
-      (JFIVarFreshInTerm v r) ->
       (JFIProves decls gamma s (JFIHoare p e1 (Some ex') x q)) ->
-      (JFIProves decls gamma s (JFIForall ex' v
-          (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r))) ->
+      (forall v gamma_v,
+         JFIVarFreshInTerm v s ->
+         JFIGammaAddNew v ex' gamma = Some gamma_v ->
+         JFIProves decls gamma s (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r)) ->
        Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) ex'' u r )
@@ -600,3 +592,64 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) (Some ex') u q )
 .
 
+Inductive JFIProvesOuter : JFIDeclsType -> JFITypeEnv -> JFIOuterTerm -> JFIOuterTerm -> Prop :=
+| JFIExistsIntroRule :
+    forall decls gamma p q x v type,
+      (JFIValType decls gamma v = Some type) ->
+      (JFIProvesOuter decls gamma q (JFIOuterTermSubstituteVal x v p)) ->
+      (*-----------------------------------*)
+      JFIProvesOuter decls gamma q (JFIExists type x p)
+
+| JFIExistsElimRule :
+    forall decls gamma p q r x type,
+      (JFIVarFreshInOuterTerm x r) ->
+      (JFIVarFreshInOuterTerm x q) ->
+      (JFIProvesOuter decls gamma r (JFIExists type x p)) ->
+      (JFIProvesOuter decls (JFIGammaAdd x type gamma) (JFIOuterAnd r p) q) ->
+      (*----------------*)
+      JFIProvesOuter decls gamma r q
+
+| JFIOuterInnerRule :
+    forall decls gamma p q,
+      (JFIProves decls gamma p q) ->
+      (JFIProvesOuter decls gamma (JFIInner p) (JFIInner q))
+
+| JFIOuterAndIntroRule :
+    forall decls gamma p q r,
+      (JFIProvesOuter decls gamma r p) ->
+      (JFIProvesOuter decls gamma r q) ->
+      (*----------------------------*)
+      JFIProvesOuter decls gamma r (JFIOuterAnd p q)
+
+| JFIOuterAndElimLRule :
+    forall q decls gamma p r,
+      (JFIProvesOuter decls gamma r (JFIOuterAnd p q)) ->
+      (*----------------*)
+      JFIProvesOuter decls gamma r p
+
+| JFIOuterAndElimRRule :
+    forall p decls gamma q r,
+      (JFIProvesOuter decls gamma r (JFIOuterAnd p q)) ->
+      (*-----------------*)
+      JFIProvesOuter decls gamma r q
+
+| JFIOuterOrIntroLRule :
+    forall decls gamma p q r,
+      (JFIProvesOuter decls gamma r p) ->
+      (*--------------------------*)
+      JFIProvesOuter decls gamma r (JFIOuterOr p q)
+
+| JFIOuterOrIntroRRule :
+    forall decls gamma p q r,
+      (JFIProvesOuter decls gamma r q) ->
+      (*--------------------------*)
+      JFIProvesOuter decls gamma r (JFIOuterOr p q)
+
+| JFIOuterOrElimRule :
+    forall decls gamma p q r s,
+      (JFIProvesOuter decls gamma s (JFIOuterOr p q)) ->
+      (JFIProvesOuter decls gamma (JFIOuterAnd s p) r) ->
+      (JFIProvesOuter decls gamma (JFIOuterAnd s q) r) ->
+      (*-----------------*)
+      JFIProvesOuter decls gamma s r
+.
