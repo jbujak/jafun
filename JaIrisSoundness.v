@@ -981,63 +981,6 @@ Proof.
     ++ exact h_satisfies_r.
 Qed.
 
-Lemma ExistsIntroRuleSoundness : forall x v type decls gamma p q CC,
-  (JFIValType decls gamma v = Some type) ->
-  (JFISemanticallyImpliesOuter gamma q
-                (JFIOuterTermSubstituteVal x v p) CC) ->
-   JFISemanticallyImpliesOuter gamma q (JFIExists type x p) CC.
-Proof.
-  intros x v type decls gamma p q CC.
-  intros type_of_v q_implies_p.
-  intros env h gamma_match_env h_satisfies_q.
-  simpl.
-  simpl in type_of_v.
-
-  destruct v as [ | | v].
-  + exists null.
-    now split.
-  + admit. (* TODO this *)
-  + destruct (proj1 (gamma_match_env v)) as (gamma_implies_env & _).
-    assert (v_in_gamma : StrMap.In v gamma);
-      try (apply StrMap_in_find_iff; exists type; assumption).
-    apply gamma_implies_env in v_in_gamma.
-    apply StrMap_in_find_iff in v_in_gamma.
-    destruct v_in_gamma as (l & v_is_l).
-    exists l.
-    split.
-    ++ simpl in type_of_v.
-       rewrite <- StrMapFacts.find_mapsto_iff in type_of_v, v_is_l.
-       exact (proj2 (gamma_match_env v) l type type_of_v v_is_l).
-    ++ unfold JFISemanticallyImplies in q_implies_p.
-       apply (HeapSatisfiesSubstIffVarMovedToEnv h x v l p env CC v_is_l).
-       now apply q_implies_p.
-Admitted.
-Hint Resolve ExistsIntroRuleSoundness : core.
-
-Lemma ExistsElimRuleSoundness : forall gamma decls p q r type x,
-  let CC := JFIDeclsProg decls in
-  JFIVarFreshInOuterTerm x r ->
-  JFIVarFreshInOuterTerm x q ->
-  JFISemanticallyImpliesOuter gamma r (JFIExists type x p) CC ->
-  JFISemanticallyImpliesOuter (JFIGammaAdd x type gamma) (JFIOuterAnd r p) q CC ->
-  JFISemanticallyImpliesOuter gamma r q CC.
-Proof.
-  intros gamma decls p q r type x CC.
-  intros x_fresh_in_r x_fresh_in_q r_implies_exists and_implies_q.
-  intros env h gamma_match_env h_satisfies_r.
-  assert (h_satisfies_exists := r_implies_exists env h gamma_match_env h_satisfies_r).
-  destruct h_satisfies_exists as (l & l_of_type & h_satisfies_p).
-  assert (h_satisfies_q := and_implies_q (StrMap.add x l env) h).
-  apply AddingFreshVarPreservesHeapSatisfyingOuter with (x := x) (l := l); try assumption.
-  apply h_satisfies_q.
-  + apply ExtendedGammaMatchesExtendedEnv; assumption.
-  + simpl.
-    split.
-    ++ apply AddingFreshVarPreservesHeapSatisfyingOuter; assumption.
-    ++ exact h_satisfies_p.
-Qed.
-Hint Resolve ExistsElimRuleSoundness : core.
-
 (* =============== Separation rules soundness ===============*)
 
 Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env,
@@ -2995,7 +2938,136 @@ Proof.
 Qed.
 Hint Resolve HTCatchPassExSoundness : core.
 
-(* =============== Main theorem =============== *)
+(* Soudness of outer terms *)
+
+Lemma OuterExistsIntroRuleSoundness : forall x v type decls gamma p q CC,
+  (JFIValType decls gamma v = Some type) ->
+  (JFISemanticallyImpliesOuter gamma q
+                (JFIOuterTermSubstituteVal x v p) CC) ->
+   JFISemanticallyImpliesOuter gamma q (JFIExists type x p) CC.
+Proof.
+  intros x v type decls gamma p q CC.
+  intros type_of_v q_implies_p.
+  intros env h gamma_match_env h_satisfies_q.
+  simpl.
+  simpl in type_of_v.
+
+  destruct v as [ | | v].
+  + exists null.
+    now split.
+  + admit. (* TODO this *)
+  + destruct (proj1 (gamma_match_env v)) as (gamma_implies_env & _).
+    assert (v_in_gamma : StrMap.In v gamma);
+      try (apply StrMap_in_find_iff; exists type; assumption).
+    apply gamma_implies_env in v_in_gamma.
+    apply StrMap_in_find_iff in v_in_gamma.
+    destruct v_in_gamma as (l & v_is_l).
+    exists l.
+    split.
+    ++ simpl in type_of_v.
+       rewrite <- StrMapFacts.find_mapsto_iff in type_of_v, v_is_l.
+       exact (proj2 (gamma_match_env v) l type type_of_v v_is_l).
+    ++ unfold JFISemanticallyImplies in q_implies_p.
+       apply (HeapSatisfiesSubstIffVarMovedToEnv h x v l p env CC v_is_l).
+       now apply q_implies_p.
+Admitted.
+Hint Resolve OuterExistsIntroRuleSoundness : core.
+
+Lemma OuterExistsElimRuleSoundness : forall gamma decls p q r type x,
+  let CC := JFIDeclsProg decls in
+  JFIVarFreshInOuterTerm x r ->
+  JFIVarFreshInOuterTerm x q ->
+  JFISemanticallyImpliesOuter gamma r (JFIExists type x p) CC ->
+  JFISemanticallyImpliesOuter (JFIGammaAdd x type gamma) (JFIOuterAnd r p) q CC ->
+  JFISemanticallyImpliesOuter gamma r q CC.
+Proof.
+  intros gamma decls p q r type x CC.
+  intros x_fresh_in_r x_fresh_in_q r_implies_exists and_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
+  assert (h_satisfies_exists := r_implies_exists env h gamma_match_env h_satisfies_r).
+  destruct h_satisfies_exists as (l & l_of_type & h_satisfies_p).
+  assert (h_satisfies_q := and_implies_q (StrMap.add x l env) h).
+  apply AddingFreshVarPreservesHeapSatisfyingOuter with (x := x) (l := l); try assumption.
+  apply h_satisfies_q.
+  + apply ExtendedGammaMatchesExtendedEnv; assumption.
+  + simpl.
+    split.
+    ++ apply AddingFreshVarPreservesHeapSatisfyingOuter; assumption.
+    ++ exact h_satisfies_p.
+Qed.
+Hint Resolve OuterExistsElimRuleSoundness : core.
+
+Lemma OuterAndIntroRuleSoundness : forall gamma p q r CC,
+  (JFISemanticallyImpliesOuter gamma r p CC) ->
+  (JFISemanticallyImpliesOuter gamma r q CC) ->
+   JFISemanticallyImpliesOuter gamma r (JFIOuterAnd p q) CC.
+Proof.
+  intros gamma p q r CC.
+  intros r_implies_p r_implies_q.
+  intros env h gamma_match_env h_satisfies_r.
+  simpl.
+  split.
+  + apply r_implies_p.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
+  + apply r_implies_q.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
+Qed.
+Hint Resolve OuterAndIntroRuleSoundness : core.
+
+Lemma OuterAndElimRuleSoundness : forall gamma p q r CC,
+  (JFISemanticallyImpliesOuter gamma r (JFIOuterAnd p q) CC) ->
+   JFISemanticallyImpliesOuter gamma r p CC /\ JFISemanticallyImpliesOuter gamma r q CC.
+Proof.
+  intros gamma p q r CC.
+  intros r_implies_p_and_q.
+  split;
+  intros env h gamma_match_env h_satisfies_r;
+  apply r_implies_p_and_q.
+  + exact gamma_match_env.
+  + exact h_satisfies_r.
+  + exact gamma_match_env.
+  + exact h_satisfies_r.
+Qed.
+
+Lemma OuterOrIntroRuleSoundness : forall gamma p q r CC,
+  (JFISemanticallyImpliesOuter gamma r p CC \/ JFISemanticallyImpliesOuter gamma r q CC) ->
+   JFISemanticallyImpliesOuter gamma r (JFIOuterOr p q) CC.
+Proof.
+  intros gamma p q r CC.
+  intros [r_implies_p | r_implies_q]; intros env h gamma_match_env h_satisfies_r; simpl.
+  + apply or_introl.
+    apply r_implies_p.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
+  + apply or_intror.
+    apply r_implies_q.
+    ++ exact gamma_match_env.
+    ++ exact h_satisfies_r.
+Qed.
+
+Lemma OuterOrElimRuleSoundness : forall gamma p q r s CC,
+  (JFISemanticallyImpliesOuter gamma s (JFIOuterOr p q) CC) ->
+  (JFISemanticallyImpliesOuter gamma (JFIOuterAnd s p) r CC) ->
+  (JFISemanticallyImpliesOuter gamma (JFIOuterAnd s q) r CC) ->
+   JFISemanticallyImpliesOuter gamma s r CC.
+Proof.
+  intros gamma p q r s CC.
+  intros s_implies_p_or_q s_and_p_implies_r s_and_q_implies_r.
+  intros env h gamma_match_env h_satisfies_s.
+  set (p_or_q := s_implies_p_or_q env h gamma_match_env h_satisfies_s).
+  destruct p_or_q as [h_satisfies_p | h_satisfies_q].
+  + apply (s_and_p_implies_r env h gamma_match_env).
+    simpl.
+    exact (conj h_satisfies_s h_satisfies_p).
+  + apply (s_and_q_implies_r env h gamma_match_env).
+    simpl.
+    exact (conj h_satisfies_s h_satisfies_q).
+Qed.
+Hint Resolve OuterOrElimRuleSoundness : core.
+
+(* =============== Main theorems =============== *)
 
 Theorem JFISoundness : forall gamma decls p t,
   let CC := JFIDeclsProg decls in
@@ -3097,4 +3169,25 @@ Proof.
   (* JFIHTCatchPassExRule *)
   + eauto.
 Admitted.
+
+Theorem JFIOuterSoundness : forall gamma decls p t,
+  let CC := JFIDeclsProg decls in
+  (JFIProvesOuter decls gamma p t) ->
+   JFISemanticallyImpliesOuter gamma p t CC.
+Proof.
+  intros gamma decls p t CC.
+  unfold CC in *.
+  intros proof.
+  induction proof; eauto.
+  (* JFIInnerOuterRule *)
+  + now apply JFISoundness.
+  (* JFIAndElimLRule *)
+  + now apply OuterAndElimRuleSoundness with (q := q).
+  (* JFIAndElimRRule *)
+  + now apply OuterAndElimRuleSoundness with (p := p).
+  (* JFIOrIntroLRule *)
+  + now apply OuterOrIntroRuleSoundness, or_introl.
+  (* JFIOrIntroRRule *)
+  + now apply OuterOrIntroRuleSoundness, or_intror.
+Qed.
 
