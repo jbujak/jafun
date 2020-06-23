@@ -1076,22 +1076,24 @@ Proof.
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
 Qed.
 
-Theorem LetEvaluationNormal : forall h h' hn class x v e1 e2 e1_confs e2_confs e1_res e2_res A env CC,
+Theorem LetEvaluationNormal : forall h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env CC,
    JFIEvalInEnv h e1 e1_confs h' None e1_res env CC ->
-   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) e2_confs hn A e2_res (StrMap.add v e1_res env) CC ->
+   JFIEvalInEnv h' e2 e2_confs hn A e2_res (StrMap.add x e1_res env) CC ->
    exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env CC.
 Proof.
-  intros h h' hn class x v e1 e2 e1_confs e2_confs e1_res e2_res A env CC.
+  intros h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env CC.
   intros e1_eval e2_eval.
   set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
   apply ExistsNormalLetEval with (x := x) (class := class) (e2 := e2_in_env) in e1_eval
     as (let_e1_confs & e1_let_eval).
   exists (let_e1_confs ++ e2_confs).
   unfold JFIEvalInEnv, JFIEval in  e2_eval.
-  rewrite <- RemoveVarFromEnv in e2_eval.
-  rewrite <- SubstExprEqExprSubstituteVal in e2_eval.
-  now apply EvaluationJoin with (h' := h')
-    (st' := [ [] [[ substExpr (JFVar x) e1_res e2_in_env ]]_ None]).
+  apply EvaluationJoin with (h' := h')
+    (st' := [ [] [[ substExpr (JFVar x) e1_res e2_in_env ]]_ None]); try easy.
+  unfold e2_in_env.
+  rewrite SubstExprEqExprSubstituteVal.
+  rewrite RemoveVarFromEnv with (v := x).
+  now rewrite SubsituteVarIdentity.
 Qed.
 
 Theorem LetEvaluationEx : forall h hn class x e1 e2 e1_confs e1_res ex env CC,
@@ -1141,20 +1143,18 @@ Proof.
   now apply not_subtype.
 Qed.
 
-Theorem TryEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x v e1 e2 e1_confs e2_confs e1_res e2_res env CC,
+Theorem TryEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env CC,
    Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
    JFIEvalInEnv h e1 e1_confs h' (Some e1_A) e1_res env CC ->
-   JFIEvalInEnv h' (JFIExprSubstituteVar x v e2) e2_confs hn e2_A e2_res (StrMap.add v e1_res env) CC ->
+   JFIEvalInEnv h' e2 e2_confs hn e2_A e2_res (StrMap.add x e1_res env) CC ->
    exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn e2_A e2_res env CC.
 Proof.
-  intros h h' hn mu e1_A e2_A catch_A x v e1 e2 e1_confs e2_confs e1_res e2_res env CC.
+  intros h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env CC.
   intros is_subtype e1_eval e2_eval.
   set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
   apply ExistsExTryEval with (x := x) (mu := mu)
     (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
   unfold JFIEvalInEnv, JFIEval in e2_eval.
-  rewrite <- RemoveVarFromEnv in e2_eval.
-  rewrite <- SubstExprEqExprSubstituteVal in e2_eval.
   destruct e1_eval as (try_e1_confs & try_e1_eval).
   set (trygo1 := (h', [ [JFCtxTry __ mu catch_A x e2_in_env] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some e1_A)])).
   set (trygo2 := (h', [ [] [[ substExpr (JFVar x) e1_res e2_in_env ]]_ None])).
@@ -1164,6 +1164,10 @@ Proof.
   apply EvaluationJoin with (h' := h')
     (st' := snd trygo1); try easy.
   split; try split; trivial.
-  unfold trygo1, snd, red.
-  now destruct (subtype_bool CC (JFClass e1_A) (JFClass catch_A)).
+  + unfold trygo1, snd, red.
+    now destruct (subtype_bool CC (JFClass e1_A) (JFClass catch_A)).
+  + unfold trygo2, snd, e2_in_env.
+    rewrite SubstExprEqExprSubstituteVal.
+    rewrite RemoveVarFromEnv with (v := x).
+    now rewrite SubsituteVarIdentity.
 Qed.

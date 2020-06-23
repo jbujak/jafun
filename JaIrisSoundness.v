@@ -248,7 +248,7 @@ Proof.
     exact x_fresh.
 Qed.
 
-Lemma AddingFreshVarPreservesHeapSatisfiyingEq : forall val1 val2 x l env h CC,
+Lemma AddingFreshVarPreservesHeapSatisfyingEq : forall val1 val2 x l env h CC,
   (JFIVarFreshInTerm x (JFIEq val1 val2)) ->
     ((JFIHeapSatisfiesInEnv h (JFIEq val1 val2) env CC) <->
       JFIHeapSatisfiesInEnv h (JFIEq val1 val2) (StrMap.add x l env) CC).
@@ -280,7 +280,7 @@ Proof.
        apply x_fresh.
 Qed.
 
-Lemma AddingFreshVarPreservesHeapSatisfiyingFieldEq : forall obj field val x l env h CC,
+Lemma AddingFreshVarPreservesHeapSatisfyingFieldEq : forall obj field val x l env h CC,
   (JFIVarFreshInTerm x (JFIFieldEq obj field val)) ->
     ((JFIHeapSatisfiesInEnv h (JFIFieldEq obj field val) env CC) <->
       JFIHeapSatisfiesInEnv h (JFIFieldEq obj field val) (StrMap.add x l env) CC).
@@ -623,7 +623,7 @@ Proof.
     exact (EnvEqSymmetry env1 env2 env1_eq_env2).
 Qed.
 
-Lemma EnvOrderChangePreservesHeapSatisfiying : forall h t x1 l1 x2 l2 env CC,
+Lemma EnvOrderChangePreservesHeapSatisfying : forall h t x1 l1 x2 l2 env CC,
   (x1 <> x2) ->
   (JFIHeapSatisfiesInEnv h t (StrMap.add x1 l1 (StrMap.add x2 l2 env)) CC) <->
   (JFIHeapSatisfiesInEnv h t (StrMap.add x2 l2 (StrMap.add x1 l1 env)) CC).
@@ -636,7 +636,7 @@ Proof.
   exact x1_neq_x2.
 Qed.
 
-Lemma FreshEnvOrderChangePreservesHeapSatisfiying : forall h t x1 l1 x2 l2 env CC,
+Lemma FreshEnvOrderChangePreservesHeapSatisfying : forall h t x1 l1 x2 l2 env CC,
   (JFIVarFreshInTerm x1 t) ->
   (JFIHeapSatisfiesInEnv h t (StrMap.add x1 l1 (StrMap.add x2 l2 env)) CC) <->
   (JFIHeapSatisfiesInEnv h t (StrMap.add x2 l2 (StrMap.add x1 l1 env)) CC).
@@ -680,7 +680,7 @@ Proof.
     assert (t2_preserves := IH_t2 hn x l (StrMap.add v res env) x_fresh_in_t2).
     split; try split; try easy.
     ++ now apply FreshVarPreservesEval.
-    ++ apply FreshEnvOrderChangePreservesHeapSatisfiying with (x1 := x); try assumption.
+    ++ apply FreshEnvOrderChangePreservesHeapSatisfying with (x1 := x); try assumption.
        now apply t2_preserves.
   + intros h_satisfies_hoare_in_env.
     intros h_satisfies_t1.
@@ -692,7 +692,7 @@ Proof.
     split; try split; try easy.
     ++ now apply FreshVarPreservesEval in eval.
     ++ apply t2_preserves.
-       now apply FreshEnvOrderChangePreservesHeapSatisfiying.
+       now apply FreshEnvOrderChangePreservesHeapSatisfying.
 Qed.
 
 Lemma FreshVarPreservesSepSatystying : forall t1 t2 CC,
@@ -745,7 +745,7 @@ Proof.
     split; assumption.
 Qed.
 
-Lemma AddingFreshVarPreservesHeapSatisfiying : forall q CC h x l env,
+Lemma AddingFreshVarPreservesHeapSatisfying : forall q CC h x l env,
   JFIVarFreshInTerm x q ->
   HeapEnvEquivalent h h env (StrMap.add x l env) q CC.
 Proof.
@@ -755,10 +755,10 @@ Proof.
   + apply FreshVarPreservesHoareSatystying; assumption.
   (* JFIEq *)
   + split;
-    now apply AddingFreshVarPreservesHeapSatisfiyingEq with (x := x) (l := l).
+    now apply AddingFreshVarPreservesHeapSatisfyingEq with (x := x) (l := l).
   (* JFIFieldEq *)
   + split;
-    apply AddingFreshVarPreservesHeapSatisfiyingFieldEq with (x := x) (l := l);
+    apply AddingFreshVarPreservesHeapSatisfyingFieldEq with (x := x) (l := l);
     exact (conj H H0).
   (* JFISep*)
   + now apply FreshVarPreservesSepSatystying.
@@ -766,7 +766,7 @@ Proof.
   + now apply FreshVarPreservesWandSatystying.
 Qed.
 
-Lemma AddingFreshVarPreservesHeapSatisfiyingOuter : forall q CC h x l env,
+Lemma AddingFreshVarPreservesHeapSatisfyingOuter : forall q CC h x l env,
   JFIVarFreshInOuterTerm x q ->
   HeapEnvEquivalentOuter h h env (StrMap.add x l env) q CC.
 Proof.
@@ -779,7 +779,7 @@ Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env CC x0,
 Proof.
 Admitted.
 
-Lemma VarNameChangePreservesHeapSatisfiying : forall h t u v l env CC,
+Lemma VarNameChangePreservesHeapSatisfying : forall h t u v l env CC,
   (JFIHeapSatisfiesInEnv h t (StrMap.add v l env) CC) <->
    JFIHeapSatisfiesInEnv h (JFITermSubstituteVar v u t) (StrMap.add u l env) CC.
 Proof.
@@ -1028,12 +1028,12 @@ Proof.
   assert (h_satisfies_exists := r_implies_exists env h gamma_match_env h_satisfies_r).
   destruct h_satisfies_exists as (l & l_of_type & h_satisfies_p).
   assert (h_satisfies_q := and_implies_q (StrMap.add x l env) h).
-  apply AddingFreshVarPreservesHeapSatisfiyingOuter with (x := x) (l := l); try assumption.
+  apply AddingFreshVarPreservesHeapSatisfyingOuter with (x := x) (l := l); try assumption.
   apply h_satisfies_q.
   + apply ExtendedGammaMatchesExtendedEnv; assumption.
   + simpl.
     split.
-    ++ apply AddingFreshVarPreservesHeapSatisfiyingOuter; assumption.
+    ++ apply AddingFreshVarPreservesHeapSatisfyingOuter; assumption.
     ++ exact h_satisfies_p.
 Qed.
 Hint Resolve ExistsElimRuleSoundness : core.
@@ -1433,27 +1433,7 @@ Proof.
        intros h_p1_env.
        apply H. now apply (IHp1 h env env').
        apply or_intror.
-       now apply (IHp2 h env env').
-  + split; simpl.
-    ++ destruct 1 as (l & l_of_type & h_satisfies_p).
-       exists l.
-       split; trivial.
-       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
-       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
-    ++ destruct 1 as (l & l_of_type & h_satisfies_p).
-       exists l.
-       split; trivial.
-       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
-       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
-  + split; simpl.
-    ++ intros h_satisfies_forall l l_of_type.
-       assert (h_satisfies_p := h_satisfies_forall l l_of_type).
-       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
-       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
-    ++ intros h_satisfies_forall l l_of_type.
-       assert (h_satisfies_p := h_satisfies_forall l l_of_type).
-       apply (IHp h (StrMap.add name l env) (StrMap.add name l env')); trivial.
-       now apply LocOfTypeImpliesExtendedRestricted with (type := type).
+       now apply (IHp2 h env env'). 
   + admit.
   + split. (* TODO to moze nie zadzialac *)
 Admitted.
@@ -2391,7 +2371,7 @@ Proof.
     now apply ExtendPermutedEnvs.
   + destruct res_ext.
     ++ now apply AddingNullPreservesHeapSatisfying.
-    ++ now apply AddingFreshVarPreservesHeapSatisfiying.
+    ++ now apply AddingFreshVarPreservesHeapSatisfying.
 Admitted.
 Hint Resolve HTFrameRuleSoundness : core.
 
@@ -2436,56 +2416,43 @@ Proof.
     + exact h_satisfies_p'.
 Qed.
 
-Lemma HTPostconditionWeakenSoundness : forall gamma s p e ex v q q' cn u CC,
+Lemma HTPostconditionWeakenSoundness : forall gamma s p e ex v q q' cn CC,
   (JFITermPersistent s) ->
+  (JFIVarFreshInTerm v s) ->
   (JFISemanticallyImplies gamma s (JFIHoare p e ex v q') CC) ->
-  (JFISemanticallyImplies gamma s
-    (JFIForall cn u
-      (JFIImplies (JFITermSubstituteVar v u q')
-        (JFITermSubstituteVar v u q))) CC) ->
+  (JFISemanticallyImplies (JFIGammaAdd v cn gamma) s (JFIImplies q' q) CC) ->
    JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
 Proof.
-  intros gamma s p e ex v q q' cn u CC.
-  intros s_persistent hoare_q' q_implies_q'.
+  intros gamma s p e ex v q q' cn CC.
+  intros s_persistent v_fresh hoare_q' q'_implies_q.
   intros env h gamma_match_env h_satisfies_s.
   simpl.
   intros h_satisfies_p.
   destruct (hoare_q' env h gamma_match_env h_satisfies_s h_satisfies_p ) as
-    (confs & hn & res_ex & res & eval_e & res_eq  & h_satisfies_q').
+    (confs & hn & res_ex & res & eval_e & res_eq & h_satisfies_q').
   fold JFIHeapSatisfiesInEnv in h_satisfies_q'.
   assert (gamma_match_env_in_hn := EvaluationPreservesGammaMatching gamma env h (JFIExprSubstituteEnv env e) confs hn res_ex res CC gamma_match_env eval_e).
   assert (hn_satisfies_s := EvaluationPreservesPersistentTerms env s h (JFIExprSubstituteEnv env e) confs hn res_ex res CC s_persistent h_satisfies_s eval_e).
-  assert (h_satisfies_forall := q_implies_q' env hn gamma_match_env_in_hn hn_satisfies_s).
-  simpl in h_satisfies_forall.
-  destruct (h_satisfies_forall res) as [not_h_satisfies_q' | h_satisfies_q].
-  + admit. (* TODO type of res *)
-  + exfalso.
-    apply not_h_satisfies_q'.
-    apply VarNameChangePreservesHeapSatisfiying.
-    apply h_satisfies_q'.
-  + exists confs, hn, res_ex, res.
-    apply VarNameChangePreservesHeapSatisfiying with (u := u) in h_satisfies_q.
-    now split; try split.
+  apply AddingFreshVarPreservesHeapSatisfying with (x := v) (l := res) in hn_satisfies_s; trivial.
+  assert (gamma_v_match_env : JFIGammaMatchEnv hn (JFIGammaAdd v cn gamma) (StrMap.add v res env)). admit.
+  assert (hn_satisfies_implies := q'_implies_q (StrMap.add v res env) hn gamma_v_match_env hn_satisfies_s).
+  exists confs, hn, res_ex, res.
+  split; try split; try easy.
+  simpl in hn_satisfies_implies.
+  now destruct hn_satisfies_implies.
 Admitted.
 
-Lemma HTCsqRuleSoundness : forall gamma s p p' e ex v q q' cn u CC,
+Lemma HTCsqRuleSoundness : forall gamma s p p' e ex v q q' cn CC,
   (JFITermPersistent s) ->
+  (JFIVarFreshInTerm v s) ->
   (JFISemanticallyImplies gamma s (JFIImplies p p') CC) ->
   (JFISemanticallyImplies gamma s (JFIHoare p' e ex v q') CC) ->
-  (JFISemanticallyImplies gamma s
-    (JFIForall cn u
-      (JFIImplies (JFITermSubstituteVar v u q')
-        (JFITermSubstituteVar v u q))) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
+  (JFISemanticallyImplies (JFIGammaAdd v cn gamma) s (JFIImplies q' q) CC) -> JFISemanticallyImplies gamma s (JFIHoare p e ex v q) CC.
 Proof.
-  intros gamma s p p' e ex v q q' cn u CC.
-  intros s_persistent p_implies_p' hoare_p'q' q_implies_q'.
-  apply HTPostconditionWeakenSoundness with (q':=q') (cn:=cn) (u:=u).
-  + exact s_persistent.
-  + apply HTPreconditionStrenghtenSoundness with (p':=p').
-    ++ exact p_implies_p'.
-    ++ exact hoare_p'q'.
-  + exact q_implies_q'.
+  intros gamma s p p' e ex v q q' cn CC.
+  intros s_persistent p_implies_p' q_implies_q' hoare_p'q'.
+  apply HTPostconditionWeakenSoundness with (q':=q') (cn:=cn) (v:=v); try easy.
+  now apply HTPreconditionStrenghtenSoundness with (p':=p'); try easy.
 Qed.
 Hint Resolve HTCsqRuleSoundness : core.
 
@@ -2617,26 +2584,23 @@ Proof.
 Qed.
 Hint Resolve HTNewFieldRuleSoundness : core.
 
-Lemma AddingFreshVarInsidePreservesHeapSatisfiying : forall q h env x1 l1 x2 l2 CC,
+Lemma AddingFreshVarInsidePreservesHeapSatisfying : forall q h env x1 l1 x2 l2 CC,
    (JFIVarFreshInTerm x2 q) ->
     JFIHeapSatisfiesInEnv h q (StrMap.add x1 l1 env) CC <->
    (JFIHeapSatisfiesInEnv h q (StrMap.add x1 l1 (StrMap.add x2 l2 env)) CC).
 Proof.
 Admitted.
 
-Lemma HTLetRuleSoundness : forall gamma s p e1 e2 class x q v ex u r CC,
+Lemma HTLetRuleSoundness : forall gamma s p e1 e2 class x q ex u r CC,
   (JFITermPersistent s) ->
-  (JFIVarFreshInTerm v r) ->
+  (JFIVarFreshInTerm x s) ->
+  (JFIVarFreshInTerm x r) ->
   (JFISemanticallyImplies gamma s (JFIHoare p e1 None x q) CC) ->
-  (JFISemanticallyImplies gamma s
-          (JFIForall class v
-             (JFIHoare
-                (JFITermSubstituteVar x v q)
-                (JFIExprSubstituteVar x v e2) ex u r)) CC) ->
+  (JFISemanticallyImplies (JFIGammaAdd x class gamma) s (JFIHoare q e2 ex u r) CC) ->
   JFISemanticallyImplies gamma s (JFIHoare p (JFLet class x e1 e2) ex u r) CC.
 Proof.
-  intros gamma s p e1 e2 class x q v ex u r CC.
-  intros s_persistent v_fresh_in_r IH_e1 IH_e2.
+  intros gamma s p e1 e2 class x q ex u r CC.
+  intros s_persistent x_fresh_in_s x_fresh_in_r IH_e1 IH_e2.
   intros env h gamma_match_env.
   intros h_satisfies_s h_satisfies_p.
 
@@ -2645,27 +2609,23 @@ Proof.
   destruct tmp as (e1_confs & h' & e1_ex & e1_res & e1_eval & e1_ex_is_none & h'_satisfies_q).
   rewrite e1_ex_is_none in *; clear e1_ex_is_none.
 
-  assert (h'_gamma_match_env : JFIGammaMatchEnv h' gamma env).
-  now apply EvaluationPreservesGammaMatching with (h := h) (e := (JFIExprSubstituteEnv env e1))
-    (confs := e1_confs) (ex := None) (res := e1_res) (CC := CC).
-  assert (h'_satisfies_s : JFIHeapSatisfiesInEnv h' s env CC).
-  now apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
-    (confs := e1_confs) (ex := None) (res := e1_res).
-  assert (e1_res_of_type : JFILocOfType e1_res h' class). admit.
-  apply (VarNameChangePreservesHeapSatisfiying _ _ v x) in h'_satisfies_q.
-  assert (tmp := IH_e2 env h' h'_gamma_match_env h'_satisfies_s e1_res e1_res_of_type h'_satisfies_q).
+  assert (h'_gamma_match_env : JFIGammaMatchEnv h' (JFIGammaAdd x class gamma) (StrMap.add x e1_res env)).
+    admit.
+  assert (h'_satisfies_s : JFIHeapSatisfiesInEnv h' s (StrMap.add x e1_res env) CC).
+  apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
+    (confs := e1_confs) (ex := None) (res := e1_res); try easy.
+  now apply AddingFreshVarPreservesHeapSatisfying.
+  assert (tmp := IH_e2 (StrMap.add x e1_res env) h' h'_gamma_match_env h'_satisfies_s h'_satisfies_q).
   fold JFIHeapSatisfiesInEnv in tmp.
   simpl in tmp.
   destruct tmp as (e2_confs & hn & res_ex & res & e2_eval & res_ex_eq & hn_satisfies_r).
   rewrite res_ex_eq in *; clear res_ex_eq.
-  apply (VarNameChangePreservesHeapSatisfiying _ _ v x) in h'_satisfies_q.
-
-  destruct (LetEvaluationNormal _ _ _ class _ _ _ _ _ _ _ _ _ _ _ e1_eval e2_eval)
+  destruct (LetEvaluationNormal _ _ _ class _ _ _ _ _ _ _ _ _ _ e1_eval e2_eval)
     as (let_confs & let_eval).
   exists let_confs, hn, ex, res.
   simpl.
   split; [ | split]; trivial.
-  now apply AddingFreshVarInsidePreservesHeapSatisfiying with (x2 := v) (l2 := e1_res).
+  now apply AddingFreshVarInsidePreservesHeapSatisfying with (x2 := x) (l2 := e1_res).
 Admitted.
 Hint Resolve HTLetRuleSoundness : core.
 
@@ -2975,19 +2935,18 @@ Proof.
 Qed.
 Hint Resolve HTCatchNormalSoundness : core.
 
-Lemma HTCatchExSoundness : forall decls gamma s p e1 mu ex ex' ex'' x e2 u v r q,
+Lemma HTCatchExSoundness : forall decls gamma s p e1 mu ex ex' ex'' x e2 u r q,
   let CC := (JFIDeclsProg decls) in
   JFITermPersistent s ->
-  JFIVarFreshInTerm v r ->
+  JFIVarFreshInTerm x s ->
+  JFIVarFreshInTerm x r ->
   Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
   JFISemanticallyImplies gamma s (JFIHoare p e1 (Some ex') x q) CC ->
-  JFISemanticallyImplies gamma s
-    (JFIForall ex' v 
-      (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r)) CC ->
+  JFISemanticallyImplies (JFIGammaAdd x ex gamma) s (JFIHoare q e2 ex'' u r) CC ->
   JFISemanticallyImplies gamma s (JFIHoare p (JFTry e1 mu ex x e2) ex'' u r) CC.
 Proof.
-  intros decls gamma s p e1 mu ex ex' ex'' x e2 u v r q CC.
-  intros s_persistent v_fresh_in_r is_subtype hoare_e1 hoare_e2.
+  intros decls gamma s p e1 mu ex ex' ex'' x e2 u r q CC.
+  intros s_persistent x_fresh_in_s x_fresh_in_r is_subtype hoare_e1 hoare_e2.
   intros env h gamma_match_env h_satisfies_s.
   intros h_satisfies_p.
 
@@ -2996,27 +2955,23 @@ Proof.
   destruct tmp as (e1_confs & h' & e1_ex & e1_res & e1_eval & e1_ex_is_none & h'_satisfies_q).
   rewrite e1_ex_is_none in *; clear e1_ex_is_none.
 
-  assert (h'_gamma_match_env : JFIGammaMatchEnv h' gamma env).
-  now apply EvaluationPreservesGammaMatching with (h := h) (e := JFIExprSubstituteEnv env e1)
-    (confs := e1_confs) (ex := (Some ex')) (res := e1_res) (CC := CC).
+  assert (h'_gamma_match_env : JFIGammaMatchEnv h' (JFIGammaAdd x ex gamma) (StrMap.add x e1_res env)).
+    admit.
 
-  assert (h'_satisfies_s : JFIHeapSatisfiesInEnv h' s env CC).
-  now apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
-    (confs := e1_confs) (ex := (Some ex')) (res := e1_res).
-  assert (e1_res_of_type : JFILocOfType e1_res h' ex'). admit.
-  apply (VarNameChangePreservesHeapSatisfiying _ _ v x) in h'_satisfies_q.
-  assert (tmp := hoare_e2 env h' h'_gamma_match_env h'_satisfies_s e1_res e1_res_of_type h'_satisfies_q).
+  assert (h'_satisfies_s : JFIHeapSatisfiesInEnv h' s (StrMap.add x e1_res env) CC).
+    apply EvaluationPreservesPersistentTerms with (h := h) (e := (JFIExprSubstituteEnv env e1))
+    (confs := e1_confs) (ex := (Some ex')) (res := e1_res); trivial.
+    now apply AddingFreshVarPreservesHeapSatisfying.
+  assert (tmp := hoare_e2 (StrMap.add x e1_res env) h' h'_gamma_match_env h'_satisfies_s h'_satisfies_q).
   fold JFIHeapSatisfiesInEnv in tmp.
   simpl in tmp.
   destruct tmp as (e2_confs & hn & res_ex & res & e2_eval & res_ex_eq & hn_satisfies_r).
   rewrite res_ex_eq in *; clear res_ex_eq.
-  apply (VarNameChangePreservesHeapSatisfiying _ _ v x) in h'_satisfies_q.
-
-  destruct (TryEvaluationExCatch h h' hn mu ex' ex'' ex x v e1 e2
+  destruct (TryEvaluationExCatch h h' hn mu ex' ex'' ex x e1 e2
     e1_confs e2_confs e1_res res env CC is_subtype e1_eval e2_eval) as (try_confs & try_eval).
   exists try_confs, hn, ex'', res.
   split; try split; try split; try easy.
-  now apply AddingFreshVarInsidePreservesHeapSatisfiying with (x2 := v) (l2 := e1_res).
+  now apply AddingFreshVarInsidePreservesHeapSatisfying with (x2 := x) (l2 := e1_res).
 Admitted.
 Hint Resolve HTCatchExSoundness : core.
 

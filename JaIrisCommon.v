@@ -545,6 +545,11 @@ Lemma RemoveVarFromEnv : forall x v l e env,
 Proof.
 Admitted.
 
+Lemma SubsituteVarIdentity : forall x e,
+  JFIExprSubstituteVar x x e = e.
+Proof.
+Admitted.
+
 Lemma neq_symmetry : forall t (x : t) (y : t), x <> y -> y <> x.
 Proof.
   intros t x y.

@@ -390,13 +390,11 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFIHTCsqRule:
     forall p' q' cn decls gamma s p q ex v e,
       (JFITermPersistent s) ->
+      (JFIVarFreshInTerm v s) ->
       (JFIProves decls gamma s (JFIImplies p p')) ->
       (JFIProves decls gamma s (JFIHoare p' e ex v q')) ->
-      (forall x gamma_x,
-         JFIVarFreshInTerm x s ->
-         JFIGammaAddNew x cn gamma = Some gamma_x ->
-         JFIProves decls gamma_x s (JFIImplies (JFITermSubstituteVar v x q') (JFITermSubstituteVar v x q))) ->
-      (*------------------------------*)
+      (JFIProves decls (JFIGammaAdd v cn gamma) s (JFIImplies q' q)) ->
+      (*-----------------------------Csq-*)
       JFIProves decls gamma s (JFIHoare p e ex v q)
 
 | JFIHTDisjIntroRule :
@@ -452,11 +450,10 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFIHTLetRule :
     forall q decls gamma p r s e1 e2 x ex u class,
       (JFITermPersistent s) ->
+      (JFIVarFreshInTerm x s) ->
+      (JFIVarFreshInTerm x r) ->
       (JFIProves decls gamma s (JFIHoare p e1 None x q)) ->
-      (forall v gamma_v,
-         JFIVarFreshInTerm v s ->
-         JFIGammaAddNew v class gamma = Some gamma_v ->
-         JFIProves decls gamma s (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex u r)) ->
+      (JFIProves decls (JFIGammaAdd x class gamma) s (JFIHoare q e2 ex u r)) ->
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFLet class x e1 e2) ex u r )
 
@@ -575,12 +572,11 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 | JFIHTCatchExRule :
     forall decls gamma s p r e1 mu x e2 u q ex ex' ex'',
       (JFITermPersistent s) ->
+      (JFIVarFreshInTerm x s) ->
+      (JFIVarFreshInTerm x r) ->
       (JFIProves decls gamma s (JFIHoare p e1 (Some ex') x q)) ->
-      (forall v gamma_v,
-         JFIVarFreshInTerm v s ->
-         JFIGammaAddNew v ex' gamma = Some gamma_v ->
-         JFIProves decls gamma s (JFIHoare (JFITermSubstituteVar x v q) (JFIExprSubstituteVar x v e2) ex'' u r)) ->
-       Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex)) ->
+      (JFIProves decls (JFIGammaAdd x ex gamma) s (JFIHoare q e2 ex'' u r)) ->
+      (Is_true (subtype_bool (JFIDeclsProg decls) (JFClass ex') (JFClass ex))) ->
       (*------------------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFTry e1 mu ex x e2) ex'' u r )
 
