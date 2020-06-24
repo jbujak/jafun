@@ -968,8 +968,8 @@ Proof.
   assert (pi_npe : PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi). admit.
 
   destruct (PartialEvaluationOnExtendedHeap confs h0 h0 h0' h0_ext 
-    [ [] [[JFIExprSubstituteEnv env e ]]_ None]
-    [ [] [[JFIExprSubstituteEnv env e ]]_ None]
+    [ [] [[ JFIExprSubstituteEnv env e ]]_ None]
+    [ [] [[ JFIExprSubstituteEnv env e ]]_ None]
     hn [ [] [[ JFVal1 (JFVLoc res) ]]_ res_ex] pi CC)
     as (confs_ext & hn_perm & hn_ext & stn_ext & pi' &
        pi_subset & pi'_hn & pi'_stn & hn_union & ext_eval); trivial.
