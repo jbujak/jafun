@@ -3073,9 +3073,44 @@ Proof.
   + admit.
 Admitted.
 
-Lemma WeakRuleSoundness : forall p1 gamma p2 CC,
+Lemma GammaMatchEnvImpliesEnvMapsToHeap : forall h gamma env,
+  JFIGammaMatchEnv h gamma env ->
+  EnvMapsToHeap env h.
+Proof.
+  intros h gamma env gamma_match_env.
+  intros x l x_l.
+  unfold JFIGammaMatchEnv in gamma_match_env.
+  destruct (gamma_match_env x) as (same_keys & types_match).
+  clear gamma_match_env.
+  assert (x_in_gamma : StrMap.In x gamma).
+    apply same_keys.
+    apply StrMapFacts.elements_in_iff.
+    exists l.
+    now apply StrMapFacts.elements_mapsto_iff.
+  apply StrMapFacts.elements_in_iff in x_in_gamma as (cn & x_cn).
+  apply StrMapFacts.elements_mapsto_iff in x_cn.
+  assert (type_of_l := types_match l cn x_cn x_l).
+  unfold JFILocOfType in type_of_l.
+  destruct l; try easy.
+  apply HeapFacts.elements_in_iff.
+  assert (exists o, Heap.find n h = Some o).
+    destruct (Heap.find n h); try now destruct type_of_l.
+    now exists o.
+  destruct H as (o & n_o).
+  exists o.
+  now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+Qed.
+
+Lemma WeakRuleSoundness : forall gamma p1 p2 CC,
   JFISemanticallyImplies gamma (JFISep p1 p2) p1 CC.
 Proof.
+  intros gamma p1 p2 CC.
+  intros env h gamma_match_env h_satisfies_sep.
+  destruct h_satisfies_sep as (h1 & h2 & disjoint_union & h1_satisfies_p1 & h2_satisfies_p2).
+  apply (ExtendingHeapPreservesHeapSatisfying p1 h1 env h2 h env); try easy.
+  + admit. (* TODO envs in sep *)
+  + now apply GammaMatchEnvImpliesEnvMapsToHeap with (gamma := gamma).
+  + admit. (* TODO JFI proof implies all free vars are in env *)
 Admitted.
 Hint Resolve WeakRuleSoundness : core.
 
