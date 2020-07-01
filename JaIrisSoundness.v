@@ -1140,13 +1140,6 @@ Proof.
   + now apply (disj_h2_h l).
 Qed.
 
-Lemma UnionIdentity : forall h,
-  JFIHeapsUnion (Heap.empty Obj) h h.
-Proof.
-  intros h.
-  split; try split; try easy; auto.
-Qed.
-
 Lemma UnionUnique : forall h1 h2 h h',
   JFIHeapsUnion h1 h2 h ->
   JFIHeapsUnion h1 h2 h' ->
@@ -2949,29 +2942,6 @@ Definition EnvMapsToHeap env (h : Heap) := forall x l,
 
 Definition Subenv (env1 env2 : JFITermEnv) := forall x l,
   StrMap.MapsTo x l env1 -> StrMap.MapsTo x l env2.
-
-Definition VarFreeInVal x (v : JFIVal) :=
-  match v with
-  | JFIVar y => x = y
-  | _ => False
-  end.
-
-Definition VarFreeInExpr (x : string) (e : JFExpr) := True.
-
-Fixpoint VarFreeInTerm x t :=
-  match t with
-  | JFITrue => True
-  | JFIFalse => True
-  | JFIAnd t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
-  | JFIOr t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
-  | JFIImplies t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
-  | JFIHoare t1 e ex name t2 => VarFreeInTerm x t1 \/ VarFreeInExpr x e \/
-      if String.eqb name x then False else VarFreeInTerm x t2
-  | JFIEq val1 val2 => VarFreeInVal x val1 \/ VarFreeInVal x val2
-  | JFIFieldEq obj fieldName val => VarFreeInVal x obj \/ VarFreeInVal x val
-  | JFISep t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
-  | JFIWand t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
-  end.
 
 Definition FreeVarsInEnv t (env : JFITermEnv) := forall x,
   VarFreeInTerm x t -> StrMap.In x env.

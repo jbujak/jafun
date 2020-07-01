@@ -988,6 +988,93 @@ Proof.
     now rewrite <-stn_eq.
 Admitted.
 
+
+(* Evaluation depends only on heap fragment containing free variables *)
+
+Definition FreeValsInExprAreInHeap e (h : Heap) (env : JFITermEnv) :=
+  forall x, VarFreeInExpr x e ->
+    ((StrMap.MapsTo x null env) \/ exists n o, StrMap.MapsTo x (JFLoc n) env /\ Heap.MapsTo n o h).
+
+Definition ValIsNotHardcodedLoc v :=
+  match v with
+  | JFVLoc (JFLoc _) => False
+  | _ => True
+  end.
+
+Fixpoint NoHardcodedLocsInVals vs :=
+  match vs with
+  | [] => True
+  | (v::vs) => ValIsNotHardcodedLoc v /\ NoHardcodedLocsInVals vs
+  end.
+
+Fixpoint NoHardcodedLocsInExpr e :=
+  match e with
+  | JFNew mu C vs => NoHardcodedLocsInVals vs
+  | JFLet C x e1 e2 => NoHardcodedLocsInExpr e1 /\ NoHardcodedLocsInExpr e2
+  | JFIf v1 v2 e1 e2 => ValIsNotHardcodedLoc v1 /\ ValIsNotHardcodedLoc v2 /\
+      NoHardcodedLocsInExpr e1 /\ NoHardcodedLocsInExpr e2
+  | JFInvoke v1 m vs => ValIsNotHardcodedLoc v1 /\ NoHardcodedLocsInVals vs
+  | JFAssign (v1,fld) v2 => ValIsNotHardcodedLoc v1 /\ ValIsNotHardcodedLoc v2
+  | JFVal1 v1 => ValIsNotHardcodedLoc v1
+  | JFVal2 (v1, fld) => ValIsNotHardcodedLoc v1
+  | JFThrow v1 => ValIsNotHardcodedLoc v1
+  | JFTry e1 mu C x e2 => NoHardcodedLocsInExpr e1 /\ NoHardcodedLocsInExpr e2
+  end.
+
+Lemma PartialEvaluationDependsOnFreeVars : forall h h1_rest h1 st1 confs1 h' h2_rest h2 st2 hn hn1 stn1 CC pi,
+  PiMapsTo (JFLoc  NPE_object_loc) (JFLoc NPE_object_loc) pi ->
+  StacksPermuted st1 st2 pi ->
+  HeapsPermuted h h' pi ->
+  JFIDisjointUnion h h1_rest h1 ->
+  JFIDisjointUnion hn h1_rest hn1 ->
+  JFIPartialEval h1 st1 confs1 hn1 stn1 CC ->
+  exists confs2 hn' hn2 stn2 pi',
+    PermutationSubset pi pi /\
+    HeapsPermuted hn hn' pi /\
+    StacksPermuted stn1 stn2 pi' /\
+    JFIDisjointUnion hn' h2_rest hn2 /\
+    JFIPartialEval h2 st2 confs2 hn2 stn2 CC.
+Proof.
+Admitted.
+
+Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn hn1 res_ex res1 env CC,
+  HeapConsistent h ->
+  NoHardcodedLocsInExpr e ->
+  FreeValsInExprAreInHeap e h env ->
+  JFIDisjointUnion h h1_rest h1 ->
+  JFIDisjointUnion h h2_rest h2 ->
+  JFIDisjointUnion hn h1_rest hn1 ->
+  JFIEvalInEnv h1 e confs1 hn1 res_ex res1 env CC ->
+  exists confs2 hn' hn2 res2 pi,
+    HeapsPermuted hn hn' pi /\
+    EnvsPermuted env env pi /\
+    PiMapsTo res1 res2 pi /\
+    JFIDisjointUnion hn' h2_rest hn2 /\
+    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
+Proof.
+Admitted.
+
+Theorem EvaluationOnExtendedHeap_as_special_case : forall h0 h0' h0_ext e confs hn res_ex res env CC,
+  HeapConsistent h0 ->
+  NoHardcodedLocsInExpr e ->
+  FreeValsInExprAreInHeap e h0 env ->
+  JFIEvalInEnv h0 e confs hn res_ex res env CC ->
+  JFIDisjointUnion h0 h0' h0_ext ->
+  exists confs_ext hn_perm hn_ext res_ext pi,
+    HeapsPermuted hn hn_perm pi /\
+    EnvsPermuted env env pi /\
+    PiMapsTo res res_ext pi /\
+    JFIDisjointUnion hn_perm h0' hn_ext /\ 
+    JFIEvalInEnv h0_ext e confs_ext hn_ext res_ex res_ext env CC.
+Proof.
+  intros h0 h0' h0_ext e confs hn res_ex res env CC.
+  intros h0_consistent no_hardcoded free_vals_in_h0 eval union.
+  apply EvaluationDependsOnFreeVars with (h := h0) (h1_rest := Heap.empty Obj) (h1 := h0)
+    (confs1 := confs) (hn1 := hn); try easy.
+  now apply DisjointUnionSymmetry, DisjointUnionIdentity.
+  now apply DisjointUnionSymmetry, DisjointUnionIdentity.
+Qed.
+
 (* ======================= Let and Try evaluation ======================= *)
 
 Lemma ExistsNormalLetEval : forall h e1 e1_confs hn e1_res class x e2 CC,

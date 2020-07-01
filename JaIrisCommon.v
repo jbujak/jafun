@@ -217,6 +217,52 @@ Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
       JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) e2)
   end.
 
+Definition VarFreeInVal x (v : JFIVal) :=
+  match v with
+  | JFIVar y => x = y
+  | _ => False
+  end.
+
+Definition VarFreeInJFVal x (v : JFVal) :=
+  match v with
+  | JFSyn (JFVar y) => x = y
+  | _ => False
+  end.
+
+Fixpoint VarFreeInJFVals x vs :=
+  match vs with
+  | [] => True
+  | (v::vs) => VarFreeInJFVal x v /\ VarFreeInJFVals x vs
+  end.
+
+Fixpoint VarFreeInExpr (x : string) (e : JFExpr) := 
+  match e with
+    | JFNew mu C vs => VarFreeInJFVals x vs
+    | JFLet C y e1 e2 => VarFreeInExpr x e1 \/ (x <> y /\ VarFreeInExpr x e2)
+    | JFIf v1 v2 e1 e2 => VarFreeInJFVal x v1 \/ VarFreeInJFVal x v2 \/
+         VarFreeInExpr x e1 \/ VarFreeInExpr x e2
+    | JFInvoke v1 m vs => VarFreeInJFVal x v1 \/ VarFreeInJFVals x vs
+    | JFAssign (v1,fld) v2 => VarFreeInJFVal x v1 \/ VarFreeInJFVal x v2
+    | JFVal1 v1 => VarFreeInJFVal x v1
+    | JFVal2 (v1, fld) => VarFreeInJFVal x v1
+    | JFThrow v1 => VarFreeInJFVal x v1
+    | JFTry e1 mu C y e2 => VarFreeInExpr x e1 \/ (x <> y /\ VarFreeInExpr x e2)
+  end.
+
+Fixpoint VarFreeInTerm x t :=
+  match t with
+  | JFITrue => True
+  | JFIFalse => True
+  | JFIAnd t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
+  | JFIOr t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
+  | JFIImplies t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
+  | JFIHoare t1 e ex name t2 => VarFreeInTerm x t1 \/ VarFreeInExpr x e \/
+      if String.eqb name x then False else VarFreeInTerm x t2
+  | JFIEq val1 val2 => VarFreeInVal x val1 \/ VarFreeInVal x val2
+  | JFIFieldEq obj fieldName val => VarFreeInVal x obj \/ VarFreeInVal x val
+  | JFISep t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
+  | JFIWand t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
+  end.
 
 Lemma ValEnvSubstitutionPreservesVLoc : forall env loc,
   JFIValSubstituteEnv env (JFVLoc loc) = JFVLoc loc.
@@ -313,6 +359,22 @@ Proof.
   case l_in_both.
   intros in_empty in_h.
   exact (JFINotInEmptyHeap l in_empty).
+Qed.
+
+Lemma UnionIdentity : forall h,
+  JFIHeapsUnion (Heap.empty Obj) h h.
+Proof.
+  intros h.
+  split; try split; try easy; auto.
+Qed.
+
+Lemma DisjointUnionIdentity : forall h,
+  JFIDisjointUnion (Heap.empty Obj) h h.
+Proof.
+  intros h.
+  split.
+  + apply UnionIdentity.
+  + apply JFIEmptyHeapDisjoint.
 Qed.
 
 Lemma HeapsUnionSymmetry : forall h1 h2 h,
