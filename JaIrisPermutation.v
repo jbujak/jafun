@@ -2289,3 +2289,44 @@ Proof.
   destruct (pi_o n n' (ro, cn) (ro', cn') pi_n n_o n'_o') as (cn_eq & _).
   now rewrite cn_eq.
 Qed.
+
+Lemma EqPermuted1 : forall h1 h1' h2 pi,
+  HeapsPermuted h1 h2 pi ->
+  HeapEq h1 h1' ->
+  HeapsPermuted h1' h2 pi.
+Proof.
+Admitted.
+
+Lemma EqPermuted2 : forall h1 h2 h2' pi,
+  HeapsPermuted h1 h2 pi ->
+  HeapEq h2 h2' ->
+  HeapsPermuted h1 h2' pi.
+Proof.
+Admitted.
+
+Lemma SubenvPermuted : forall env1 env2 pi,
+  EnvsPermuted env2 env2 pi ->
+  Subenv env1 env2 ->
+  EnvsPermuted env1 env1 pi.
+Proof.
+  intros env1 env2 pi.
+  intros (bijection & same_keys & pi_env) subenv.
+  unfold EnvsPermuted.
+  split; [ | split]; try easy.
+  intros x l1 l2 x_l1 x_l2.
+  apply pi_env with (x := x); now apply subenv.
+Qed.
+
+Lemma ExtendingSubenv : forall x l env1 env2,
+  Subenv env1 env2 ->
+  Subenv (StrMap.add x l env1) (StrMap.add x l env2).
+Proof.
+  intros x l env1 env2 subenv.
+  intros x' l' x'_l'.
+  rewrite StrMapFacts.find_mapsto_iff in *.
+  destruct (Classical_Prop.classic (x = x')).
+  + now rewrite StrMapFacts.add_eq_o in *.
+  + rewrite StrMapFacts.add_neq_o in *; try easy.
+    rewrite <-StrMapFacts.find_mapsto_iff in *.
+    now apply subenv.
+Qed.

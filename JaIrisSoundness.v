@@ -2934,14 +2934,7 @@ Hint Resolve HTCatchPassExSoundness : core.
 (* Soundness of weak rule *)
 
 Definition EnvMapsToHeap env (h : Heap) := forall x l,
-  StrMap.MapsTo x l env ->
-  match l with
-  | null => True
-  | JFLoc n => Heap.In n h
-  end.
-
-Definition Subenv (env1 env2 : JFITermEnv) := forall x l,
-  StrMap.MapsTo x l env1 -> StrMap.MapsTo x l env2.
+  StrMap.MapsTo x l env -> LocMapsToHeap l h.
 
 Definition FreeVarsInEnv t (env : JFITermEnv) := forall x,
   VarFreeInTerm x t -> StrMap.In x env.
@@ -2982,6 +2975,84 @@ Proof.
   now rewrite l_o_h1, l_o_h2.
 Qed.
 
+Lemma FreeVarsInHoarePoscondition : forall t1 e ex v t2 env res,
+  FreeVarsInEnv (JFIHoare t1 e ex v t2) env ->
+  FreeVarsInEnv t2 (StrMap.add v res env).
+Proof.
+  intros t1 e ex v t2 env res.
+  intros free_vars_hoare.
+  intros x x_free_in_t2.
+  destruct (Classical_Prop.classic (v = x)).
+  + apply StrMapFacts.elements_in_iff.
+    exists res.
+    now apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff, StrMapFacts.add_eq_o.
+  + assert (x_in_env := free_vars_hoare x).
+    apply StrMapFacts.elements_in_iff in x_in_env as (l & x_e).
+    ++ apply StrMapFacts.elements_in_iff.
+       exists l.
+       rewrite <-StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in x_e |- *.
+       now rewrite StrMapFacts.add_neq_o.
+    ++ simpl.
+       apply or_intror, or_intror.
+       assert ((v =? x)%string = true -> False).
+       +++ intros v_eq_x.
+           apply H.
+           now rewrite String.eqb_eq in v_eq_x.
+       +++ now destruct ((v =? x)%string).
+Qed.
+
+Lemma ExtendingHeapPreservesHoareSatisfying : forall t1 e ex v t2 h1 env1 h2 h env CC,
+  let t := JFIHoare t1 e ex v t2 in
+  EnvMapsToHeap env1 h1 ->
+  EnvMapsToHeap env h ->
+  Subenv env1 env ->
+  JFIDisjointUnion h1 h2 h ->
+  FreeVarsInEnv t env1 ->
+  HeapEnvEquivalent h1 h env1 env t CC.
+Proof.
+  intros t1 e ex v t2 h1 env1 h2 h env CC t.
+  intros env1_h1 env_h subenv union free_vars.
+  unfold HeapEnvEquivalent.
+  assert (IHt1 : HeapEnvEquivalent h1 h env1 env t1 CC). admit.
+  assert (IHt2 : forall (h1 : Heap) (env1 : StrMap.t Loc) 
+         (h2 h : Heap) (env : StrMap.t Loc) 
+         (CC : JFProgram),
+       EnvMapsToHeap env1 h1 ->
+       EnvMapsToHeap env h ->
+       Subenv env1 env ->
+       JFIDisjointUnion h1 h2 h ->
+       FreeVarsInEnv t2 env1 ->
+       HeapEnvEquivalent h1 h env1 env t2 CC). admit.
+  unfold t in *.
+  clear t.
+  split; simpl.
+  + admit. (* evaluation on extended heap *)
+  + intros h_satisfies_hoare h1_satisfies_t1.
+    destruct h_satisfies_hoare as (confs & hn & res_ex & res & h_eval & ex_eq & hn_satisfies_t2).
+      now apply IHt1.
+    destruct (EvaluationDependsOnFreeVars h1 h2 (Heap.empty Obj) h h1 e confs hn res_ex res env CC)
+      as (hn_base & confs1 & hn1_base & hn1 & res1 & pi &
+          pi_env & pi_res & res_in_base & pi_hn_base & union_hn & union_hn1 & h1_eval);
+      try easy.
+      admit. (* h1 consistent *)
+      admit. (* no hardcoded locs in e *)
+      admit. (* free vars in h1 *)
+    now apply DisjointUnionSymmetry, DisjointUnionIdentity.
+    exists confs1, hn1, res_ex, res1.
+    split; [ | split]; trivial.
+    ++ admit. (* eval on restricted env *)
+    ++ apply (IHt2 hn_base (StrMap.add v res env1) h2 hn (StrMap.add v res env) CC)
+         in hn_satisfies_t2; try easy.
+       +++ apply (PermutationPreservesHeapSatisfying t2 hn_base hn1 (StrMap.add v res env1) (StrMap.add v res1 env1) pi CC); try easy.
+           - now apply EqPermuted2 with (h2 := hn1_base), UnionWithEmptyEq, union_hn1.
+           - apply ExtendPermutedEnvs; try easy.
+             now apply SubenvPermuted with (env2 := env).
+       +++ admit. (* res in hn_base *)
+       +++ admit. (* res in hn *)
+       +++ now apply ExtendingSubenv.
+       +++ now apply FreeVarsInHoarePoscondition with (t1 := t1) (e := e) (ex := ex).
+Admitted.
+
 Lemma ExtendingHeapPreservesHeapSatisfying : forall t h1 env1 h2 h env CC,
   EnvMapsToHeap env1 h1 ->
   EnvMapsToHeap env h ->
@@ -2995,8 +3066,7 @@ Proof.
   + admit. (* easy *)
   + admit. (* easy *)
   + admit. (* easy *)
-  + unfold HeapEnvEquivalent.
-    admit.
+  + now apply ExtendingHeapPreservesHoareSatisfying with (h2 := h2).
   + unfold HeapEnvEquivalent.
     simpl.
     rewrite !SubenvValToLocEq with (env1 := env1) (env2 := env); try easy.

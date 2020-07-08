@@ -34,6 +34,9 @@ Definition JFIHeapsDisjoint (h1 : Heap) (h2 : Heap) : Prop := forall l : nat,
 Definition JFISubheap (h1 : Heap) (h2 : Heap) : Prop := forall (l : nat) o,
   Heap.MapsTo l o h1 -> Heap.MapsTo l o h2.
 
+Definition Subenv (env1 env2 : JFITermEnv) := forall x l,
+  StrMap.MapsTo x l env1 -> StrMap.MapsTo x l env2.
+
 Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
   JFISubheap h1 h /\ JFISubheap h2 h /\ forall l, Heap.In l h -> (Heap.In l h1 \/ Heap.In l h2).
 
@@ -376,6 +379,15 @@ Proof.
   + apply UnionIdentity.
   + apply JFIEmptyHeapDisjoint.
 Qed.
+
+Lemma UnionWithEmptyEq : forall h1 h2,
+  JFIHeapsUnion h1 (Heap.empty Obj) h2 ->
+  HeapEq h1 h2.
+Proof.
+  intros h1 h2 union.
+  intros n.
+  unfold JFIHeapsUnion in union.
+Admitted.
 
 Lemma HeapsUnionSymmetry : forall h1 h2 h,
   JFIHeapsUnion h1 h2 h -> JFIHeapsUnion h2 h1 h.

@@ -988,10 +988,9 @@ Proof.
     now rewrite <-stn_eq.
 Admitted.
 
-
 (* Evaluation depends only on heap fragment containing free variables *)
 
-Definition FreeValsInExprAreInHeap e (h : Heap) (env : JFITermEnv) :=
+Definition FreeVarsInExprAreInHeap e (h : Heap) (env : JFITermEnv) :=
   forall x, VarFreeInExpr x e ->
     ((StrMap.MapsTo x null env) \/ exists n o, StrMap.MapsTo x (JFLoc n) env /\ Heap.MapsTo n o h).
 
@@ -1021,58 +1020,215 @@ Fixpoint NoHardcodedLocsInExpr e :=
   | JFTry e1 mu C x e2 => NoHardcodedLocsInExpr e1 /\ NoHardcodedLocsInExpr e2
   end.
 
-Lemma PartialEvaluationDependsOnFreeVars : forall h h1_rest h1 st1 confs1 h' h2_rest h2 st2 hn hn1 stn1 CC pi,
-  PiMapsTo (JFLoc  NPE_object_loc) (JFLoc NPE_object_loc) pi ->
-  StacksPermuted st1 st2 pi ->
-  HeapsPermuted h h' pi ->
-  JFIDisjointUnion h h1_rest h1 ->
-  JFIDisjointUnion hn h1_rest hn1 ->
+Definition LocsInValAreInHeap v (h : Heap) :=
+  match v with
+  | JFVLoc (JFLoc n) => Heap.In n h
+  | _ => True
+  end.
+
+Fixpoint LocsInValsAreInHeap vs h :=
+  match vs with
+  | [] => True
+  | v::vs => LocsInValAreInHeap v h /\ LocsInValsAreInHeap vs h
+  end.
+
+Fixpoint LocsInExprAreInHeap e h :=
+  match e with
+  | JFNew mu C vs => LocsInValsAreInHeap vs h
+  | JFLet C x e1 e2 => LocsInExprAreInHeap e1 h /\ LocsInExprAreInHeap e2 h
+  | JFIf v1 v2 e1 e2 => LocsInValAreInHeap v1 h /\ LocsInValAreInHeap v2 h /\
+      LocsInExprAreInHeap e1 h /\ LocsInExprAreInHeap e2 h
+  | JFInvoke v1 m vs => LocsInValAreInHeap v1 h /\ LocsInValsAreInHeap vs h
+  | JFAssign (v1,fld) v2 => LocsInValAreInHeap v1 h /\ LocsInValAreInHeap v2 h
+  | JFVal1 v1 => LocsInValAreInHeap v1 h
+  | JFVal2 (v1, fld) => LocsInValAreInHeap v1 h
+  | JFThrow v1 => LocsInValAreInHeap v1 h
+  | JFTry e1 mu C x e2 => LocsInExprAreInHeap e1 h /\ LocsInExprAreInHeap e2 h
+  end.
+
+Definition NoFreeVars e := forall x, ~VarFreeInExpr x e.
+
+Definition OnlyFreeVar e x := forall y, VarFreeInExpr y e -> x = y.
+
+Definition LocsInCtxAreInHeap ctx h :=
+  match ctx with
+  | JFCtxLet _ x _ e => LocsInExprAreInHeap e h /\ OnlyFreeVar e x
+  | JFCtxTry _ _ _ x e => LocsInExprAreInHeap e h /\ OnlyFreeVar e x
+  end.
+
+Fixpoint LocsInCtxsAreInHeap ctxs h :=
+  match ctxs with
+  | [] => True
+  | ctx::ctxs => LocsInCtxAreInHeap ctx h /\ LocsInCtxsAreInHeap ctxs h
+  end.
+
+Definition LocsInFrameAreInHeap f h :=
+  match f with 
+  | MkFrame ctxs e _ => LocsInExprAreInHeap e h /\ NoFreeVars e /\ LocsInCtxsAreInHeap ctxs h
+  end.
+
+Fixpoint LocsInStackAreInHeap st h :=
+  match st with
+  | [] => True
+  | (MkFrame ctxs e A)::st => LocsInExprAreInHeap e h /\ LocsInStackAreInHeap st h
+  end.
+
+Definition LocMapsToHeap l (h : Heap) :=
+  match l with
+  | null => True
+  | JFLoc n => Heap.In n h
+  end.
+
+Definition EverythingPermuted h1 h2 st1 st2 pi :=
+  PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi /\
+  HeapsPermuted h1 h2 pi /\
+  StacksPermuted st1 st2 pi.
+
+Definition DisjointUnionOfLocsInStackAndRest st h_base h_rest h :=
+  LocsInStackAreInHeap st h_base /\
+  HeapConsistent h_base /\
+  JFIDisjointUnion h_base h_rest h.
+
+Definition ExprReductionDependsOnFreeVars (e1 : JFExpr) := forall Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi,
+  let st1 := ((Ctx [[ e1 ]]_ A) :: st1') in
+  EverythingPermuted h1_base h2_base st1 st2 pi ->
+  DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
+  DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
+  red CC (h1, st1) = Some (hn1, stn1) ->
+  exists hn1_base hn2_base hn2 stn2 pi',
+    PermutationSubset pi pi' /\
+    EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
+    DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
+    DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
+    red CC (h2, st2) = Some (hn2, stn2).
+
+Lemma EveryExprReductionDependsOnFreeVars : forall e,
+  ExprReductionDependsOnFreeVars e.
+Proof.
+Admitted.
+
+Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
+  EverythingPermuted h1_base h2_base st1 st2 pi ->
+  DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
+  DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
+  red CC (h1, st1) = Some (hn1, stn1) ->
+  exists hn1_base hn2_base hn2 stn2 pi',
+    PermutationSubset pi pi' /\
+    EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
+    DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
+    DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
+    red CC (h2, st2) = Some (hn2, stn2).
+Proof.
+  intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi.
+Admitted.
+
+Lemma PartialEvaluationDependsOnFreeVars : forall h1_base h1_rest h1 st1 confs1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
+  EverythingPermuted h1_base h2_base st1 st2 pi ->
+  DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
+  DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
   JFIPartialEval h1 st1 confs1 hn1 stn1 CC ->
-  exists confs2 hn' hn2 stn2 pi',
-    PermutationSubset pi pi /\
-    HeapsPermuted hn hn' pi /\
-    StacksPermuted stn1 stn2 pi' /\
-    JFIDisjointUnion hn' h2_rest hn2 /\
+  exists hn1_base confs2 hn2_base hn2 stn2 pi',
+    PermutationSubset pi pi' /\
+    EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
+    DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
+    DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
     JFIPartialEval h2 st2 confs2 hn2 stn2 CC.
 Proof.
 Admitted.
 
-Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn hn1 res_ex res1 env CC,
-  HeapConsistent h ->
+Lemma FreeVarsInHeapThenLocsInStack : forall e h env,
   NoHardcodedLocsInExpr e ->
-  FreeValsInExprAreInHeap e h env ->
-  JFIDisjointUnion h h1_rest h1 ->
-  JFIDisjointUnion h h2_rest h2 ->
-  JFIDisjointUnion hn h1_rest hn1 ->
-  JFIEvalInEnv h1 e confs1 hn1 res_ex res1 env CC ->
-  exists confs2 hn' hn2 res2 pi,
-    HeapsPermuted hn hn' pi /\
-    EnvsPermuted env env pi /\
-    PiMapsTo res1 res2 pi /\
-    JFIDisjointUnion hn' h2_rest hn2 /\
-    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
+  FreeVarsInExprAreInHeap e h env ->
+  LocsInStackAreInHeap [ [] [[JFIExprSubstituteEnv env e ]]_ None] h.
 Proof.
 Admitted.
 
-Theorem EvaluationOnExtendedHeap_as_special_case : forall h0 h0' h0_ext e confs hn res_ex res env CC,
-  HeapConsistent h0 ->
+Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env CC,
+  HeapConsistent h ->
   NoHardcodedLocsInExpr e ->
-  FreeValsInExprAreInHeap e h0 env ->
-  JFIEvalInEnv h0 e confs hn res_ex res env CC ->
-  JFIDisjointUnion h0 h0' h0_ext ->
-  exists confs_ext hn_perm hn_ext res_ext pi,
-    HeapsPermuted hn hn_perm pi /\
+  FreeVarsInExprAreInHeap e h env ->
+  JFIDisjointUnion h h1_rest h1 ->
+  JFIDisjointUnion h h2_rest h2 ->
+  JFIEvalInEnv h1 e confs1 hn1 res_ex res1 env CC ->
+  exists hn1_base confs2 hn2_base hn2 res2 pi,
     EnvsPermuted env env pi /\
-    PiMapsTo res res_ext pi /\
-    JFIDisjointUnion hn_perm h0' hn_ext /\ 
-    JFIEvalInEnv h0_ext e confs_ext hn_ext res_ex res_ext env CC.
+    PiMapsTo res1 res2 pi /\
+    LocMapsToHeap res1 hn1_base /\
+    HeapsPermuted hn1_base hn2_base pi /\
+    JFIDisjointUnion hn1_base h1_rest hn1 /\
+    JFIDisjointUnion hn2_base h2_rest hn2 /\
+    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
 Proof.
-  intros h0 h0' h0_ext e confs hn res_ex res env CC.
-  intros h0_consistent no_hardcoded free_vals_in_h0 eval union.
-  apply EvaluationDependsOnFreeVars with (h := h0) (h1_rest := Heap.empty Obj) (h1 := h0)
-    (confs1 := confs) (hn1 := hn); try easy.
+  intros h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env CC.
+  intros h_consistent no_hardcoded_locs free_vars_in_h union_h1 union_h2 h1_eval.
+  set (st := [ [] [[JFIExprSubstituteEnv env e ]]_ None]).
+  set (stn1 := [ [] [[JFVal1 (JFVLoc res1) ]]_ res_ex]).
+
+  assert (pi : HeapPermutation). admit.
+  assert (pi_env : EnvsPermuted env env pi). admit.
+  assert (pi_h : HeapsPermuted h h pi). admit.
+  assert (pi_st : StacksPermuted st st pi). admit.
+  assert (pi_npe : PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi). admit.
+
+  destruct (PartialEvaluationDependsOnFreeVars h h1_rest h1 st confs1
+                                               h h2_rest h2 st hn1 stn1 CC pi)
+  as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi' & pi_subset & pi'_everything & hn1_union & hn2_union & h2_eval); try easy.
+  + split; [ | split]; try easy.
+    now apply FreeVarsInHeapThenLocsInStack.
+  + split; [ | split]; try easy.
+    now apply FreeVarsInHeapThenLocsInStack.
+  + destruct pi'_everything as (pi'_npe & pi'_hn & pi'_stn).
+    unfold stn1 in pi'_stn.
+    destruct stn2; try now destruct pi'_stn.
+    unfold StacksPermuted in pi'_stn.
+    destruct pi'_stn as (pi_f & stn_eq).
+    destruct stn2; try now destruct stn_eq.
+    destruct f.
+    destruct E; try now destruct pi_f.
+    unfold FramesPermuted, ExprsPermuted in pi_f.
+    destruct pi_f as (pi_res & pi_ctxs & A_eq).
+    destruct Ctx; try now destruct pi_ctxs.
+    destruct v as [ res2 |]; try now destruct pi_res.
+    unfold ValPermuted in pi_res.
+    exists hn1_base, confs2, hn2_base, hn2, res2, pi'.
+    split; [ | split; [ | split; [ | split; [ | split; [ | split]]]]]; try easy.
+    ++ unfold EnvsPermuted.
+       split; [ | split]; try easy.
+       +++ apply (proj1 pi'_hn).
+       +++ intros x l1 l2 x_l1_env x_l2_env.
+          apply pi_subset.
+          now apply ((proj2 (proj2 pi_env)) x).
+    ++ apply hn1_union.
+    ++ apply hn1_union.
+    ++ apply hn2_union.
+    ++ unfold JFIEvalInEnv, JFIEval.
+       fold st.
+       now rewrite A_eq.
+Admitted.
+
+Theorem EvaluationOnExtendedHeap_as_special_case : forall h h2_rest h2 e confs hn1 res_ex res1 env CC,
+  HeapConsistent h ->
+  NoHardcodedLocsInExpr e ->
+  FreeVarsInExprAreInHeap e h env ->
+  JFIEvalInEnv h e confs hn1 res_ex res1 env CC ->
+  JFIDisjointUnion h h2_rest h2 ->
+  exists confs2 hn2_base hn2 res2 pi,
+    HeapsPermuted hn1 hn2_base pi /\
+    EnvsPermuted env env pi /\
+    PiMapsTo res1 res2 pi /\
+    JFIDisjointUnion hn2_base h2_rest hn2 /\ 
+    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
+Proof.
+  intros h h2_rest h2 e confs hn1 res_ex res1 env CC.
+  intros h_consistent no_hardcoded free_vals_in_h eval union.
+  destruct (EvaluationDependsOnFreeVars h (Heap.empty Obj) h2_rest h h2 e confs hn1 res_ex res1 env CC)
+    as (hn1_base & confs2 & hn2_base & hn2 & res2 & pi & conds); try easy.
   now apply DisjointUnionSymmetry, DisjointUnionIdentity.
-  now apply DisjointUnionSymmetry, DisjointUnionIdentity.
+  exists confs2, hn2_base, hn2, res2, pi.
+  split; [ | split; [ | split]]; try easy.
+  apply EqPermuted1 with (h1 := hn1_base); try easy.
+  apply UnionWithEmptyEq.
+  now apply conds.
 Qed.
 
 (* ======================= Let and Try evaluation ======================= *)
