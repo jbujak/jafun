@@ -1122,7 +1122,7 @@ Proof.
   intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi.
 Admitted.
 
-Lemma PartialEvaluationDependsOnFreeVars : forall h1_base h1_rest h1 st1 confs1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
+Lemma PartialEvaluationDependsOnFreeVars : forall confs1 h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
   DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
   DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
@@ -1134,7 +1134,33 @@ Lemma PartialEvaluationDependsOnFreeVars : forall h1_base h1_rest h1 st1 confs1 
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
     JFIPartialEval h2 st2 confs2 hn2 stn2 CC.
 Proof.
-Admitted.
+  intros confs1.
+  induction confs1;
+    intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi;
+    intros perm union_h1 union_h2 eval.
+  + exists h1_base, [], h2_base, h2, st2, pi.
+    simpl in eval.
+    destruct eval as (h1_eq & st1_eq).
+    rewrite <-h1_eq, <-st1_eq.
+    now split; [ | split; [ | split; [ | split]]].
+  + destruct a.
+    unfold JFIPartialEval in eval.
+    fold JFIPartialEval in eval.
+    destruct eval as (h_eq & st_eq & eval).
+    apply PermutationEvalAux1 in eval as (h1' & st1' & red_is_some & eval).
+    destruct (ReductionDependsOnFreeVars h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 h1' st1' CC pi)
+      as (h1'_base & h2'_base & h2' & st2' & pi' &
+          pi_subset & pi'_everything & h1'_union & h2'_union & red2); trivial.
+    destruct (IHconfs1 h1'_base h1_rest h1' st1' h2'_base h2_rest h2' st2' hn1 stn1 CC pi')
+      as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi'' &
+          pi'_subset & pi''_everything & hn1_union & hn2_union & h2_eval); trivial.
+    exists hn1_base, ((h2, st2)::confs2), hn2_base, hn2, stn2, pi''.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+      now apply PermutationSubsetTrans with (pi2 := pi').
+    unfold JFIPartialEval; fold JFIPartialEval.
+    split; [ | split]; trivial.
+    now apply PermutationEvalAux2 with (h'_ext := h2') (st'_perm := st2').
+Qed.
 
 Lemma FreeVarsInHeapThenLocsInStack : forall e h env,
   NoHardcodedLocsInExpr e ->
@@ -1170,9 +1196,10 @@ Proof.
   assert (pi_st : StacksPermuted st st pi). admit.
   assert (pi_npe : PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi). admit.
 
-  destruct (PartialEvaluationDependsOnFreeVars h h1_rest h1 st confs1
-                                               h h2_rest h2 st hn1 stn1 CC pi)
-  as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi' & pi_subset & pi'_everything & hn1_union & hn2_union & h2_eval); try easy.
+  destruct (PartialEvaluationDependsOnFreeVars confs1 h h1_rest h1 st
+               h h2_rest h2 st hn1 stn1 CC pi)
+  as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi' & pi_subset &
+          pi'_everything & hn1_union & hn2_union & h2_eval); try easy.
   + split; [ | split]; try easy.
     now apply FreeVarsInHeapThenLocsInStack.
   + split; [ | split]; try easy.
