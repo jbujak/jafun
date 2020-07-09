@@ -1026,6 +1026,13 @@ Definition LocsInValAreInHeap v (h : Heap) :=
   | _ => True
   end.
 
+Fixpoint LocsAreInHeap ls (h : Heap) :=
+  match ls with
+  | [] => True
+  | null::ls => LocsAreInHeap ls h
+  | (JFLoc n)::ls => Heap.In n h /\ LocsAreInHeap ls h
+  end.
+
 Fixpoint LocsInValsAreInHeap vs h :=
   match vs with
   | [] => True
@@ -1102,10 +1109,385 @@ Definition ExprReductionDependsOnFreeVars (e1 : JFExpr) := forall Ctx A h1_base 
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
     red CC (h2, st2) = Some (hn2, stn2).
 
-Lemma EveryExprReductionDependsOnFreeVars : forall e,
-  ExprReductionDependsOnFreeVars e.
+Lemma NewlocNewInUnion : forall h_base h_rest h,
+  JFIDisjointUnion h_base h_rest h ->
+  ~ Heap.In (newloc h) h_rest.
 Proof.
+  intros h_base h_rest h union in_rest.
+  apply HeapFacts.elements_in_iff in in_rest as (o & n_o).
+  rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_o.
+  apply DisjointUnionSymmetry in union.
+  apply FindInUnion with (h2 := h_base) (h := h) in n_o; trivial.
+  apply newloc_new in n_o.
+  now apply n_o.
+Qed.
+
+Lemma ExtendSubheapWithNewloc : forall h_base h_rest h o,
+  JFIDisjointUnion h_base h_rest h ->
+  JFISubheap h_base (Heap.add (newloc h) o h_base).
+Proof.
+  intros h_base h_rest h o union.
+  intros n' o' n'_o'.
+  rewrite HeapFacts.find_mapsto_iff in n'_o' |-*.
+  rewrite HeapFacts.add_neq_o; trivial.
+  intros n_eq.
+  rewrite <-n_eq in n'_o'.
+  apply DisjointUnionSymmetry in union.
+  apply NewlocNewInUnion in union.
+  apply union.
+  apply HeapFacts.elements_in_iff.
+  exists o'.
+  now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+Qed.
+
+Lemma InitFldInFldsLocs : forall flds_locs f l o,
+  JFXIdMap.MapsTo f l (init_obj_aux o flds_locs) ->
+  ~JFXIdMap.MapsTo f l o ->
+  In (f, l) flds_locs.
+Proof.
+  intros flds_locs.
+  induction flds_locs; intros f l o f_l not_f_l.
+  + simpl in f_l.
+    now exfalso.
+  + destruct a as (f' & l').
+    apply JFXIdMapFacts.find_mapsto_iff in f_l.
+    destruct (Classical_Prop.classic (f' = f)).
+    ++ simpl in f_l |- *.
+       destruct (Classical_Prop.classic (l' = l)).
+       +++ apply or_introl.
+           now rewrite H, H0.
+       +++ apply or_intror.
+           apply JFXIdMapFacts.find_mapsto_iff in f_l.
+           apply IHflds_locs with (o := (JFXIdMap.add f' l' o)); try easy.
+           intros f_l_add.
+           rewrite JFXIdMapFacts.find_mapsto_iff, JFXIdMapFacts.add_eq_o in f_l_add; trivial.
+           now injection f_l_add as l_eq.
+    ++ simpl in f_l |- *.
+       apply or_intror.
+       apply JFXIdMapFacts.find_mapsto_iff in f_l.
+       apply IHflds_locs with (o := (JFXIdMap.add f' l' o)); try easy.
+       intros f_l_o.
+       apply not_f_l.
+       rewrite JFXIdMapFacts.find_mapsto_iff in f_l_o |- *.
+       now rewrite JFXIdMapFacts.add_neq_o in f_l_o.
+Qed.
+
+Lemma FldsLocsInHeap : forall flds_locs (flds : list JFXId) locs h,
+  LocsAreInHeap locs h ->
+  JaUtils.zip flds locs = Some flds_locs ->
+  (forall f n, In (f, (JFLoc n)) flds_locs -> Heap.In n h).
+Proof.
+  intros flds_locs.
+  induction flds_locs; try easy.
+  intros flds locs h locs_in_h zip.
+  intros f n fn_in_flds_locs.
+  destruct flds, locs; try discriminate zip.
+  simpl in zip.
+  assert (exists flds_locs', JaUtils.zip flds locs = Some flds_locs').
+    destruct (JaUtils.zip flds locs); try discriminate zip.
+    now exists l0.
+  destruct H as (flds_locs' & zip').
+  rewrite zip' in zip.
+  injection zip as a_eq flds_locs_eq.
+  rewrite flds_locs_eq in *.
+  clear flds_locs' flds_locs_eq.
+  destruct (Classical_Prop.classic ((f, JFLoc n) = a)).
+  + rewrite <-H in *.
+    injection a_eq as f_eq l_eq.
+    rewrite l_eq in locs_in_h.
+    now simpl in locs_in_h.
+  + rewrite <-a_eq in *.
+    apply in_inv in fn_in_flds_locs.
+    destruct fn_in_flds_locs.
+    ++ exfalso.
+       now apply H.
+    ++ apply IHflds_locs with (flds := flds) (locs := locs) (f := f); try easy.
+       simpl in locs_in_h.
+       now destruct l.
+Qed.
+
+Lemma ExtendConsistentHeap : forall new_n flds_locs cn h,
+  (forall f n, In (f, (JFLoc n)) flds_locs -> Heap.In n h) ->
+  HeapConsistent h ->
+  HeapConsistent (Heap.add new_n (init_obj_aux (JFXIdMap.empty Loc) flds_locs, cn) h).
+Proof.
+  intros new_n flds_locs cn h.
+  intros locs_in_h h_consistent n o f f_n n_o f_fn.
+  rewrite HeapFacts.find_mapsto_iff in n_o.
+  destruct (Classical_Prop.classic (new_n = n)).
+  + rewrite HeapFacts.add_eq_o in n_o; trivial.
+    destruct (Classical_Prop.classic (new_n = f_n)).
+    ++ exists (init_obj_aux (JFXIdMap.empty Loc) flds_locs, cn).
+       now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+    ++ destruct o as (ro & cno).
+       injection n_o as ro_eq cno_eq.
+       rewrite <-cno_eq in *; clear cno_eq cno.
+       rewrite <-ro_eq in f_fn.
+       simpl in f_fn.
+       apply InitFldInFldsLocs, locs_in_h in f_fn.
+       apply HeapFacts.elements_in_iff in f_fn as (o' & fn_o').
+       exists o'.
+       rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o; trivial.
+       now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in fn_o'.
+       intros f_fn_empty.
+       now apply JFXIdMapFacts.empty_mapsto_iff in f_fn_empty.
+  + rewrite HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff in n_o; trivial.
+    destruct (Classical_Prop.classic (new_n = f_n)).
+    ++ exists (init_obj_aux (JFXIdMap.empty Loc) flds_locs, cn).
+       now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+    ++ destruct (h_consistent n o f f_n n_o f_fn) as (o' & f_n_o').
+       exists o'.
+       rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff; trivial.
+Qed.
+
+Lemma AllocOnFreeVars : forall h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn locs1 l1 locs2 pi,
+  alloc_init CC h1 cn locs1 = Some (l1, hn1) ->
+  HeapConsistent h1_base ->
+  HeapConsistent h2_base ->
+  JFIDisjointUnion h1_base h1_rest h1 ->
+  JFIDisjointUnion h2_base h2_rest h2 ->
+  HeapsPermuted h1_base h2_base pi ->
+  LocsPermuted locs1 locs2 pi ->
+  LocsAreInHeap locs1 h1_base ->
+  LocsAreInHeap locs2 h2_base ->
+  exists pi' hn1_base l2 hn2_base hn2,
+    (PermutationSubset pi pi' /\
+     HeapsPermuted hn1_base hn2_base pi' /\
+     PiMapsTo l1 l2 pi' /\
+     JFISubheap h1_base hn1_base /\
+     JFISubheap h2_base hn2_base /\
+     HeapConsistent hn1_base /\
+     HeapConsistent hn2_base /\
+     JFIDisjointUnion hn1_base h1_rest hn1 /\
+     JFIDisjointUnion hn2_base h2_rest hn2 /\
+     LocsInValAreInHeap (JFVLoc l1) hn1_base /\
+     LocsInValAreInHeap (JFVLoc l2) hn2_base /\
+     alloc_init CC h2 cn locs2 = Some (l2, hn2)).
+Proof.
+  intros h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn locs1 l1 locs2 pi.
+  intros h1_alloc h1_consistent h2_consistent h1_union h2_union pi_base pi_locs locs1_in_h1.
+  unfold alloc_init in *.
+  destruct pi_base as (bijection & locs_fst & locs_snd & objs).
+  destruct (flds CC (JFClass cn)) as [flds | ]; try discriminate h1_alloc.
+  unfold init_obj in *.
+  assert (exists flds_locs1, JaUtils.zip flds locs1 = Some flds_locs1).
+    destruct (JaUtils.zip flds locs1); try now discriminate h1_alloc.
+    now exists l.
+  destruct H as (flds_locs1 & zip_locs1).
+  destruct (ExistsPermutedZip flds locs1 locs2 flds_locs1 pi)
+    as (flds_locs2 & zip_locs2 & pi_zip); trivial.
+  rewrite zip_locs1 in h1_alloc.
+  rewrite zip_locs2.
+  injection h1_alloc as l1_eq hn1_eq.
+  destruct l1 as [ | n1]; try discriminate l1_eq.
+  injection l1_eq as n1_eq.
+  set (n2 := newloc h2).
+  set (pi' := (NatMap.add n1 n2 (fst pi), NatMap.add n2 n1 (snd pi))).
+  assert (pi_subset : PermutationSubset pi pi').
+    apply ExtendPiSubset.
+    rewrite <-n1_eq.
+    admit. (* TODO newloc h1 not in pi *)
+  assert (pi_obj := PermutedZipIsPermutedInit flds_locs1 flds_locs2 cn
+      (JFXIdMap.empty Loc) (JFXIdMap.empty Loc) pi pi_zip).
+  apply ExtendObjPermutation with (pi' := pi') in pi_obj; try easy.
+  exists pi',
+    (Heap.add n1 (init_obj_aux (JFXIdMap.empty Loc) flds_locs1, cn) h1_base),
+    (JFLoc n2),
+    (Heap.add n2 (init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn) h2_base),
+    (Heap.add n2 (init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn) h2).
+  split; [ | split; [ | split; [ | split; [ | split; [ | split;
+      [ | split; [ | split; [ | split; [ | split; [ | split]]]]]]]]]]; try easy.
+  + apply ExtendPermutedHeaps; simpl; trivial.
+    now apply ExtendHeapsPermutation with (pi := pi).
+    now rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_eq_o.
+  + unfold PiMapsTo, pi', fst.
+    now rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_eq_o.
+  + rewrite <-n1_eq.
+    now apply ExtendSubheapWithNewloc with (h_rest := h1_rest).
+  + unfold n2.
+    now apply ExtendSubheapWithNewloc with (h_rest := h2_rest).
+  + apply ExtendConsistentHeap; try easy.
+    now apply FldsLocsInHeap with (flds := flds) (locs := locs1).
+  + apply ExtendConsistentHeap; try easy.
+    now apply FldsLocsInHeap with (flds := flds) (locs := locs2).
+  + rewrite <-hn1_eq, <-n1_eq.
+    apply ExtendDisjointUnion; try easy.
+    now apply NewlocNewInUnion with (h_base := h1_base).
+  + apply ExtendDisjointUnion; try easy.
+    now apply NewlocNewInUnion with (h_base := h2_base).
+  + simpl.
+    apply HeapFacts.elements_in_iff.
+    exists ((init_obj_aux (JFXIdMap.empty Loc) flds_locs1, cn)).
+    apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+    now rewrite HeapFacts.add_eq_o.
+  + simpl.
+    apply HeapFacts.elements_in_iff.
+    exists ((init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn)).
+    apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+    now rewrite HeapFacts.add_eq_o.
 Admitted.
+
+Lemma LocsInValAreInSuperheap : forall v h1 h2,
+  LocsInValAreInHeap v h1 ->
+  JFISubheap h1 h2 ->
+  LocsInValAreInHeap v h2.
+Proof.
+  intros v h1 h2 v_in_h1 subheap.
+  unfold LocsInValAreInHeap in *.
+  destruct v; try destruct l; try easy.
+  rewrite HeapFacts.elements_in_iff in *.
+  destruct v_in_h1 as (o & n_o).
+  exists o.
+  rewrite <-HeapFacts.elements_mapsto_iff in *.
+  now apply subheap.
+Qed.
+Hint Resolve LocsInValAreInSuperheap : locs_in_superheap.
+
+Lemma LocsInValsAreInSuperheap : forall vs h1 h2,
+  LocsInValsAreInHeap vs h1 ->
+  JFISubheap h1 h2 ->
+  LocsInValsAreInHeap vs h2.
+Proof.
+  intros vs.
+  induction vs; try easy.
+  intros h1 h2 vs_in_h1 subheap.
+  simpl in *.
+  destruct vs_in_h1 as (a_in_h1 & vs_in_h1).
+  eauto with locs_in_superheap.
+Qed.
+Hint Resolve LocsInValsAreInSuperheap : locs_in_superheap.
+
+Lemma LocsInExprAreInSuperheap : forall e h1 h2,
+  LocsInExprAreInHeap e h1 ->
+  JFISubheap h1 h2 ->
+  LocsInExprAreInHeap e h2.
+Proof.
+  intros e.
+  induction e; intros h1 h2 e_in_h1 subheap; simpl in e_in_h1 |- *;
+       try destruct vx; try destruct e_in_h1; eauto with locs_in_superheap.
+  destruct H0 as (H0 & H1 & H2).
+  split; [ | split; [ | split]]; eauto with locs_in_superheap.
+Qed.
+
+Lemma LocsInStackAreInSuperheap : forall st h1 h2,
+  LocsInStackAreInHeap st h1 ->
+  JFISubheap h1 h2 ->
+  LocsInStackAreInHeap st h2.
+Proof.
+  intros st.
+  induction st; try easy.
+  intros h1 h2.
+  intros st_in_h1 subheap.
+  simpl in *.
+  destruct a.
+  destruct st_in_h1 as (e_in_h1 & st_in_h1).
+  split.
+  + now apply LocsInExprAreInSuperheap with (h1 := h1).
+  + now apply IHst with (h1 := h1).
+Qed.
+
+Lemma NewParamsAreInHeap : forall locs Ctx mu cn vs st h_base h_rest h,
+  DisjointUnionOfLocsInStackAndRest ((Ctx [[JFNew mu cn vs ]]_ None) :: st) h_base h_rest h ->
+  list_map_opt loc_of_val vs = Some locs ->
+  LocsAreInHeap locs h_base.
+Proof.
+  intros locs.
+  induction locs; intros Ctx mu cn vs st h_base h_rest h;
+                intros (vs_in_base & base_consistent & union) locs_of_vs; try easy.
+  destruct vs; try discriminate locs_of_vs.
+  destruct j; try discriminate locs_of_vs.
+  simpl in locs_of_vs.
+  assert (exists locs', list_map_opt loc_of_val vs = Some locs').
+    destruct (list_map_opt loc_of_val vs); try discriminate locs_of_vs.
+    now exists l0.
+  destruct H as (locs' & locs'_of_vs).
+  rewrite locs'_of_vs in locs_of_vs.
+  injection locs_of_vs as a_eq locs_eq.
+  rewrite a_eq, locs_eq in *.
+  clear l locs' a_eq locs_eq.
+  destruct a.
+  + simpl.
+    apply (IHlocs Ctx mu cn vs st h_base h_rest h); try easy.
+    split; [ | split]; try easy.
+    now simpl in vs_in_base |- *.
+  + simpl.
+    simpl in vs_in_base.
+    destruct vs_in_base as ((n_in_base & vs_in_base) & st_in_base).
+    split; try easy.
+    now apply (IHlocs Ctx mu cn vs st h_base h_rest h).
+Qed.
+
+Lemma NewReductionDependsOnFreeVars : forall mu cn vs,
+  ExprReductionDependsOnFreeVars (JFNew mu cn vs).
+Proof.
+  intros mu cn vs.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_new & pi_ctx & A_eq).
+  destruct A.
+    destruct Ctx; try destruct j0; try discriminate red_st.
+  rewrite <-A_eq in *.
+  destruct E; try (simpl in pi_new; now destruct pi_new).
+  assert (exists locs1, list_map_opt loc_of_val vs = Some locs1).
+    destruct (list_map_opt loc_of_val vs).
+    now exists l.
+    destruct Ctx; try destruct j; try destruct (alloc_init CC h0 cn l); discriminate red_st.
+  destruct H as (locs1 & locs1_of_vs).
+  assert (locs1_of_vs1 := locs1_of_vs).
+  rewrite locs1_of_vs in red_st.
+  assert (exists l1 hp, alloc_init CC h1 cn locs1 = Some (l1, hp)).
+    destruct alloc_init.
+    destruct p. now exists l, h.
+    destruct Ctx; try destruct j; discriminate red_st.
+  destruct H as (l1 & hp & alloc_h1).
+  rewrite alloc_h1 in *.
+  assert (hn1 = hp /\ stn1 = ((Ctx [[JFVal1 (JFVLoc l1) ]]_ None) :: st1')).
+    destruct Ctx; try destruct j; now injection red_st.
+  simpl in pi_new.
+  destruct pi_new as (_ & cn_eq & vs_perm).
+  destruct H as (hn1_eq & stn1_eq).
+  rewrite <-hn1_eq, stn1_eq, <-cn_eq in *.
+  apply LocOfValsPermutation with (vs_perm := vs0) (pi := pi) in locs1_of_vs as (locs2 & locs2_of_vs2 & locs_permuted); try easy.
+
+  destruct (AllocOnFreeVars h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn locs1 l1 locs2 pi)
+    as (pi' & hn1_base & l2 & hn2_base & hn2 & pi_subset & pi_hn_base & pi_l &
+        h1_subheap & h2_subheap & hn1_consistent & hn2_consistent & hn1_union & hn2_union &
+        l1_in_h1 & l2_in_h2 & alloc_h2); try easy.
+    now apply h1_union.
+    now apply h2_union.
+    now apply h1_union.
+    now apply h2_union.
+    now apply NewParamsAreInHeap with (locs := locs1) in h1_union.
+    now apply NewParamsAreInHeap with (locs := locs2) in h2_union.
+
+  exists hn1_base, hn2_base, hn2, ((Ctx0 [[JFVal1 (JFVLoc l2) ]]_ None) :: st2), pi'.
+  apply ExtendCtxsPermutation with (pi' := pi') in pi_ctx; try easy.
+  apply ExtendStacksPermutation with (pi' := pi') in pi_st; try easy.
+  split; [ | split; [split; [ | split] | split; [ | split]]]; try easy.
+  + now apply pi_subset.
+  + unfold DisjointUnionOfLocsInStackAndRest.
+    split; [ | split]; try easy.
+    split; try easy.
+    apply LocsInStackAreInSuperheap with (h1 := h1_base); try easy.
+    apply h1_union.
+  + unfold DisjointUnionOfLocsInStackAndRest.
+    split; [ | split]; try easy.
+    split; try easy.
+    apply LocsInStackAreInSuperheap with (h1 := h2_base); try easy.
+    apply h2_union.
+  + simpl.
+    rewrite locs2_of_vs2, alloc_h2.
+    now destruct Ctx0; try destruct j.
+Qed.
 
 Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
@@ -1120,6 +1502,19 @@ Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest
     red CC (h2, st2) = Some (hn2, stn2).
 Proof.
   intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi.
+  intros pi_everything h1_union h2_union h1_red.
+  destruct st1; try now discriminate h1_red.
+  destruct f, E.
+  + now apply (NewReductionDependsOnFreeVars mu cn vs Ctx)
+      with (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  + admit.
 Admitted.
 
 Lemma PartialEvaluationDependsOnFreeVars : forall confs1 h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
