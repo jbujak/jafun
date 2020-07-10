@@ -869,4 +869,16 @@ Proof.
        now rewrite HeapFacts.add_neq_o in l_o'.
 Qed.
 
-
+Lemma InSubheap : forall h1 h2 n,
+  JFISubheap h1 h2 ->
+  Heap.In n h1 ->
+  Heap.In n h2.
+Proof.
+  intros h1 h2 n.
+  intros subheap n_in_h1.
+  apply HeapFacts.elements_in_iff in n_in_h1 as (o & n_o).
+  apply HeapFacts.elements_in_iff.
+  exists o.
+  rewrite <-HeapFacts.elements_mapsto_iff in n_o |- *.
+  now apply subheap.
+Qed.

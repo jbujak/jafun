@@ -1086,6 +1086,9 @@ Definition LocMapsToHeap l (h : Heap) :=
   | JFLoc n => Heap.In n h
   end.
 
+Definition PiOnlyFromHeap (pi : HeapPermutation) (h : Heap) :=
+  forall n, NatMap.In n (fst pi) -> Heap.In n h.
+
 Definition EverythingPermuted h1 h2 st1 st2 pi :=
   PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi /\
   HeapsPermuted h1 h2 pi /\
@@ -1098,12 +1101,14 @@ Definition DisjointUnionOfLocsInStackAndRest st h_base h_rest h :=
 
 Definition ExprReductionDependsOnFreeVars (e1 : JFExpr) := forall Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   let st1 := ((Ctx [[ e1 ]]_ A) :: st1') in
+  PiOnlyFromHeap pi h1_base ->
   EverythingPermuted h1_base h2_base st1 st2 pi ->
   DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
   DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
   red CC (h1, st1) = Some (hn1, stn1) ->
   exists hn1_base hn2_base hn2 stn2 pi',
     PermutationSubset pi pi' /\
+    PiOnlyFromHeap pi' hn1_base /\
     EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
     DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
@@ -1120,6 +1125,31 @@ Proof.
   apply FindInUnion with (h2 := h_base) (h := h) in n_o; trivial.
   apply newloc_new in n_o.
   now apply n_o.
+Qed.
+
+Lemma ExtendPiOnlyFromHeap : forall pi n1 n2 o1 h,
+  PiOnlyFromHeap pi h ->
+  PiOnlyFromHeap (NatMap.add n1 n2 (fst pi), NatMap.add n2 n1 (snd pi)) (Heap.add n1 o1 h).
+Proof.
+  intros pi n1 n2 o1 h.
+  intros pi_in_h.
+  intros n n_in_pi.
+  simpl in n_in_pi.
+  destruct (Classical_Prop.classic (n1 = n)).
+  + apply HeapFacts.elements_in_iff.
+    exists o1.
+    now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+  + apply NatMapFacts.elements_in_iff in n_in_pi as (n' & n_n').
+    rewrite <-NatMapFacts.elements_mapsto_iff, NatMapFacts.find_mapsto_iff, NatMapFacts.add_neq_o in n_n'; trivial.
+    assert (n_in_h := pi_in_h n).
+    apply HeapFacts.elements_in_iff in n_in_h as (o & n_o).
+    ++ apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n_o.
+       apply HeapFacts.elements_in_iff.
+       exists o.
+       now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o.
+    ++ apply HeapFacts.elements_in_iff.
+       exists n'.
+       now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
 Qed.
 
 Lemma ExtendSubheapWithNewloc : forall h_base h_rest h o,
@@ -1250,6 +1280,7 @@ Lemma AllocOnFreeVars : forall h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn l
   LocsPermuted locs1 locs2 pi ->
   LocsAreInHeap locs1 h1_base ->
   LocsAreInHeap locs2 h2_base ->
+  PiOnlyFromHeap pi h1_base ->
   exists pi' hn1_base l2 hn2_base hn2,
     (PermutationSubset pi pi' /\
      HeapsPermuted hn1_base hn2_base pi' /\
@@ -1262,10 +1293,11 @@ Lemma AllocOnFreeVars : forall h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn l
      JFIDisjointUnion hn2_base h2_rest hn2 /\
      LocsInValAreInHeap (JFVLoc l1) hn1_base /\
      LocsInValAreInHeap (JFVLoc l2) hn2_base /\
+     PiOnlyFromHeap pi' hn1_base /\
      alloc_init CC h2 cn locs2 = Some (l2, hn2)).
 Proof.
   intros h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn locs1 l1 locs2 pi.
-  intros h1_alloc h1_consistent h2_consistent h1_union h2_union pi_base pi_locs locs1_in_h1.
+  intros h1_alloc h1_consistent h2_consistent h1_union h2_union pi_base pi_locs locs1_in_h1 locs_in_h2 pi_in_h1.
   unfold alloc_init in *.
   destruct pi_base as (bijection & locs_fst & locs_snd & objs).
   destruct (flds CC (JFClass cn)) as [flds | ]; try discriminate h1_alloc.
@@ -1286,7 +1318,14 @@ Proof.
   assert (pi_subset : PermutationSubset pi pi').
     apply ExtendPiSubset.
     rewrite <-n1_eq.
-    admit. (* TODO newloc h1 not in pi *)
+    intros n1_in_pi.
+    apply pi_in_h1 in n1_in_pi.
+    apply HeapFacts.elements_in_iff in n1_in_pi as (newobj & newloc_newobj).
+    apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in newloc_newobj.
+    apply (newloc_new h1 (newloc h1) newobj); trivial.
+    rewrite <-HeapFacts.find_mapsto_iff in newloc_newobj |- *.
+    destruct h1_union as ((subheap & _) & _).
+    now apply subheap.
   assert (pi_obj := PermutedZipIsPermutedInit flds_locs1 flds_locs2 cn
       (JFXIdMap.empty Loc) (JFXIdMap.empty Loc) pi pi_zip).
   apply ExtendObjPermutation with (pi' := pi') in pi_obj; try easy.
@@ -1296,7 +1335,7 @@ Proof.
     (Heap.add n2 (init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn) h2_base),
     (Heap.add n2 (init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn) h2).
   split; [ | split; [ | split; [ | split; [ | split; [ | split;
-      [ | split; [ | split; [ | split; [ | split; [ | split]]]]]]]]]]; try easy.
+      [ | split; [ | split; [ | split; [ | split; [ | split; [ | split]]]]]]]]]]]; try easy.
   + apply ExtendPermutedHeaps; simpl; trivial.
     now apply ExtendHeapsPermutation with (pi := pi).
     now rewrite NatMapFacts.find_mapsto_iff, NatMapFacts.add_eq_o.
@@ -1325,7 +1364,8 @@ Proof.
     exists ((init_obj_aux (JFXIdMap.empty Loc) flds_locs2, cn)).
     apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
     now rewrite HeapFacts.add_eq_o.
-Admitted.
+  + now apply ExtendPiOnlyFromHeap.
+Qed.
 
 Lemma LocsInValAreInSuperheap : forall v h1 h2,
   LocsInValAreInHeap v h1 ->
@@ -1425,7 +1465,7 @@ Proof.
   unfold st1 in *.
   clear st1.
   unfold EverythingPermuted.
-  intros (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
   unfold red in red_st.
   simpl in pi_st.
   destruct st2; [ destruct pi_st |].
@@ -1461,7 +1501,7 @@ Proof.
   destruct (AllocOnFreeVars h1_base h1_rest h1 hn1 h2_base h2_rest h2 CC cn locs1 l1 locs2 pi)
     as (pi' & hn1_base & l2 & hn2_base & hn2 & pi_subset & pi_hn_base & pi_l &
         h1_subheap & h2_subheap & hn1_consistent & hn2_consistent & hn1_union & hn2_union &
-        l1_in_h1 & l2_in_h2 & alloc_h2); try easy.
+        l1_in_h1 & l2_in_h2 & pi'_in_h2 & alloc_h2); try easy.
     now apply h1_union.
     now apply h2_union.
     now apply h1_union.
@@ -1472,7 +1512,7 @@ Proof.
   exists hn1_base, hn2_base, hn2, ((Ctx0 [[JFVal1 (JFVLoc l2) ]]_ None) :: st2), pi'.
   apply ExtendCtxsPermutation with (pi' := pi') in pi_ctx; try easy.
   apply ExtendStacksPermutation with (pi' := pi') in pi_st; try easy.
-  split; [ | split; [split; [ | split] | split; [ | split]]]; try easy.
+  split; [ |split; [ | split; [split; [ | split] | split; [ | split]]]]; try easy.
   + now apply pi_subset.
   + unfold DisjointUnionOfLocsInStackAndRest.
     split; [ | split]; try easy.
@@ -1491,18 +1531,20 @@ Qed.
 
 Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
+  PiOnlyFromHeap pi h1_base ->
   DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
   DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
   red CC (h1, st1) = Some (hn1, stn1) ->
   exists hn1_base hn2_base hn2 stn2 pi',
     PermutationSubset pi pi' /\
+    PiOnlyFromHeap pi' hn1_base /\
     EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
     DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
     red CC (h2, st2) = Some (hn2, stn2).
 Proof.
   intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi.
-  intros pi_everything h1_union h2_union h1_red.
+  intros pi_in_h1 pi_everything h1_union h2_union h1_red.
   destruct st1; try now discriminate h1_red.
   destruct f, E.
   + now apply (NewReductionDependsOnFreeVars mu cn vs Ctx)
@@ -1519,11 +1561,13 @@ Admitted.
 
 Lemma PartialEvaluationDependsOnFreeVars : forall confs1 h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
+  PiOnlyFromHeap pi h1_base ->
   DisjointUnionOfLocsInStackAndRest st1 h1_base h1_rest h1 ->
   DisjointUnionOfLocsInStackAndRest st2 h2_base h2_rest h2 ->
   JFIPartialEval h1 st1 confs1 hn1 stn1 CC ->
   exists hn1_base confs2 hn2_base hn2 stn2 pi',
     PermutationSubset pi pi' /\
+    PiOnlyFromHeap pi' hn1_base /\
     EverythingPermuted hn1_base hn2_base stn1 stn2 pi' /\
     DisjointUnionOfLocsInStackAndRest stn1 hn1_base h1_rest hn1 /\
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
@@ -1532,7 +1576,7 @@ Proof.
   intros confs1.
   induction confs1;
     intros h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi;
-    intros perm union_h1 union_h2 eval.
+    intros perm pi_in_h1 union_h1 union_h2 eval.
   + exists h1_base, [], h2_base, h2, st2, pi.
     simpl in eval.
     destruct eval as (h1_eq & st1_eq).
@@ -1545,15 +1589,15 @@ Proof.
     apply PermutationEvalAux1 in eval as (h1' & st1' & red_is_some & eval).
     destruct (ReductionDependsOnFreeVars h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 h1' st1' CC pi)
       as (h1'_base & h2'_base & h2' & st2' & pi' &
-          pi_subset & pi'_everything & h1'_union & h2'_union & red2); trivial.
+          pi_subset & pi'_everything & pi_in_hn1 & h1'_union & h2'_union & red2); trivial.
     destruct (IHconfs1 h1'_base h1_rest h1' st1' h2'_base h2_rest h2' st2' hn1 stn1 CC pi')
       as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi'' &
-          pi'_subset & pi''_everything & hn1_union & hn2_union & h2_eval); trivial.
+          pi'_subset & pi''_in_hn1 & pi''_everything & hn1_union & hn2_union & h2_eval); trivial.
     exists hn1_base, ((h2, st2)::confs2), hn2_base, hn2, stn2, pi''.
     split; [ | split; [ | split; [ | split]]]; try easy.
       now apply PermutationSubsetTrans with (pi2 := pi').
     unfold JFIPartialEval; fold JFIPartialEval.
-    split; [ | split]; trivial.
+    split; [ | split; [ | split]]; trivial.
     now apply PermutationEvalAux2 with (h'_ext := h2') (st'_perm := st2').
 Qed.
 
@@ -1590,11 +1634,12 @@ Proof.
   assert (pi_h : HeapsPermuted h h pi). admit.
   assert (pi_st : StacksPermuted st st pi). admit.
   assert (pi_npe : PiMapsTo (JFLoc NPE_object_loc) (JFLoc NPE_object_loc) pi). admit.
+  assert (pi_in_h : PiOnlyFromHeap pi h). admit.
 
   destruct (PartialEvaluationDependsOnFreeVars confs1 h h1_rest h1 st
                h h2_rest h2 st hn1 stn1 CC pi)
   as (hn1_base & confs2 & hn2_base & hn2 & stn2 & pi' & pi_subset &
-          pi'_everything & hn1_union & hn2_union & h2_eval); try easy.
+          pi'_in_hn1 & pi'_everything & hn1_union & hn2_union & h2_eval); try easy.
   + split; [ | split]; try easy.
     now apply FreeVarsInHeapThenLocsInStack.
   + split; [ | split]; try easy.
