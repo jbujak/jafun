@@ -234,8 +234,8 @@ Definition VarFreeInJFVal x (v : JFVal) :=
 
 Fixpoint VarFreeInJFVals x vs :=
   match vs with
-  | [] => True
-  | (v::vs) => VarFreeInJFVal x v /\ VarFreeInJFVals x vs
+  | [] => False
+  | (v::vs) => VarFreeInJFVal x v \/ VarFreeInJFVals x vs
   end.
 
 Fixpoint VarFreeInExpr (x : string) (e : JFExpr) := 

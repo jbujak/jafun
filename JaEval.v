@@ -1077,7 +1077,7 @@ Definition LocsInFrameAreInHeap f h :=
 Fixpoint LocsInStackAreInHeap st h :=
   match st with
   | [] => True
-  | (MkFrame ctxs e A)::st => LocsInExprAreInHeap e h /\ LocsInStackAreInHeap st h
+  | f::st => LocsInFrameAreInHeap f h /\ LocsInStackAreInHeap st h
   end.
 
 Definition LocMapsToHeap l (h : Heap) :=
@@ -1408,6 +1408,32 @@ Proof.
   destruct H0 as (H0 & H1 & H2).
   split; [ | split; [ | split]]; eauto with locs_in_superheap.
 Qed.
+Hint Resolve LocsInExprAreInSuperheap : locs_in_superheap.
+
+Lemma LocsInCtxAreInSuperheap : forall ctx h1 h2,
+  LocsInCtxAreInHeap ctx h1 ->
+  JFISubheap h1 h2 ->
+  LocsInCtxAreInHeap ctx h2.
+Proof.
+  intros ctx h1 h2 ctx_in_h1 subheap.
+  unfold LocsInCtxAreInHeap in *.
+  destruct ctx; destruct ctx_in_h1 as (e_in_h1 & only_free_var);
+  eauto with locs_in_superheap.
+Qed.
+Hint Resolve LocsInCtxAreInSuperheap : locs_in_superheap.
+
+Lemma LocsInCtxsAreInSuperheap : forall ctxs h1 h2,
+  LocsInCtxsAreInHeap ctxs h1 ->
+  JFISubheap h1 h2 ->
+  LocsInCtxsAreInHeap ctxs h2.
+Proof.
+  intros ctxs.
+  induction ctxs; try easy.
+  intros h1 h2 ctxs_in_h1 subheap.
+  destruct ctxs_in_h1 as (a_in_h1 & ctxs_in_h1).
+  split; eauto with locs_in_superheap.
+Qed.
+Hint Resolve LocsInCtxsAreInSuperheap : locs_in_superheap.
 
 Lemma LocsInStackAreInSuperheap : forall st h1 h2,
   LocsInStackAreInHeap st h1 ->
@@ -1420,10 +1446,8 @@ Proof.
   intros st_in_h1 subheap.
   simpl in *.
   destruct a.
-  destruct st_in_h1 as (e_in_h1 & st_in_h1).
-  split.
-  + now apply LocsInExprAreInSuperheap with (h1 := h1).
-  + now apply IHst with (h1 := h1).
+  destruct st_in_h1 as ((e_in_h1 & no_free_in_e & ctx_in_h1) & st_in_h1).
+  split; [ split; [ | split] | ]; eauto with locs_in_superheap.
 Qed.
 
 Lemma NewParamsAreInHeap : forall locs Ctx mu cn vs st h_base h_rest h,
@@ -1449,12 +1473,28 @@ Proof.
   + simpl.
     apply (IHlocs Ctx mu cn vs st h_base h_rest h); try easy.
     split; [ | split]; try easy.
-    now simpl in vs_in_base |- *.
+    simpl in vs_in_base |- *.
+    split; [ split; [ | split] |]; try easy.
+    destruct vs_in_base as ( (_  & no_free_vars & _) & _).
+    unfold NoFreeVars in *.
+    intros x x_in_new.
+    apply (no_free_vars x).
+    simpl.
+    now apply or_intror.
   + simpl.
     simpl in vs_in_base.
     destruct vs_in_base as ((n_in_base & vs_in_base) & st_in_base).
     split; try easy.
-    now apply (IHlocs Ctx mu cn vs st h_base h_rest h).
+    apply (IHlocs Ctx mu cn vs st h_base h_rest h); try easy.
+    split; [ | split]; try easy.
+    simpl in vs_in_base |- *.
+    split; [ split; [ | split] |]; try easy.
+    destruct vs_in_base as (no_free_vars & _).
+    unfold NoFreeVars in *.
+    intros x x_in_new.
+    apply (no_free_vars x).
+    simpl.
+    now apply or_intror.
 Qed.
 
 Lemma NewReductionDependsOnFreeVars : forall mu cn vs,
@@ -1516,17 +1556,406 @@ Proof.
   + now apply pi_subset.
   + unfold DisjointUnionOfLocsInStackAndRest.
     split; [ | split]; try easy.
-    split; try easy.
-    apply LocsInStackAreInSuperheap with (h1 := h1_base); try easy.
-    apply h1_union.
+    split.
+    ++ split; [ | split]; try easy.
+       apply LocsInCtxsAreInSuperheap with (h1 := h1_base); try easy.
+       apply h1_union.
+    ++ apply LocsInStackAreInSuperheap with (h1 := h1_base); try easy.
+       apply h1_union.
   + unfold DisjointUnionOfLocsInStackAndRest.
     split; [ | split]; try easy.
-    split; try easy.
-    apply LocsInStackAreInSuperheap with (h1 := h2_base); try easy.
-    apply h2_union.
+    split.
+    ++ split; [ | split]; try easy.
+       apply LocsInCtxsAreInSuperheap with (h1 := h2_base); try easy.
+       apply h2_union.
+    ++ apply LocsInStackAreInSuperheap with (h1 := h2_base); try easy.
+       apply h2_union.
   + simpl.
     rewrite locs2_of_vs2, alloc_h2.
     now destruct Ctx0; try destruct j.
+Qed.
+
+Lemma LocsInSubstValAreInHeap : forall v h y l,
+  LocMapsToHeap l h ->
+  LocsInValAreInHeap v h ->
+  LocsInValAreInHeap (substVal (JFVar y) l v) h.
+Proof.
+  intros v h y l l_in_h v_in_h.
+  unfold substVal.
+  destruct v; try easy.
+  now destruct (JFRef_dec (JFVar y) x ).
+Qed.
+Hint Resolve LocsInSubstValAreInHeap : locs_in_subst.
+
+Lemma LocsInSubstValsAreInHeap : forall vs y h l,
+  LocMapsToHeap l h ->
+  LocsInValsAreInHeap vs h ->
+  LocsInValsAreInHeap (map (substVal (JFVar y) l) vs) h.
+Proof.
+  intros vs.
+  induction vs; try easy.
+  intros y h l l_in_h vs_in_h.
+  simpl in *.
+  destruct vs_in_h.
+  eauto with locs_in_subst.
+Qed.
+Hint Resolve LocsInSubstValsAreInHeap : locs_in_subst.
+
+Lemma LocsInSubstExprAreInHeap : forall e y l h,
+  LocMapsToHeap l h ->
+  LocsInExprAreInHeap e h ->
+  LocsInExprAreInHeap (substExpr (JFVar y) l e) h.
+Proof.
+  intros e.
+  induction e; intros y l h l_in_h e_in_h;
+    unfold LocsInExprAreInHeap, substExpr;
+    fold substExpr; fold LocsInExprAreInHeap;
+    try destruct vx;
+    eauto with locs_in_subst.
+  + destruct e_in_h.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); simpl in *; eauto with locs_in_subst.
+  + destruct e_in_h as (v1_in_h & v2_in_h & e1_in_h & e2_in_h).
+    split; [ | split; [ | split]]; eauto with locs_in_subst.
+  + destruct e_in_h.
+    eauto with locs_in_subst.
+  + destruct e_in_h.
+    split; eauto with locs_in_subst.
+  + simpl in *.
+    eauto with locs_in_subst.
+  + destruct e_in_h.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); simpl in *; eauto with locs_in_subst.
+Qed.
+
+Lemma VarNotFreeInSubstVal : forall v y l,
+  ~VarFreeInJFVal y ((substVal (JFVar y) l) v).
+Proof.
+  intros v y l y_free.
+  unfold VarFreeInJFVal, substVal in y_free.
+  destruct v; try destruct y_free.
+  destruct (JFRef_dec (JFVar y) x); try destruct y_free.
+  destruct x; try destruct y_free.
+  now apply n.
+Qed.
+
+Lemma VarNotFreeInSubstVals : forall vs y l,
+  ~VarFreeInJFVals y (map (substVal (JFVar y) l) vs).
+Proof.
+  intros vs.
+  induction vs; try easy.
+  intros y l y_free.
+  simpl in y_free.
+  destruct y_free.
+  + now apply VarNotFreeInSubstVal in H.
+  + now apply IHvs in H.
+Qed.
+
+Lemma VarNotFreeInSubstExpr : forall e y l,
+  ~VarFreeInExpr y (substExpr (JFVar y) l e).
+Proof.
+  intros e.
+  induction e; intros y l y_free.
+  + simpl in y_free.
+    destruct vs; destruct y_free.
+    now apply VarNotFreeInSubstVal in H.
+    now apply VarNotFreeInSubstVals in H.
+  + unfold substExpr in y_free.
+    fold substExpr in y_free.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); destruct y_free.
+    ++ now apply IHe1 in H.
+    ++ apply H.
+       now injection e.
+    ++ now apply IHe1 in H.
+    ++ destruct H as (_ & H).
+       now apply IHe2 in H.
+  + destruct y_free as [free_in_v1 | [free_in_v2 | [free_in_e1 | free_in_e2]]].
+    ++ now apply VarNotFreeInSubstVal in free_in_v1.
+    ++ now apply VarNotFreeInSubstVal in free_in_v2.
+    ++ now apply IHe1 in free_in_e1.
+    ++ now apply IHe2 in free_in_e2.
+  + destruct y_free.
+    now apply VarNotFreeInSubstVal in H.
+    now apply VarNotFreeInSubstVals in H.
+  + destruct vx.
+    destruct y_free; now apply VarNotFreeInSubstVal in H.
+  + simpl in y_free.
+    now apply VarNotFreeInSubstVal in y_free.
+  + destruct vx.
+    simpl in y_free.
+    now apply VarNotFreeInSubstVal in y_free.
+  + simpl in y_free.
+    now apply VarNotFreeInSubstVal in y_free.
+  + unfold substExpr in y_free.
+    fold substExpr in y_free.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); destruct y_free.
+    ++ now apply IHe1 in H.
+    ++ apply H.
+       now injection e.
+    ++ now apply IHe1 in H.
+    ++ destruct H as (_ & H).
+       now apply IHe2 in H.
+Qed.
+
+Lemma VarFreeInSubstVal : forall v y z l,
+  VarFreeInJFVal z ((substVal (JFVar y) l) v) ->
+  VarFreeInJFVal z v.
+Proof.
+  intros v y z l z_free.
+  destruct v; try easy.
+  destruct x; try easy.
+  unfold VarFreeInJFVal in *.
+  unfold substVal in z_free.
+  now destruct (JFRef_dec (JFVar y) (JFVar x)).
+Qed.
+
+Lemma VarFreeInSubstVals : forall vs y z l,
+  VarFreeInJFVals z (map (substVal (JFVar y) l) vs) ->
+  VarFreeInJFVals z vs.
+Proof.
+  intros vs.
+  induction vs; try easy.
+  intros y z l z_free.
+  simpl in *.
+  destruct z_free.
+  + apply or_introl.
+    now apply VarFreeInSubstVal in H.
+  + apply or_intror.
+    now apply IHvs in H.
+Qed.
+
+Lemma VarFreeInSubstExpr : forall e y z l,
+  VarFreeInExpr z (substExpr (JFVar y) l e) ->
+  VarFreeInExpr z e.
+Proof.
+  intros e.
+  induction e; intros y z l z_free.
+  + now apply VarFreeInSubstVals in z_free.
+  + unfold substExpr in z_free.
+    fold substExpr in z_free.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); destruct z_free.
+    ++ apply IHe1 in H.
+       now apply or_introl.
+    ++ now apply or_intror.
+    ++ apply IHe1 in H.
+       now apply or_introl.
+    ++ destruct H as (z_eq & z_free).
+       apply IHe2 in z_free.
+       now apply or_intror.
+  + destruct z_free as [free_in_v1 | [free_in_v2 | [free_in_e1 | free_in_e2]]].
+    ++ apply VarFreeInSubstVal in free_in_v1.
+       now apply or_introl.
+    ++ apply VarFreeInSubstVal in free_in_v2.
+       now apply or_intror, or_introl.
+    ++ apply IHe1 in free_in_e1.
+       now apply or_intror, or_intror, or_introl.
+    ++ apply IHe2 in free_in_e2.
+       now apply or_intror, or_intror, or_intror.
+  + simpl in z_free |- *.
+    destruct z_free.
+    ++ apply or_introl.
+       now apply VarFreeInSubstVal in H.
+    ++ apply or_intror.
+       now apply VarFreeInSubstVals in H.
+  + destruct vx.
+    simpl in z_free |- *.
+    destruct z_free; apply VarFreeInSubstVal in H.
+    ++ now apply or_introl.
+    ++ now apply or_intror.
+  + simpl in z_free |- *.
+    now apply VarFreeInSubstVal in z_free.
+  + destruct vx.
+    simpl in z_free |- *.
+    now apply VarFreeInSubstVal in z_free.
+  + simpl in z_free |- *.
+    now apply VarFreeInSubstVal in z_free.
+  + unfold substExpr in z_free.
+    fold substExpr in z_free.
+    destruct (JFRef_dec (JFVar x) (JFVar y)); destruct z_free.
+    ++ apply IHe1 in H.
+       now apply or_introl.
+    ++ now apply or_intror.
+    ++ apply IHe1 in H.
+       now apply or_introl.
+    ++ destruct H as (z_eq & z_free).
+       apply IHe2 in z_free.
+       now apply or_intror.
+Qed.
+
+Lemma NoFreeVarsAfterOnlyVarSubst : forall e y l,
+  OnlyFreeVar e y ->
+  NoFreeVars (substExpr (JFVar y) l e).
+Proof.
+  intros.
+  intros z z_free.
+  unfold OnlyFreeVar, NoFreeVars in *.
+  replace z with y in *.
+  + now apply VarNotFreeInSubstExpr in z_free.
+  + apply VarFreeInSubstExpr in z_free.
+    now apply H.
+Qed.
+
+Lemma LetGoPreservesFreeVars : forall Ctx Ctx1 C x e l j st h_base h_rest h,
+  DisjointUnionOfLocsInStackAndRest
+    (Ctx _[ JFCtxLet C x Ctx1 e _[[_ JFVal1 (JFVLoc l) _]]_ Some j ]_ :: st)
+    h_base h_rest h ->
+  DisjointUnionOfLocsInStackAndRest
+    ((Ctx [[substExpr (JFVar x) l e ]]_ None) :: st)
+    h_base h_rest h.
+Proof.
+  intros Ctx Ctx1 C x e l j st h_base h_rest h.
+  intros union.
+  destruct union as (locs_in_h & h_consistent & union).
+  split; [ | split]; try easy.
+  simpl in locs_in_h |- *.
+  split; [split; [ | split] |]; try easy.
+  unfold LocsInStackAreInHeap in locs_in_h.
+  fold LocsInStackAreInHeap in locs_in_h.
+  now apply LocsInSubstExprAreInHeap.
+  now apply NoFreeVarsAfterOnlyVarSubst.
+Qed.
+
+Lemma TryGoPreservesFreeVars : forall Ctx Ctx1 mu C x e l j st h_base h_rest h,
+  DisjointUnionOfLocsInStackAndRest
+    (Ctx _[ JFCtxTry Ctx1 mu C x e _[[_ JFVal1 (JFVLoc l) _]]_ Some j ]_ :: st)
+    h_base h_rest h ->
+  DisjointUnionOfLocsInStackAndRest
+    ((Ctx [[substExpr (JFVar x) l e ]]_ None) :: st)
+    h_base h_rest h.
+Proof.
+  intros Ctx Ctx1 mu C x e l j st h_base h_rest h.
+  intros union.
+  destruct union as (locs_in_h & h_consistent & union).
+  split; [ | split]; try easy.
+  simpl in locs_in_h |- *.
+  split; [split; [ | split] |]; try easy.
+  unfold LocsInStackAreInHeap in locs_in_h.
+  fold LocsInStackAreInHeap in locs_in_h.
+  now apply LocsInSubstExprAreInHeap.
+  now apply NoFreeVarsAfterOnlyVarSubst.
+Qed.
+
+Lemma Val1ReductionDependsOnFreeVars : forall v,
+   ExprReductionDependsOnFreeVars (JFVal1 v).
+Proof.
+  intros v.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_val1 & pi_ctx & A_eq).
+  rewrite <-A_eq in *.
+  simpl in pi_val1.
+  destruct E; try now destruct pi_val1.
+  destruct A.
+  + destruct Ctx; [ | destruct j0].
+    ++ destruct v, st1'; try destruct f; try destruct E, A; try discriminate red_st.
+       injection red_st as h1_eq stn1_eq.
+       destruct Ctx0; try destruct pi_ctx.
+       destruct st2; try destruct f; try now destruct pi_st.
+       simpl in pi_st.
+       destruct pi_st as (pi_f & pi_st).
+       destruct E, A; try now destruct pi_f.
+       unfold FramesPermuted in pi_f.
+       destruct pi_f as (pi_e & pi_ctx & _).
+       destruct pi_e as (pi_v & pi_vs & m_eq).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-m_eq, <-h1_eq, <-stn1_eq.
+       unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+       simpl in h1_union, h2_union.
+       now exists h1_base, h2_base, h2, (Ctx0 [[ JFVal1 (JFVLoc l') ]]_ Some j :: st2), pi.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq.
+       unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+       simpl in h1_union, h2_union.
+       now exists h1_base, h2_base, h2, (Ctx0 [[JFVal1 (JFVLoc l') ]]_ Some j :: st2), pi.
+    ++ destruct v; try discriminate red_st.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       rewrite <-C_eq, <-x_eq in *.
+       replace hn1 with h1;
+         [ | destruct (subtype_bool CC (JFClass j) (JFClass C)); now injection red_st].
+       destruct (Classical_Prop.classic (Is_true (subtype_bool CC (JFClass j) (JFClass C)))).
+       +++ unfold red.
+           destruct (subtype_bool CC (JFClass j) (JFClass C)); try destruct H.
+           injection red_st as h_eq st_eq.
+           rewrite <-st_eq.
+           exists h1_base, h2_base, h2,
+            ((Ctx0 [[substExpr (JFVar x) l' E0 ]]_ None) :: st2), pi.
+           unfold red.           split; [ | split; [ | split; [ split; [ | split] | split; [ | split]]]]; try easy.
+           - split; try easy.
+             unfold FramesPermuted.
+             split; try split; try easy.
+             now apply SubstPermutedExpr.
+           -  now apply TryGoPreservesFreeVars in h1_union.
+           -  now apply TryGoPreservesFreeVars in h2_union.
+       +++ unfold red.
+           destruct (subtype_bool CC (JFClass j) (JFClass C)); try now (exfalso; now apply H).
+           injection red_st as h_eq st_eq.
+           rewrite <-st_eq.
+           unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+           simpl in h1_union, h2_union.
+           now exists h1_base, h2_base, h2,
+            ((Ctx0 [[JFVal1 (JFVLoc l') ]]_ Some j) :: st2), pi.
+  + destruct Ctx; [ | destruct j].
+    ++ destruct v, st1'; try destruct f; try destruct E, A; try discriminate red_st.
+       injection red_st as h_eq st_eq.
+       destruct Ctx0; try destruct pi_ctx.
+       destruct st2; try destruct f; try now destruct pi_st.
+       simpl in pi_st.
+       destruct pi_st as (pi_f & pi_st).
+       destruct E, A; try now destruct pi_f.
+       unfold FramesPermuted in pi_f.
+       destruct pi_f as (pi_e & pi_ctx & _).
+       destruct pi_e as (pi_v & pi_vs & m_eq).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-m_eq, <-h_eq, <-st_eq.
+       unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+       simpl in h1_union, h2_union.
+       now exists h1_base, h2_base, h2, (Ctx0 [[ JFVal1 (JFVLoc l') ]]_ None:: st2), pi.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct pi_ctx as ((C_eq & x_eq & pi_e) & pi_ctxs).
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq, <-x_eq in *.
+       exists h1_base, h2_base, h2, (Ctx0 [[ substExpr (JFVar x) l' E0 ]]_ None:: st2), pi.
+       split; [ | split; [ | split; [ split; [ | split] | split; [ | split]]]]; try easy.
+       +++ split; try easy.
+           unfold FramesPermuted.
+           split; try split; try easy.
+           now apply SubstPermutedExpr.
+       +++ now apply LetGoPreservesFreeVars in h1_union.
+       +++ now apply LetGoPreservesFreeVars in h2_union.
+    ++ destruct v; try discriminate red_st.
+       injection red_st as h0_eq st_eq.
+       destruct Ctx0; try destruct j0; try now destruct pi_ctx.
+       simpl in pi_ctx.
+       destruct v0 as [ l' | ]; try now destruct pi_val1.
+       unfold ValPermuted in pi_val1.
+       rewrite <-h0_eq, <-st_eq.
+       unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+       simpl in h1_union, h2_union.
+       now exists h1_base, h2_base, h2, (Ctx0 [[ JFVal1 (JFVLoc l') ]]_ None:: st2), pi;
+          destruct j.
 Qed.
 
 Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
@@ -1547,13 +1976,14 @@ Proof.
   intros pi_in_h1 pi_everything h1_union h2_union h1_red.
   destruct st1; try now discriminate h1_red.
   destruct f, E.
-  + now apply (NewReductionDependsOnFreeVars mu cn vs Ctx)
-      with (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
+  + now apply (NewReductionDependsOnFreeVars mu cn vs)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
   + admit.
   + admit.
   + admit.
-  + admit.
+  + now apply (Val1ReductionDependsOnFreeVars v)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
   + admit.
   + admit.
