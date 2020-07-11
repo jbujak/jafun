@@ -1114,6 +1114,36 @@ Definition ExprReductionDependsOnFreeVars (e1 : JFExpr) := forall Ctx A h1_base 
     DisjointUnionOfLocsInStackAndRest stn2 hn2_base h2_rest hn2 /\
     red CC (h2, st2) = Some (hn2, stn2).
 
+Lemma NoFreeVarsInIfExprs : forall v1 v2 e1 e2,
+  NoFreeVars (JFIf v1 v2 e1 e2) ->
+  (NoFreeVars e1 /\ NoFreeVars e2).
+Proof.
+  intros v1 v2 e1 e2 no_free_in_if.
+  split; intros x x_in_e; apply (no_free_in_if x); simpl.
+  + now apply or_intror, or_intror, or_introl.
+  + now apply or_intror, or_intror, or_intror.
+Qed.
+
+Lemma NoFreeVarsInLetExprs : forall cn x e1 e2,
+  NoFreeVars (JFLet cn x e1 e2) ->
+  (NoFreeVars e1 /\ OnlyFreeVar e2 x).
+Proof.
+  intros cn x e1 e2 no_free_in_let.
+  split.
+  + intros y y_in_e1.
+    apply (no_free_in_let y).
+    now apply or_introl.
+  + intros y y_free.
+    assert (y_not_free := no_free_in_let y).
+    simpl in y_not_free.
+    assert (~ y <> x).
+      intro.
+      apply y_not_free.
+      now apply or_intror.
+    symmetry.
+    now apply NNPP.
+Qed.
+
 Lemma NewlocNewInUnion : forall h_base h_rest h,
   JFIDisjointUnion h_base h_rest h ->
   ~ Heap.In (newloc h) h_rest.
@@ -1575,14 +1605,44 @@ Proof.
     now destruct Ctx0; try destruct j.
 Qed.
 
-Lemma NoFreeVarsInIfExprs : forall v1 v2 e1 e2,
-  NoFreeVars (JFIf v1 v2 e1 e2) ->
-  (NoFreeVars e1 /\ NoFreeVars e2).
+Lemma LetReductionDependsOnFreeVars : forall cn x e1 e2,
+   ExprReductionDependsOnFreeVars (JFLet cn x e1 e2).
 Proof.
-  intros v1 v2 e1 e2 no_free_in_iff.
-  split; intros x x_in_e; apply (no_free_in_iff x); simpl.
-  + now apply or_intror, or_intror, or_introl.
-  + now apply or_intror, or_intror, or_intror.
+  intros cn x e1 e2.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_let & pi_ctx & A_eq).
+  simpl in pi_let.
+  destruct E; try now destruct pi_let.
+  destruct pi_let as (cn_eq & x_eq & pi_e1 & pi_e2).
+  destruct A.
+    destruct Ctx; try destruct j0; try discriminate red_st.
+  assert (Some (h1, Ctx _[ JFCtxLet cn x __ e2 _[[_ e1 _]]_ None ]_ :: st1') = Some (hn1, stn1)).
+    now destruct Ctx; try destruct j.
+  injection H.
+  intros st_eq h_eq.
+  exists h1_base, h2_base, h2, (Ctx0 _[ JFCtxLet cn x __ E2 _[[_ E1  _]]_ None]_ :: st2), pi.
+  rewrite <-st_eq, <-h_eq, <-x_eq in *.
+  unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+  simpl in h1_union, h2_union.
+  assert (NoFreeVars e1 /\ OnlyFreeVar e2 x).
+    split; now apply (NoFreeVarsInLetExprs cn x e1 e2).
+  destruct H0 as (no_free_e1 & only_free_e2).
+  assert (NoFreeVars E1 /\ OnlyFreeVar E2 x).
+    split; now apply (NoFreeVarsInLetExprs cn0 x E1 E2).
+  destruct H0 as (no_free_E1 & only_free_E2).
+  split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+  rewrite <-A_eq, cn_eq, x_eq.
+  now destruct Ctx0; try destruct j.
 Qed.
 
 Lemma IfReductionDependsOnFreeVars : forall v1 v2 e1 e2,
@@ -2047,7 +2107,8 @@ Proof.
   destruct f, E.
   + now apply (NewReductionDependsOnFreeVars mu cn vs)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
-  + admit.
+  + now apply (LetReductionDependsOnFreeVars cn x E1 E2)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + now apply (IfReductionDependsOnFreeVars v1 v2 E1 E2)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
