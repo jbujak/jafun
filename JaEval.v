@@ -1575,6 +1575,75 @@ Proof.
     now destruct Ctx0; try destruct j.
 Qed.
 
+Lemma NoFreeVarsInIfExprs : forall v1 v2 e1 e2,
+  NoFreeVars (JFIf v1 v2 e1 e2) ->
+  (NoFreeVars e1 /\ NoFreeVars e2).
+Proof.
+  intros v1 v2 e1 e2 no_free_in_iff.
+  split; intros x x_in_e; apply (no_free_in_iff x); simpl.
+  + now apply or_intror, or_intror, or_introl.
+  + now apply or_intror, or_intror, or_intror.
+Qed.
+
+Lemma IfReductionDependsOnFreeVars : forall v1 v2 e1 e2,
+   ExprReductionDependsOnFreeVars (JFIf v1 v2 e1 e2).
+Proof.
+  intros v1 v2 e1 e2.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_if & pi_ctx & A_eq).
+  simpl in pi_if.
+  destruct v1, v2, E; try destruct v1, v2; try now destruct pi_if;
+    try now (destruct Ctx; try destruct j; discriminate red_st).
+  destruct A.
+    destruct Ctx; try destruct j0; try discriminate red_st.
+  unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+  simpl in h1_union, h2_union.
+  assert (NoFreeVars e1 /\ NoFreeVars e2).
+    split; now apply (NoFreeVarsInIfExprs (JFVLoc l) (JFVLoc l0) e1 e2).
+  destruct H as (no_free_in_e1 & no_free_in_e2).
+  assert (NoFreeVars E1 /\ NoFreeVars E2).
+    split; now apply (NoFreeVarsInIfExprs (JFVLoc l1) (JFVLoc l2) E1 E2).
+  destruct H as (no_free_in_E1 & no_free_in_E2).
+  destruct (Classical_Prop.classic (l = l0)) as [l_eq | l_neq].
+  + Loc_dec_eq l l0 l_eq.
+    assert (l1_eq : l1 = l2).
+      now apply (PiMapsToEqIff l l0 l1 l2 pi (proj1 pi_base)).
+    assert (Some (h1, (Ctx [[ e1 ]]_ None) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    injection H.
+    intros st_eq h_eq.
+    exists h1_base, h2_base, h2, (Ctx0 [[ E1 ]]_ None :: st2), pi.
+    rewrite <-st_eq, <-h_eq, <-A_eq.
+    split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+    simpl.
+    Loc_dec_eq l1 l2 l1_eq.
+    now destruct Ctx0; try destruct j.
+  + Loc_dec_neq l l0 l_neq.
+    assert (l1_neq : l1 <> l2).
+      intros l1_eq. apply l_neq.
+      now apply (PiMapsToEqIff l l0 l1 l2 pi (proj1 pi_base)).
+    assert (Some (h1, (Ctx [[ e2 ]]_ None) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    injection H.
+    intros st_eq h_eq.
+    exists h1_base, h2_base, h2, (Ctx0 [[ E2 ]]_ None :: st2), pi.
+    rewrite <-st_eq, <-h_eq, <-A_eq.
+    split; [ | split; [ | split; [| split]]]; try easy.
+    simpl.
+    Loc_dec_neq l1 l2 l1_neq.
+    now destruct Ctx0; try destruct j.
+Qed.
+
 Lemma LocsInSubstValAreInHeap : forall v h y l,
   LocMapsToHeap l h ->
   LocsInValAreInHeap v h ->
@@ -1668,10 +1737,10 @@ Proof.
     ++ destruct H as (_ & H).
        now apply IHe2 in H.
   + destruct y_free as [free_in_v1 | [free_in_v2 | [free_in_e1 | free_in_e2]]].
-    ++ now apply VarNotFreeInSubstVal in free_in_v1.
-    ++ now apply VarNotFreeInSubstVal in free_in_v2.
-    ++ now apply IHe1 in free_in_e1.
-    ++ now apply IHe2 in free_in_e2.
+    now apply VarNotFreeInSubstVal in free_in_v1.
+    now apply VarNotFreeInSubstVal in free_in_v2.
+    now apply IHe1 in free_in_e1.
+    now apply IHe2 in free_in_e2.
   + destruct y_free.
     now apply VarNotFreeInSubstVal in H.
     now apply VarNotFreeInSubstVals in H.
@@ -1979,7 +2048,8 @@ Proof.
   + now apply (NewReductionDependsOnFreeVars mu cn vs)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
-  + admit.
+  + now apply (IfReductionDependsOnFreeVars v1 v2 E1 E2)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
   + admit.
   + now apply (Val1ReductionDependsOnFreeVars v)
