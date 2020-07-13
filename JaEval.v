@@ -246,7 +246,7 @@ Proof.
         :: (ctxs_perm [[JFInvoke (JFVLoc (JFLoc n_perm)) m vs_perm
             ]]_ None) :: st_perm).
   split; try easy.
-  apply PermutationPreservesClassName
+  apply PermutationPreservesClassName_to_remove
     with (h0' := h0') (h0_perm := h0_perm) (h0_ext := h0_ext)
          (n_perm := n_perm) (pi := pi) in class_name; trivial.
   unfold getInvokeBody.
@@ -1704,6 +1704,156 @@ Proof.
     now destruct Ctx0; try destruct j.
 Qed.
 
+Lemma SubheapPreservesClassName : forall n h h',
+  JFISubheap h' h ->
+  Heap.In n h' ->
+  getClassName h' n = getClassName h n.
+Proof.
+  intros n h h'.
+  intros subheap n_in_h'.
+  apply HeapFacts.elements_in_iff in n_in_h' as (o & n_o_h').
+  apply HeapFacts.elements_mapsto_iff in n_o_h'.
+  assert (n_o_h := subheap _ _ n_o_h').
+  rewrite HeapFacts.find_mapsto_iff in n_o_h', n_o_h.
+  unfold getClassName.
+  now rewrite n_o_h', n_o_h.
+Qed.
+
+Lemma ExistsBodyWithSameFreeVars : forall Ctx1 Ctx2 h1_base h1_rest h1 hn1 h2_base h2_rest h2 n1 n2 vs1 vs2 st1 stn1 st2 m pi CC,
+  HeapsPermuted h1_base h2_base pi ->
+  PiMapsTo (JFLoc n1) (JFLoc n2) pi ->
+  ValsPermuted vs1 vs2 pi ->
+  CtxsPermuted Ctx1 Ctx2 pi ->
+  StacksPermuted st1 st2 pi ->
+  DisjointUnionOfLocsInStackAndRest
+             ((Ctx1 [[JFInvoke (JFVLoc (JFLoc n1)) m vs1 ]]_ None) :: st1)
+             h1_base h1_rest h1 ->
+  DisjointUnionOfLocsInStackAndRest
+             ((Ctx2 [[JFInvoke (JFVLoc (JFLoc n2)) m vs2 ]]_ None) :: st2)
+             h2_base h2_rest h2 ->
+  getInvokeBody CC (getClassName h1 n1) n1 m vs1 h1 Ctx1 st1 = Some (hn1, stn1) ->
+  hn1 = h1 /\
+  exists stn2,
+    StacksPermuted stn1 stn2 pi /\
+    DisjointUnionOfLocsInStackAndRest stn1 h1_base h1_rest h1 /\
+    DisjointUnionOfLocsInStackAndRest stn2 h2_base h2_rest h2 /\
+    getInvokeBody CC (getClassName h2 n2) n2 m vs2 h2 Ctx2 st2 = Some (h2, stn2).
+Proof.
+  intros Ctx1 Ctx2 h1_base h1_rest h1 hn1 h2_base h2_rest h2 n1 n2 vs1 vs2 st1 stn1 st2 m pi CC.
+  intros pi_h pi_n pi_vs pi_ctxs pi_st h1_union h2_union invoke.
+  unfold getInvokeBody in invoke.
+  assert (exists C, getClassName h1 n1 = Some C).
+    destruct (getClassName h1 n1); try discriminate invoke.
+    now exists j.
+  destruct H as (C & class_name).
+  rewrite class_name in invoke.
+  assert (exists md, methodLookup CC C m = Some md).
+    destruct (methodLookup CC C m); try discriminate invoke.
+    now exists j.
+  destruct H as (md & method_lookup).
+  rewrite method_lookup in invoke.
+  assert (exists Es1, substList (map JFVar (params_of_md md)) vs1
+             (substExpr JFThis (JFLoc n1) (body_of_md md)) = Some Es1).
+    destruct (substList (map JFVar (params_of_md md)) vs1
+             (substExpr JFThis (JFLoc n1) (body_of_md md))); try discriminate invoke.
+    now exists j.
+  destruct H as (Es1, subst_es1).
+  rewrite subst_es1 in invoke.
+  injection invoke.
+  intros st_eq h_eq.
+  symmetry in h_eq.
+  split; trivial.
+  destruct stn1; try discriminate st_eq.
+  destruct stn1; try discriminate st_eq.
+  injection st_eq as f_eq f0_eq st_eq.
+  rewrite <-st_eq, <-f_eq, <-f0_eq in *.
+  assert (fs_not_this : forall f, In f (map JFVar (params_of_md md)) -> f <> JFThis).
+    intros f1 f1_in_map f1_this.
+    apply in_map_iff in f1_in_map.
+    destruct f1_in_map as (x & f1_var & _).
+    now rewrite f1_this in f1_var.
+  assert (fs_length_eq : length (map JFVar (params_of_md md)) = length vs1).
+    rewrite map_length.
+    admit. (* TODO params length *)
+  assert (vs_length_eq : length vs1 = length vs2).
+    now apply PermutedValsLength with (pi := pi).
+  assert (pi_body : ExprsPermuted (body_of_md md) (body_of_md md) pi).
+    admit. (* TODO body permuted -- no locs in it *)
+  destruct (PermutationPreservesSubstList (map JFVar (params_of_md md)) vs1 vs2 fs_not_this fs_length_eq vs_length_eq (body_of_md md) (body_of_md md) n1 n2 Es1 pi)
+    as (Es2 & pi_es & subst_es2); trivial.
+  exists (([] [[ Es2 ]]_ None)
+        :: (Ctx2 [[JFInvoke (JFVLoc (JFLoc n2)) m vs2
+            ]]_ None) :: st2).
+  unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+  simpl in h1_union, h2_union.
+  split; [ | split; [ | split]]; try easy.
+  + unfold DisjointUnionOfLocsInStackAndRest.
+    split; [ | split]; try easy.
+    simpl.
+    split; [ split; [ | split] | split; [ split |]]; try easy.
+    ++ admit. (* TODO no locs hardcoded in method *)
+    ++ admit. (* TODO only free vars in method are params *)
+  + unfold DisjointUnionOfLocsInStackAndRest.
+    split; [ | split]; try easy.
+    simpl.
+    split; [ split; [ | split] | split; [ split |]]; try easy.
+    ++ admit. (* TODO no locs hardcoded in method *)
+    ++ admit. (* TODO only free vars in method are params *)
+  + rewrite <-SubheapPreservesClassName with (h' := h1_base) in class_name; try apply h1_union.
+    apply PermutationPreservesClassName with (h2 := h2_base) (n2 := n2) (pi := pi) in class_name; trivial.
+    rewrite SubheapPreservesClassName with (h := h2) in class_name; try apply h2_union.
+    unfold getInvokeBody.
+    now rewrite class_name, method_lookup, subst_es2.
+Admitted.
+
+Lemma InvokeReductionDependsOnFreeVars : forall v m vs,
+   ExprReductionDependsOnFreeVars (JFInvoke v m vs).
+Proof.
+  intros v m vs.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_invoke & pi_ctx & A_eq).
+  simpl in pi_invoke.
+  destruct v, E; try destruct v; try now destruct pi_invoke;
+    try now (destruct Ctx; try destruct j; discriminate red_st).
+  destruct pi_invoke as (pi_l & pi_vs & m_eq).
+  destruct A.
+    destruct Ctx, l; try destruct j0; try discriminate red_st.
+  destruct l.
+  + assert (Some (h1, (Ctx [[JFVal1 NPE_val ]]_ NPE_mode) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    assert (l0_eq : l0 = null).
+      now destruct l0; try destruct pi_l.
+    injection H; intros h_eq st_eq.
+    exists h1_base, h2_base, h2, (Ctx0 [[ JFVal1 NPE_val ]]_ NPE_mode :: st2), pi.
+    rewrite <-st_eq, <-h_eq, <-A_eq, l0_eq.
+    unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+    simpl in h1_union, h2_union.
+    assert (asdf : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
+    assert (qwer : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+    now destruct Ctx0; try destruct j.
+  + assert (getInvokeBody CC (getClassName h1 n) n m vs h1 Ctx st1' = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    destruct l0; try now destruct pi_l.
+    rewrite <-m_eq, <-A_eq in *.
+    destruct (ExistsBodyWithSameFreeVars Ctx Ctx0 h1_base h1_rest h1 hn1 h2_base h2_rest h2 n n0 vs vs0 st1' stn1 st2 m pi CC)
+    as (h_eq & stn2 & pi_stn & h1_union' & h2_union' & invoke); try easy.
+    exists h1_base, h2_base, h2, stn2, pi.
+    rewrite h_eq.
+    split; [ | split; [ | split; [ split; [ | split] | split; [ | split]]]]; try easy.
+    now destruct Ctx0; try destruct j; simpl.
+Admitted.
+
 Lemma LocsInSubstValAreInHeap : forall v h y l,
   LocMapsToHeap l h ->
   LocsInValAreInHeap v h ->
@@ -2111,7 +2261,8 @@ Proof.
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + now apply (IfReductionDependsOnFreeVars v1 v2 E1 E2)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
-  + admit.
+  + now apply (InvokeReductionDependsOnFreeVars v m vs)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + admit.
   + now apply (Val1ReductionDependsOnFreeVars v)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).

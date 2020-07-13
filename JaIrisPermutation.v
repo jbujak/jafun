@@ -1577,7 +1577,43 @@ Proof.
   now rewrite A_eq.
 Qed.
 
-Lemma PermutationPreservesClassName : forall h0 h0' h0_perm h0_ext n n_perm C pi,
+Lemma PermutationPreservesClassName : forall h1 h2 n1 n2 pi C,
+  PiMapsTo (JFLoc n1) (JFLoc n2) pi ->
+  HeapsPermuted h1 h2 pi ->
+  getClassName h1 n1 = Some C ->
+  getClassName h2 n2 = Some C.
+Proof.
+  intros h1 h2 n1 n2 pi C.
+  intros pi_n pi_h class.
+  unfold getClassName in *.
+  assert (exists o, Heap.find n1 h1 = Some o).
+    destruct (Heap.find n1 h1); try discriminate class.
+    now exists o.
+  destruct H as (o & n_o_h).
+  rewrite n_o_h in class.
+  destruct pi_h as (_ & locs_fst & _ & objs).
+  unfold PiMapsTo in pi_n.
+  assert (n1_in_h1 : Heap.In n1 h1).
+    apply HeapFacts.elements_in_iff.
+    exists o.
+    now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
+  destruct (locs_fst n1 n1_in_h1) as (n2' & n2'_pi & n2'_in_h2).
+  rewrite <-(MapsToEq (fst pi) n1 n2 n2') in *; trivial.
+  apply HeapFacts.elements_in_iff in n2'_in_h2.
+  destruct n2'_in_h2 as (o2 & n2_o2_h2).
+  apply HeapFacts.elements_mapsto_iff in n2_o2_h2.
+
+  apply HeapFacts.find_mapsto_iff in n_o_h.
+  destruct o as (o & cn), o2 as (o2 & cn2).
+  injection class as C_eq.
+  destruct (objs n1 n2 (o, cn) (o2, cn2)) as (cn_eq & _); trivial.
+
+  apply HeapFacts.find_mapsto_iff in n_o_h.
+  apply HeapFacts.find_mapsto_iff in n2_o2_h2.
+  now rewrite n2_o2_h2, <-cn_eq, C_eq.
+Qed.
+
+Lemma PermutationPreservesClassName_to_remove : forall h0 h0' h0_perm h0_ext n n_perm C pi,
   PiMapsTo (JFLoc n) (JFLoc n_perm) pi ->
   HeapsPermuted h0 h0_perm pi ->
   JFIDisjointUnion h0_perm h0' h0_ext ->
