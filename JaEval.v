@@ -1854,6 +1854,197 @@ Proof.
     now destruct Ctx0; try destruct j; simpl.
 Admitted.
 
+Lemma ModifyFieldOnConsistentHeap : forall (h : Heap) l ro cid f n,
+  HeapConsistent h ->
+  Heap.MapsTo n (ro, cid) h ->
+  LocMapsToHeap l h ->
+  HeapConsistent (Heap.add n (JFXIdMap.add f l ro, cid) h).
+Proof.
+  intros h l ro cid f n.
+  intros consistent n_ro_h l_h.
+  intros n' o' f' fn' n'_o' f'_fn'.
+  destruct (Classical_Prop.classic (n = fn')).
+    exists (JFXIdMap.add f l ro, cid).
+    now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+  destruct (Classical_Prop.classic (n = n')).
+  + rewrite <-H0 in *; clear H0 n'.
+    rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o in n'_o'; trivial.
+    injection n'_o' as o'_eq.
+    rewrite <-o'_eq in *; clear o'_eq.
+    simpl in f'_fn'.
+    apply JFXIdMapFacts.find_mapsto_iff in f'_fn'.
+    destruct (Classical_Prop.classic (f = f')).
+    ++ rewrite <-H0 in *; clear H0 f'.
+       rewrite JFXIdMapFacts.add_eq_o in f'_fn'; trivial.
+       injection f'_fn' as l_eq.
+       rewrite l_eq in *.
+       simpl in l_h.
+       apply HeapFacts.elements_in_iff in l_h as (o & fn'_o).
+       exists o.
+       apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in fn'_o.
+       now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o.
+    ++ rewrite JFXIdMapFacts.add_neq_o, <-JFXIdMapFacts.find_mapsto_iff in f'_fn'; trivial.
+       destruct (consistent n (ro, cid) f' fn') as (o & fn'_o); try easy.
+       exists o.
+       apply HeapFacts.find_mapsto_iff in fn'_o.
+       now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o.
+  + rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff in n'_o'; trivial.
+    destruct (consistent n' o' f' fn' n'_o' f'_fn') as (o & fn'_o).
+    exists o.
+    now rewrite HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o, <-HeapFacts.find_mapsto_iff.
+Qed.
+
+Lemma ExtendUnionOfFreeVarsAndRest : forall h_base h_rest h n ro f l cid Ctx st,
+  Heap.MapsTo n (ro, cid) h_base ->
+  DisjointUnionOfLocsInStackAndRest ((Ctx [[JFVal1 (JFVLoc l) ]]_ None) :: st)
+    h_base h_rest h ->
+  DisjointUnionOfLocsInStackAndRest ((Ctx [[JFVal1 (JFVLoc l) ]]_ None) :: st)
+    (Heap.add n (JFXIdMap.add f l ro, cid) h_base) h_rest
+    (Heap.add n (JFXIdMap.add f l ro, cid) h).
+Proof.
+  intros h_base h_rest h n ro f l cid Ctx st.
+  intros n_ro union.
+  unfold DisjointUnionOfLocsInStackAndRest in *.
+  assert (n_in_base : Heap.In n h_base).
+    apply HeapFacts.elements_in_iff.
+    exists (ro, cid).
+    now apply HeapFacts.elements_mapsto_iff.
+ destruct union as (locs_in_base & base_consistent & (union & disjoint)).
+  split; [ | split].
+  + simpl in *.
+    split; [ split; [ | split] | ]; try easy.
+    ++ destruct l; try easy.
+       now apply InExtendedHeap.
+    ++ admit.
+    ++ admit.
+  + apply ModifyFieldOnConsistentHeap; try easy.
+    destruct l; try easy.
+    apply locs_in_base.
+  + unfold JFIDisjointUnion.
+    split.
+    ++ apply ExtendDisjointUnion; try easy.
+       intros n_in_rest.
+       now apply (disjoint n).
+    ++ intros n' (n'_in_base & n'_in_rest).
+       destruct (Classical_Prop.classic (n = n')).
+       +++ rewrite <-H in *.
+           now apply (disjoint n).
+       +++ apply (disjoint n').
+           split; try easy.
+           rewrite HeapFacts.elements_in_iff in n'_in_base |- *.
+           destruct n'_in_base as (o' & n'_o').
+           exists o'.
+           rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n'_o' |- *.
+           now rewrite HeapFacts.add_neq_o in n'_o'.
+Admitted.
+
+Lemma AssignReductionDependsOnFreeVars: forall vx v,
+   ExprReductionDependsOnFreeVars (JFAssign vx v).
+ Proof.
+  intros (v1 & f1) v1'.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_assign & pi_ctx & A_eq).
+  simpl in pi_assign.
+
+  destruct E; try now destruct pi_assign.
+  set (v2' := v); replace v with v2' in *; try easy.
+  destruct vx as (v2 & f2).
+  destruct pi_assign as (f_eq & pi_v & pi_v').
+  destruct A.
+    destruct Ctx, v1, v1'; try destruct j0;
+    try destruct l; try destruct l0; try discriminate red_st.
+  rewrite <-f_eq, <-A_eq.
+  destruct v1 as [l1 | ]; try destruct l1.
+  + assert (Some (h1, (Ctx [[JFVal1 NPE_val ]]_ NPE_mode) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx, v1'; try destruct j.
+    injection H as h_eq st_eq.
+    assert (v1_eq : v2 = JFnull).
+      unfold ValPermuted in pi_v.
+      destruct v2; try destruct pi_v.
+      unfold PiMapsTo in pi_v.
+      now destruct l.
+    exists h1_base, h2_base, h2, (Ctx0 [[ JFVal1 NPE_val ]]_ NPE_mode :: st2), pi.
+    rewrite <-st_eq, <-h_eq, v1_eq.
+    unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+    simpl in h1_union, h2_union.
+    assert (asdf : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
+    assert (qwer : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+    destruct v1', v2'; try destruct pi_v'.
+    now destruct Ctx0; try destruct j.
+    now destruct Ctx; try destruct j; try discriminate red_st.
+  + destruct v1'; try (destruct Ctx; try destruct j; now discriminate red_st).
+    assert (exists ro cid, Heap.find n h1 = Some (ro, cid)).
+      destruct (Heap.find (elt:=Obj) n h1); try (destruct Ctx; try destruct j; now discriminate red_st).
+      exists (fst o), (snd o).
+      now destruct o.
+    destruct H as (ro & cid & n_h_ro).
+    rewrite n_h_ro in red_st.
+    assert (Some (Heap.add n (JFXIdMap.add f1 l ro, cid) h1, (Ctx [[ JFVal1 (JFVLoc l) ]]_ None) :: st1') =
+        Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    injection H as h_eq st_eq.
+    destruct v2 as [l2 |]; try destruct l2 as [| n2]; try now destruct pi_v.
+    destruct v2' as [l2 |]; try now destruct pi_v'.
+    assert (exists ro2, Heap.find n2 h2_base = Some (ro2, cid)).
+      apply ExistsInPermutedHeap with (n := n) (h := h1_base) (pi := pi) (ro := ro); try easy.
+      rewrite <-HeapFacts.find_mapsto_iff in n_h_ro |- *.
+      apply InSubheap with (h := h1); try easy; now apply h1_union.
+    destruct H as (ro2 & n2_ro2).
+    set (hn1_base := Heap.add n (JFXIdMap.add f1 l ro, cid) h1_base).
+    set (hn2_base := Heap.add n2 (JFXIdMap.add f1 l2 ro2, cid) h2_base).
+    set (hn2 := Heap.add n2 (JFXIdMap.add f1 l2 ro2, cid) h2).
+    assert (pi_hn_base : HeapsPermuted hn1_base hn2_base pi).
+      unfold hn1_base, hn2_base.
+      apply ChangeFieldInPermutedHeaps; try easy.
+      rewrite <-HeapFacts.find_mapsto_iff in n_h_ro |- *.
+      apply InSubheap with (h := h1); try easy; now apply h1_union.
+    exists hn1_base, hn2_base, hn2, ((Ctx0 [[JFVal1 (JFVLoc l2) ]]_ None) :: st2), pi.
+    rewrite <-st_eq, <-h_eq.
+    unfold hn2.
+    unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+    simpl in h1_union, h2_union.
+    split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+    ++ unfold hn1_base.
+       intros n' n'_in_pi.
+       destruct (Classical_Prop.classic (n = n')).
+       +++ apply HeapFacts.elements_in_iff.
+           exists (JFXIdMap.add f1 l ro, cid).
+           now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+       +++ assert (pi_in_hn1 := pi_in_h1 n' n'_in_pi).
+           apply HeapFacts.elements_in_iff in pi_in_hn1 as (ro' & n'_ro').
+           apply HeapFacts.elements_in_iff.
+           exists ro'.
+           rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n'_ro' |- *.
+           now rewrite HeapFacts.add_neq_o.
+    ++ unfold hn1_base.
+       apply ExtendUnionOfFreeVarsAndRest; try easy.
+       apply HeapFacts.find_mapsto_iff in n_h_ro.
+       apply InSubheap with (h := h1); try easy.
+       apply h1_union.
+    ++ unfold hn2_base.
+       apply ExtendUnionOfFreeVarsAndRest; try easy.
+       apply HeapFacts.find_mapsto_iff in n2_ro2.
+       apply InSubheap with (h := h2); try easy.
+       apply h2_union.
+       now apply h2_union in n2_ro2.
+    ++ simpl.
+       apply HeapFacts.find_mapsto_iff, h2_union, HeapFacts.find_mapsto_iff in n2_ro2.
+       rewrite n2_ro2.
+       now destruct Ctx0; try destruct j.
+  + destruct Ctx; try destruct j; try discriminate red_st.
+Admitted.
+
 Lemma LocsInSubstValAreInHeap : forall v h y l,
   LocMapsToHeap l h ->
   LocsInValAreInHeap v h ->

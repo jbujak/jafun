@@ -869,7 +869,7 @@ Proof.
        now rewrite HeapFacts.add_neq_o in l_o'.
 Qed.
 
-Lemma InSubheap : forall h1 h2 n,
+Lemma InSuperheap : forall h1 h2 n,
   JFISubheap h1 h2 ->
   Heap.In n h1 ->
   Heap.In n h2.
@@ -882,3 +882,33 @@ Proof.
   rewrite <-HeapFacts.elements_mapsto_iff in n_o |- *.
   now apply subheap.
 Qed.
+
+Lemma InSubheap : forall n o h h',
+  JFISubheap h' h ->
+  Heap.MapsTo n o h ->
+  Heap.In n h' ->
+  Heap.MapsTo n o h'.
+Proof.
+  intros n o h h' subheap n_o_h n_in_h'.
+  apply HeapFacts.elements_in_iff in n_in_h' as (o' & n_o'_h').
+  apply HeapFacts.elements_mapsto_iff in n_o'_h'.
+  rewrite HeapFacts.find_mapsto_iff in n_o_h, n_o'_h' |- *.
+  rewrite n_o'_h'.
+  apply HeapFacts.find_mapsto_iff, subheap, HeapFacts.find_mapsto_iff in n_o'_h'.
+  now rewrite <-n_o_h, <-n_o'_h'.
+Qed.
+
+Lemma InExtendedHeap : forall n' n o (h : Heap),
+  Heap.In n' h -> Heap.In n' (Heap.add n o h).
+Proof.
+  intros n' n o h n'_in_h.
+  apply HeapFacts.elements_in_iff in n'_in_h as (o' & n'_o').
+  apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff in n'_o'.
+  apply HeapFacts.elements_in_iff.
+  destruct (Classical_Prop.classic (n = n')).
+  + exists o.
+    now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_eq_o.
+  + exists o'.
+    now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o.
+Qed.
+  

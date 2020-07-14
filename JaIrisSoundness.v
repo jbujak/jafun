@@ -989,7 +989,7 @@ Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env,
 Proof.
 Admitted.
 
-Lemma InSubheap : forall h1 h2 l,
+Lemma InSuperheap : forall h1 h2 l,
   JFISubheap h1 h2 -> Heap.In l h1 -> Heap.In l h2.
 Proof.
   intros h1 h2 l.
@@ -1100,10 +1100,10 @@ Proof.
     ++ intros l l_in_h.
        destruct (H7 l l_in_h) as [l_in_h1 | l_in_h23].
        +++ apply or_introl.
-           now apply (InSubheap h1 h12 l).
+           now apply (InSuperheap h1 h12 l).
        +++ destruct (H6 l l_in_h23) as [l_in_h2 | l_in_h3].
            - apply or_introl.
-             now apply (InSubheap h2 h12 l).
+             now apply (InSuperheap h2 h12 l).
            - now apply or_intror.
   + intros union_h12_h3.
     unfold JFIHeapsUnion in *.
@@ -1120,9 +1120,9 @@ Proof.
        +++ destruct (H5 l l_in_h12) as [l_in_h1 | l_in_h2].
            - now apply or_introl.
            - apply or_intror.
-             now apply (InSubheap h2 h23 l).
+             now apply (InSuperheap h2 h23 l).
        +++ apply or_intror.
-           now apply (InSubheap h3 h23 l).
+           now apply (InSuperheap h3 h23 l).
 Qed.
 
 Lemma UnionDisjoint : forall h1 h2 h12 h,
