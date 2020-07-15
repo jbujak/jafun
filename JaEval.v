@@ -1740,11 +1740,11 @@ Proof.
 Qed.
 
 Lemma ClassNameClassEq : forall n h,
-  Heap.In n h ->
   class h n = getClassName h n.
 Proof.
-  intros n h n_in_h.
-Admitted.
+  intros n h.
+  now unfold getClassName, class.
+Qed.
 
 Lemma ExistsBodyWithSameFreeVars : forall Ctx1 Ctx2 h1_base h1_rest h1 hn1 h2_base h2_rest h2 n1 n2 vs1 vs2 st1 stn1 st2 m pi CC,
   HeapsPermuted h1_base h2_base pi ->
@@ -2590,8 +2590,7 @@ Proof.
     exists h1_base, h2_base, h2, ((Ctx0 [[JFVal1 NPE_val ]]_ NPE_mode) :: st2), pi.
     split; [ | split; [ | split; [ | split]]]; try easy.
     now destruct Ctx0; try destruct j.
-  + rewrite ClassNameClassEq in red_st;
-      [ | apply InSuperheap with (h1 := h1_base); apply h1_union].
+  + rewrite ClassNameClassEq in red_st.
     rewrite <-SubheapPreservesClassName with (h' := h1_base) in red_st; try easy; try apply h1_union.
     assert (exists cn, getClassName h1_base n = Some cn).
       destruct (getClassName h1_base n); try now (destruct Ctx; try destruct j; discriminate red_st).
@@ -2601,7 +2600,7 @@ Proof.
     destruct v0; try destruct l as [ | n']; try now destruct pi_throw.
     unfold ValPermuted in pi_throw.
     assert (n'_cn : class h2 n' = Some cn).
-      rewrite ClassNameClassEq; [ | now apply InSuperheap with (h1 := h2_base); apply h2_union].
+      rewrite ClassNameClassEq.
       rewrite <-SubheapPreservesClassName with (h' := h2_base); try easy; try apply h2_union.
       now apply PermutedClass with (h' := h2_base) (n' := n') (pi := pi) in n_cn.
     assert (Some (h1, (Ctx [[ JFVal1 (JFVLoc (JFLoc n)) ]]_ Some cn) :: st1') = Some (hn1, stn1)).
