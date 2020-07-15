@@ -1144,6 +1144,26 @@ Proof.
     now apply NNPP.
 Qed.
 
+Lemma NoFreeVarsInTryExprs : forall e1 mu cn x e2,
+  NoFreeVars (JFTry e1 mu cn x e2) ->
+  (NoFreeVars e1 /\ OnlyFreeVar e2 x).
+Proof.
+  intros e1 mu cn x e2 no_free_in_try.
+  split.
+  + intros y y_in_e1.
+    apply (no_free_in_try y).
+    now apply or_introl.
+  + intros y y_free.
+    assert (y_not_free := no_free_in_try y).
+    simpl in y_not_free.
+    assert (~ y <> x).
+      intro.
+      apply y_not_free.
+      now apply or_intror.
+    symmetry.
+    now apply NNPP.
+Qed.
+
 Lemma NewlocNewInUnion : forall h_base h_rest h,
   JFIDisjointUnion h_base h_rest h ->
   ~ Heap.In (newloc h) h_rest.
@@ -1718,6 +1738,13 @@ Proof.
   unfold getClassName.
   now rewrite n_o_h', n_o_h.
 Qed.
+
+Lemma ClassNameClassEq : forall n h,
+  Heap.In n h ->
+  class h n = getClassName h n.
+Proof.
+  intros n h n_in_h.
+Admitted.
 
 Lemma ExistsBodyWithSameFreeVars : forall Ctx1 Ctx2 h1_base h1_rest h1 hn1 h2_base h2_rest h2 n1 n2 vs1 vs2 st1 stn1 st2 m pi CC,
   HeapsPermuted h1_base h2_base pi ->
@@ -2531,6 +2558,103 @@ Proof.
   + now destruct Ctx; try destruct j.
 Admitted.
 
+Lemma ThrowReductionDependsOnFreeVars : forall v,
+   ExprReductionDependsOnFreeVars (JFThrow v).
+Proof.
+  intros v.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_throw & pi_ctx & A_eq).
+  simpl in pi_throw.
+  destruct E; try now destruct pi_throw.
+  destruct A; try now (destruct Ctx, v; try destruct j0; try destruct l; discriminate red_st).
+  unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+  simpl in h1_union, h2_union.
+  destruct v as [ l | ]; try destruct l.
+  + assert (Some (h1, (Ctx [[JFVal1 NPE_val ]]_ NPE_mode) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    injection H as h_eq st_eq.
+    destruct v0; try destruct l; try now destruct pi_throw.
+    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
+    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    rewrite <-h_eq, <-st_eq, <-A_eq.
+    exists h1_base, h2_base, h2, ((Ctx0 [[JFVal1 NPE_val ]]_ NPE_mode) :: st2), pi.
+    split; [ | split; [ | split; [ | split]]]; try easy.
+    now destruct Ctx0; try destruct j.
+  + rewrite ClassNameClassEq in red_st;
+      [ | apply InSuperheap with (h1 := h1_base); apply h1_union].
+    rewrite <-SubheapPreservesClassName with (h' := h1_base) in red_st; try easy; try apply h1_union.
+    assert (exists cn, getClassName h1_base n = Some cn).
+      destruct (getClassName h1_base n); try now (destruct Ctx; try destruct j; discriminate red_st).
+      now exists j.
+    destruct H as (cn & n_cn).
+    rewrite n_cn in red_st.
+    destruct v0; try destruct l as [ | n']; try now destruct pi_throw.
+    unfold ValPermuted in pi_throw.
+    assert (n'_cn : class h2 n' = Some cn).
+      rewrite ClassNameClassEq; [ | now apply InSuperheap with (h1 := h2_base); apply h2_union].
+      rewrite <-SubheapPreservesClassName with (h' := h2_base); try easy; try apply h2_union.
+      now apply PermutedClass with (h' := h2_base) (n' := n') (pi := pi) in n_cn.
+    assert (Some (h1, (Ctx [[ JFVal1 (JFVLoc (JFLoc n)) ]]_ Some cn) :: st1') = Some (hn1, stn1)).
+      now destruct Ctx; try destruct j.
+    injection H as h_eq st_eq.
+    rewrite <-h_eq, <-st_eq, <-A_eq.
+    exists h1_base, h2_base, h2, ((Ctx0 [[JFVal1 (JFVLoc (JFLoc n')) ]]_ Some cn) :: st2), pi.
+    split; [ | split; [ | split; [ | split; [ | split]]]]; try easy.
+    simpl.
+    rewrite n'_cn.
+    now destruct Ctx0; try destruct j.
+  + now destruct Ctx; try destruct j.
+Admitted.
+
+Lemma TryReductionDependsOnFreeVars : forall e1 mu cn x e2,
+   ExprReductionDependsOnFreeVars (JFTry e1 mu cn x e2).
+Proof.
+  intros e1 mu cn x e2.
+  intros Ctx A h1_base h1_rest h1 st1' h2_base h2_rest h2 st2 hn1 stn1 CC pi st1.
+  unfold st1 in *.
+  clear st1.
+  unfold EverythingPermuted.
+  intros pi_in_h1 (pi_npe & pi_base & pi_st) h1_union h2_union red_st.
+  unfold red in red_st.
+  simpl in pi_st.
+  destruct st2; [ destruct pi_st |].
+  destruct pi_st as (pi_f & pi_st).
+  unfold FramesPermuted in pi_f.
+  destruct f.
+  destruct pi_f as (pi_try & pi_ctx & A_eq).
+  simpl in pi_try.
+  destruct E; try now destruct pi_try.
+  destruct pi_try as (mu_eq & cn_eq & x_eq & pi_e1 & pi_e2).
+  rewrite <-mu_eq, <-cn_eq, <-x_eq, <-A_eq in *.
+  destruct A.
+    destruct Ctx; try destruct j0; try discriminate red_st.
+  assert (Some (h1, Ctx _[ JFCtxTry __ mu cn x e2 _[[_ e1 _]]_ None ]_ :: st1') = Some (hn1, stn1)).
+    now destruct Ctx; try destruct j.
+  injection H as st_eq h_eq.
+  exists h1_base, h2_base, h2, (Ctx0 _[ JFCtxTry __ mu cn x E2 _[[_ E1  _]]_ None]_ :: st2), pi.
+  rewrite <-st_eq, <-h_eq.
+  unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
+  simpl in h1_union, h2_union.
+  assert (NoFreeVars e1 /\ OnlyFreeVar e2 x).
+    split; now apply (NoFreeVarsInTryExprs e1 mu cn x e2).
+  destruct H as (no_free_e1 & only_free_e2).
+  assert (NoFreeVars E1 /\ OnlyFreeVar E2 x).
+    split; now apply (NoFreeVarsInTryExprs E1 mu cn x E2).
+  destruct H as (no_free_E1 & only_free_E2).
+  split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
+  now destruct Ctx0; try destruct j.
+Qed.
+
 Lemma ReductionDependsOnFreeVars : forall h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
   PiOnlyFromHeap pi h1_base ->
@@ -2563,9 +2687,11 @@ Proof.
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
   + now apply (Val2ReductionDependsOnFreeVars vx)
       with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
-  + admit.
-  + admit.
-Admitted.
+  + now apply (ThrowReductionDependsOnFreeVars v)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
+  + now apply (TryReductionDependsOnFreeVars E1 mu cn x E2)
+      with (Ctx := Ctx) (h1_base := h1_base) (h1 := h1) (h2_base := h2_base) (A := A) (st1' := st1).
+Qed.
 
 Lemma PartialEvaluationDependsOnFreeVars : forall confs1 h1_base h1_rest h1 st1 h2_base h2_rest h2 st2 hn1 stn1 CC pi,
   EverythingPermuted h1_base h2_base st1 st2 pi ->
