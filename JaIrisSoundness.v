@@ -2292,8 +2292,11 @@ Proof.
   fold JFIHeapSatisfiesInEnv in hp_eval.
   destruct hp_eval as (confs & hn & res_ex & res & hp_eval & ex_eq & hn_satisfies_q).
   rewrite ex_eq in *; clear ex_eq res_ex.
-  destruct (EvaluationOnExtendedHeap _ _ _ _ _ _ _ _ _ _ hp_eval union_hp_hr)
-    as (confs_ext & hn_perm & hn_ext & res_ext & pi & eval_ext).
+  destruct (EvaluationOnExtendedHeap hp hr h e confs hn ex res env CC)
+    as (confs_ext & hn_perm & hn_ext & res_ext & pi & eval_ext); try easy.
+    admit. (* TODO hp consistent *)
+    admit. (* TODO no hardcoded locs in e *)
+    admit. (* TODO free vars in e are in hp *)
   destruct eval_ext as
     (hn_pi & env_pi & res_pi & union_hn_perm_hr & eval_ext).
   exists confs_ext, hn_ext, ex, res_ext.
