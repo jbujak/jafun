@@ -474,6 +474,7 @@ Proof.
     as (els' & els_perm).
   + unfold PiCoversHeap in covers.
     intros n obj f f_n n_obj_h f_fn_obj.
+    destruct consistent as (npe_in_h & consistent).
     destruct (consistent n obj f f_n).
     ++ apply HeapFacts.elements_mapsto_iff.
        apply In_InA; trivial.

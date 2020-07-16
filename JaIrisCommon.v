@@ -43,10 +43,12 @@ Definition JFIHeapsUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
 Definition JFIDisjointUnion (h1 : Heap) (h2 : Heap) (h : Heap) : Prop :=
   JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2.
 
-Definition HeapConsistent (h : Heap) := forall n obj f f_n,
-  Heap.MapsTo n obj h ->
-  JFXIdMap.MapsTo f (JFLoc f_n) (fst obj) ->
-  exists obj', Heap.MapsTo f_n obj' h.
+Definition HeapConsistent (h : Heap) :=
+  Heap.In NPE_object_loc h /\
+  forall n obj f f_n,
+    Heap.MapsTo n obj h ->
+    JFXIdMap.MapsTo f (JFLoc f_n) (fst obj) ->
+    exists obj', Heap.MapsTo f_n obj' h.
 
 Definition JFILocOfType (l : Loc) (h : Heap) (c : JFClassName) : Prop :=
   match l with

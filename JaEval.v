@@ -487,7 +487,10 @@ Lemma ExtendConsistentHeap : forall new_n flds_locs cn h,
   HeapConsistent (Heap.add new_n (init_obj_aux (JFXIdMap.empty Loc) flds_locs, cn) h).
 Proof.
   intros new_n flds_locs cn h.
-  intros locs_in_h h_consistent n o f f_n n_o f_fn.
+  intros locs_in_h (npe_in_h & h_consistent).
+  split.
+    now apply InExtendedHeap.
+  intros n o f f_n n_o f_fn.
   rewrite HeapFacts.find_mapsto_iff in n_o.
   destruct (Classical_Prop.classic (new_n = n)).
   + rewrite HeapFacts.add_eq_o in n_o; trivial.
@@ -1060,8 +1063,8 @@ Proof.
     rewrite <-st_eq, <-h_eq, <-A_eq, l0_eq.
     unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
     simpl in h1_union, h2_union.
-    assert (asdf : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
-    assert (qwer : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). apply h1_union.
+    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). apply h2_union.
     split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
     now destruct Ctx0; try destruct j.
   + assert (getInvokeBody CC (getClassName h1 n) n m vs h1 Ctx st1' = Some (hn1, stn1)).
@@ -1074,7 +1077,7 @@ Proof.
     rewrite h_eq.
     split; [ | split; [ | split; [ split; [ | split] | split; [ | split]]]]; try easy.
     now destruct Ctx0; try destruct j; simpl.
-Admitted.
+Qed.
 
 Lemma ModifyFieldOnConsistentHeap : forall (h : Heap) l ro cid f n,
   HeapConsistent h ->
@@ -1083,7 +1086,9 @@ Lemma ModifyFieldOnConsistentHeap : forall (h : Heap) l ro cid f n,
   HeapConsistent (Heap.add n (JFXIdMap.add f l ro, cid) h).
 Proof.
   intros h l ro cid f n.
-  intros consistent n_ro_h l_h.
+  intros (npe_in_h & consistent) n_ro_h l_h.
+  split.
+    now apply InExtendedHeap.
   intros n' o' f' fn' n'_o' f'_fn'.
   destruct (Classical_Prop.classic (n = fn')).
     exists (JFXIdMap.add f l ro, cid).
@@ -1199,8 +1204,8 @@ Lemma AssignReductionDependsOnFreeVars: forall vx v,
     rewrite <-st_eq, <-h_eq, v1_eq.
     unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
     simpl in h1_union, h2_union.
-    assert (asdf : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
-    assert (qwer : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). apply h1_union.
+    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). apply h2_union.
     split; [ | split; [ | split; [| split; [ | split]]]]; try easy.
     destruct v1', v2'; try destruct pi_v'.
     now destruct Ctx0; try destruct j.
@@ -1265,7 +1270,7 @@ Lemma AssignReductionDependsOnFreeVars: forall vx v,
        rewrite n2_ro2.
        now destruct Ctx0; try destruct j.
   + destruct Ctx; try destruct j; try discriminate red_st.
-Admitted.
+Qed.
 
 Lemma LocsInSubstValAreInHeap : forall v h y l,
   LocMapsToHeap l h ->
@@ -1679,8 +1684,8 @@ Proof.
     rewrite <-h_eq, <-st'_eq, <-A_eq.
     exists h1_base, h2_base, h2, ((Ctx0 [[JFVal1 NPE_val ]]_ NPE_mode) :: st2), pi.
     unfold DisjointUnionOfLocsInStackAndRest in h1_union, h2_union.
-    assert (asdf : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
-    assert (qwer : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). apply h1_union.
+    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). apply h2_union.
     simpl in h1_union, h2_union.
     split; [ | split; [ | split; [ | split; [ | split]]]]; try easy.
     now destruct Ctx0; try destruct j.
@@ -1728,7 +1733,7 @@ Proof.
     ++ split; [ | split]; try easy.
        simpl.
        split; [ split; [ | split] | ]; try easy.
-       destruct h1_union as (locs_in_h1 & (h1_consistent & h1_union)).
+       destruct h1_union as (locs_in_h1 & ((npe_in_h1 & h1_consistent) & h1_union)).
        destruct l; trivial.
        destruct (h1_consistent n (ro, cn) f n0) as (o0 & n0_o0); trivial.
        apply HeapFacts.elements_in_iff.
@@ -1737,7 +1742,7 @@ Proof.
     ++ split; [ | split]; try easy.
        simpl.
        split; [ split; [ | split] | ]; try easy.
-       destruct h2_union as (locs_in_h2 & (h2_consistent & h2_union)).
+       destruct h2_union as (locs_in_h2 & ((npe_in_h1 & h2_consistent) & h2_union)).
        destruct l'; trivial.
        destruct (h2_consistent n' (ro', cn) f n0) as (o0 & n0_o0); trivial.
        apply HeapFacts.elements_in_iff.
@@ -1751,7 +1756,7 @@ Proof.
        now destruct Ctx0; try destruct j.
        now apply h2_union.
   + now destruct Ctx; try destruct j.
-Admitted.
+Qed.
 
 Lemma ThrowReductionDependsOnFreeVars : forall v,
    ExprReductionDependsOnFreeVars (JFThrow v).
@@ -1779,8 +1784,8 @@ Proof.
       now destruct Ctx; try destruct j.
     injection H as h_eq st_eq.
     destruct v0; try destruct l; try now destruct pi_throw.
-    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). admit.
-    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). admit.
+    assert (npe_in_h1 : Heap.In (elt:=Obj) NPE_object_loc h1_base). apply h1_union.
+    assert (npe_in_h2 : Heap.In (elt:=Obj) NPE_object_loc h2_base). apply h2_union.
     rewrite <-h_eq, <-st_eq, <-A_eq.
     exists h1_base, h2_base, h2, ((Ctx0 [[JFVal1 NPE_val ]]_ NPE_mode) :: st2), pi.
     split; [ | split; [ | split; [ | split]]]; try easy.
@@ -1808,7 +1813,7 @@ Proof.
     rewrite n'_cn.
     now destruct Ctx0; try destruct j.
   + now destruct Ctx; try destruct j.
-Admitted.
+Qed.
 
 Lemma TryReductionDependsOnFreeVars : forall e1 mu cn x e2,
    ExprReductionDependsOnFreeVars (JFTry e1 mu cn x e2).
