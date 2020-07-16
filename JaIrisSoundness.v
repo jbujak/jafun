@@ -393,8 +393,7 @@ Proof.
        rewrite <- (env_eq x) in x_is_l.
        rewrite x_is_none in x_is_l.
        discriminate x_is_l.
-  + rewrite 2!ValEnvSubstitutionPreservesThis.
-    trivial.
+  + now rewrite 2!ValEnvSubstitutionSubstitutesThis.
 Qed.
 
 Lemma EnvEqGivesMapValSubstEq : forall env1 env2 this vs,

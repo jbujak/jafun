@@ -97,6 +97,16 @@ Inductive JFIOuterTerm : Set :=
 Definition JFIStringSubstitute : string -> string -> string -> string :=
   fun str from to => if String.eqb str from then to else str.
 
+Definition JFIValSubstituteThis (this : nat) (val : JFVal) :=
+  match val with
+  | JFVLoc _ => val
+  | JFSyn x =>
+    match x with
+    | JFVar y => val
+    | JFThis => JFVLoc (JFLoc this)
+    end
+  end.
+
 Definition JFValSubstituteVal (from : string) (to : JFVal) (val : JFVal) :=
   match val with
   | JFVLoc _ => val
@@ -198,7 +208,8 @@ Definition JFITermSubstituteVar (from : string) (to : string) (t : JFITerm) : JF
     JFITermSubstituteVal from (JFIVar to) t.
 
 Definition JFIValSubstituteEnv (env : JFITermEnv) (this : nat) (val : JFVal) :=
-  StrMap.fold (fun k v a => JFValSubstituteVal k (JFVLoc v) a) env val.
+  let val_this := JFIValSubstituteThis this val in
+  StrMap.fold (fun k v a => JFValSubstituteVal k (JFVLoc v) a) env val_this.
 
 Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (this : nat) (e : JFExpr) : JFExpr :=
   match e with
@@ -278,8 +289,8 @@ Proof.
   induction (StrMap.elements (elt:=Loc) env); auto.
 Qed.
 
-Lemma ValEnvSubstitutionPreservesThis : forall env this,
-  JFIValSubstituteEnv env this (JFSyn JFThis) = JFSyn JFThis.
+Lemma ValEnvSubstitutionSubstitutesThis : forall env this,
+  JFIValSubstituteEnv env this (JFSyn JFThis) = JFVLoc (JFLoc this).
 Proof.
   intros env this.
   unfold JFIValSubstituteEnv.
@@ -456,7 +467,7 @@ Proof.
   + rewrite StrMap.fold_1.
     induction (StrMap.elements (elt:=Loc) env); auto.
     unfold fold_left.
-    unfold JFValSubstituteVal.
+    unfold JFValSubstituteVal, JFIValSubstituteThis.
     replace (String.eqb x (fst a)) with false.
     ++ apply IHl.
        intros a0 a0_in_l.
@@ -591,8 +602,7 @@ Proof.
        +++ rewrite ValSubstitutePreservesDifferentVar; try assumption.
            admit.
     ++ unfold JFValSubstituteVal.
-       rewrite ValEnvSubstitutionPreservesThis.
-       trivial.
+       now rewrite ValEnvSubstitutionSubstitutesThis.
 Admitted.
 
 Lemma SubstituteExprEnvComm : forall x l e env this,
