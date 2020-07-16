@@ -59,57 +59,56 @@ Definition JFIGetLocType (n : nat) (h : Heap) : option JFClassName :=
     | Some (_, objClass) => Some objClass
   end.
 
-Definition JFIValToLoc (val : JFIVal) (env : JFITermEnv) : option Loc :=
+Definition JFIValToLoc (val : JFIVal) (env : JFITermEnv) (this : nat) : option Loc :=
   match val with
   | JFINull => Some null
-  | JFIThis => Some (JFLoc 1) (* TODO *)
+  | JFIThis => Some (JFLoc this)
   | JFIVar x => StrMap.find x env
   end.
 
 (* Semantics *)
 
-Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (CC : JFProgram) : Prop :=
+Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (this : nat) (CC : JFProgram) : Prop :=
   match t with
     | JFITrue => True
     | JFIFalse => False
-    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC /\ JFIHeapSatisfiesInEnv h t2 env CC
-    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env CC \/ JFIHeapSatisfiesInEnv h t2 env CC
-    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env CC) \/ JFIHeapSatisfiesInEnv h t2 env CC
-    | JFIHoare t1 e ex valueName t2 => JFIHeapSatisfiesInEnv h t1 env CC -> exists confs hn res_ex res,
+    | JFIAnd t1 t2 => JFIHeapSatisfiesInEnv h t1 env this CC /\ JFIHeapSatisfiesInEnv h t2 env this CC
+    | JFIOr t1 t2 => JFIHeapSatisfiesInEnv h t1 env this CC \/ JFIHeapSatisfiesInEnv h t2 env this CC
+    | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env this CC) \/ JFIHeapSatisfiesInEnv h t2 env this CC
+    | JFIHoare t1 e ex valueName t2 => JFIHeapSatisfiesInEnv h t1 env this CC -> exists confs hn res_ex res,
         let newEnv := StrMap.add valueName res env
-        in (JFIEvalInEnv h e confs hn res_ex res env CC) /\
-           (res_ex = ex /\ JFIHeapSatisfiesInEnv hn t2 newEnv CC)
+        in (JFIEvalInEnv h e confs hn res_ex res env CC) /\ (* TODO this in eval *)
+           (res_ex = ex /\ JFIHeapSatisfiesInEnv hn t2 newEnv this CC)
     | JFIEq val1 val2 =>
-        let l1 := JFIValToLoc val1 env
-        in let l2 := JFIValToLoc val2 env
+        let l1 := JFIValToLoc val1 env this
+        in let l2 := JFIValToLoc val2 env this
         in match (l1, l2) with
            | (Some loc1, Some loc2) => loc1 = loc2
            | _ => False
         end
     | JFIFieldEq obj fieldName val =>
-        let l1 := JFIValToLoc obj env
-        in let l2 := JFIValToLoc val env
+        let l1 := JFIValToLoc obj env this
+        in let l2 := JFIValToLoc val env this
         in match (l1, l2) with
           | (Some objLoc, Some valLoc) => JFIObjFieldEq objLoc fieldName valLoc h
           | _ => False
         end
     | JFISep t1 t2 => exists (h1 h2 : Heap),
         (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
-        (JFIHeapSatisfiesInEnv h1 t1 env CC /\ JFIHeapSatisfiesInEnv h2 t2 env CC)
-    | JFIWand t1 t2 => forall h', JFIHeapsDisjoint h h' -> JFIHeapSatisfiesInEnv h' t1 env CC ->
-        (exists h_h', JFIHeapsUnion h h' h_h' /\ JFIHeapSatisfiesInEnv h_h' t2 env CC) 
+        (JFIHeapSatisfiesInEnv h1 t1 env this CC /\ JFIHeapSatisfiesInEnv h2 t2 env this CC)
+    | JFIWand t1 t2 => forall h', JFIHeapsDisjoint h h' -> JFIHeapSatisfiesInEnv h' t1 env this CC ->
+        (exists h_h', JFIHeapsUnion h h' h_h' /\ JFIHeapSatisfiesInEnv h_h' t2 env this CC) 
   end.
 
-Fixpoint JFIHeapSatisfiesOuterInEnv (h : Heap) (t : JFIOuterTerm) (env : JFITermEnv) (CC : JFProgram) : Prop :=
+Fixpoint JFIHeapSatisfiesOuterInEnv (h : Heap) (t : JFIOuterTerm) (env : JFITermEnv) (this : nat) (CC : JFProgram) : Prop :=
   match t with
-  | JFIOuterAnd t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env CC /\ JFIHeapSatisfiesOuterInEnv h t2 env CC
-  | JFIOuterOr t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env CC \/ JFIHeapSatisfiesOuterInEnv h t2 env CC
+  | JFIOuterAnd t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env this CC /\ JFIHeapSatisfiesOuterInEnv h t2 env this CC
+  | JFIOuterOr t1 t2 => JFIHeapSatisfiesOuterInEnv h t1 env this CC \/ JFIHeapSatisfiesOuterInEnv h t2 env this CC
   | JFIExists class name term => exists l : Loc,
       let env1 := StrMap.add name l env
-      in JFILocOfType l h class /\ JFIHeapSatisfiesOuterInEnv h term env1 CC
-  | JFIInner t => JFIHeapSatisfiesInEnv h t env CC
+      in JFILocOfType l h class /\ JFIHeapSatisfiesOuterInEnv h term env1 this CC
+  | JFIInner t => JFIHeapSatisfiesInEnv h t env this CC
   end.
-
 
 Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :=
   forall var_name,
@@ -120,7 +119,7 @@ Definition JFIGammaMatchEnv (h : Heap) (gamma : JFITypeEnv) (env : JFITermEnv) :
        JFILocOfType var_loc h var_type).
 
 Definition JFIHeapSatisfies (h : Heap) (t : JFITerm) (gamma : JFITypeEnv) (CC : JFProgram) : Prop :=
-  forall env, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env CC.
+  forall env this, JFIGammaMatchEnv h gamma env -> JFIHeapSatisfiesInEnv h t env this CC.
 
 (* Persistence *)
 
@@ -229,7 +228,6 @@ Fixpoint JFIVarFreshInOuterTerm (x : string) (t : JFIOuterTerm) :=
       if String.eqb name x then False else JFIVarFreshInOuterTerm x term
   | JFIInner t => JFIVarFreshInTerm x t
   end.
-
 
 Definition JFIValFreshInTerm (v : JFIVal) (t : JFITerm) :=
   match v with
