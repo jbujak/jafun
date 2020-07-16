@@ -41,8 +41,8 @@ Definition JFIEval (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (h
   let EmptyCtx := []
   in JFIPartialEval h [EmptyCtx [[ e ]]_ None] confs hn [EmptyCtx [[ JFVal1 (JFVLoc res) ]]_ ex] CC.
 
-Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (exn : JFEvMode) (res : Loc) (env : JFITermEnv) (CC : JFProgram) : Prop :=
-  JFIEval h (JFIExprSubstituteEnv env e) confs hn exn res CC.
+Definition JFIEvalInEnv (h : Heap) (e : JFExpr) (confs : list (Heap * FrameStack)) (hn : Heap) (exn : JFEvMode) (res : Loc) (env : JFITermEnv) (this : nat) (CC : JFProgram) : Prop :=
+  JFIEval h (JFIExprSubstituteEnv env this e) confs hn exn res CC.
 
 (* ======================= Evalution is deterministic ======================= *)
 
@@ -1961,20 +1961,20 @@ Proof.
     now apply PermutationEvalAux2 with (h'_ext := h2') (st'_perm := st2').
 Qed.
 
-Lemma FreeVarsInHeapThenLocsInStack : forall e h env,
+Lemma FreeVarsInHeapThenLocsInStack : forall e h env this,
   NoHardcodedLocsInExpr e ->
   FreeVarsInExprAreInHeap e h env ->
-  LocsInStackAreInHeap [ [] [[JFIExprSubstituteEnv env e ]]_ None] h.
+  LocsInStackAreInHeap [ [] [[JFIExprSubstituteEnv env this e ]]_ None] h.
 Proof.
 Admitted.
 
-Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env CC,
+Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env this CC,
   HeapConsistent h ->
   NoHardcodedLocsInExpr e ->
   FreeVarsInExprAreInHeap e h env ->
   JFIDisjointUnion h h1_rest h1 ->
   JFIDisjointUnion h h2_rest h2 ->
-  JFIEvalInEnv h1 e confs1 hn1 res_ex res1 env CC ->
+  JFIEvalInEnv h1 e confs1 hn1 res_ex res1 env this CC ->
   exists hn1_base confs2 hn2_base hn2 res2 pi,
     EnvsPermuted env env pi /\
     PiMapsTo res1 res2 pi /\
@@ -1982,11 +1982,11 @@ Theorem EvaluationDependsOnFreeVars : forall h h1_rest h2_rest h1 h2 e confs1 hn
     HeapsPermuted hn1_base hn2_base pi /\
     JFIDisjointUnion hn1_base h1_rest hn1 /\
     JFIDisjointUnion hn2_base h2_rest hn2 /\
-    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
+    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env this CC.
 Proof.
-  intros h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env CC.
+  intros h h1_rest h2_rest h1 h2 e confs1 hn1 res_ex res1 env this CC.
   intros h_consistent no_hardcoded_locs free_vars_in_h union_h1 union_h2 h1_eval.
-  set (st := [ [] [[JFIExprSubstituteEnv env e ]]_ None]).
+  set (st := [ [] [[JFIExprSubstituteEnv env this e ]]_ None]).
   set (stn1 := [ [] [[JFVal1 (JFVLoc res1) ]]_ res_ex]).
 
   assert (pi : HeapPermutation). admit.
@@ -2033,22 +2033,22 @@ Proof.
        now rewrite A_eq.
 Admitted.
 
-Theorem EvaluationOnExtendedHeap : forall h h2_rest h2 e confs hn1 res_ex res1 env CC,
+Theorem EvaluationOnExtendedHeap : forall h h2_rest h2 e confs hn1 res_ex res1 env this CC,
   HeapConsistent h ->
   NoHardcodedLocsInExpr e ->
   FreeVarsInExprAreInHeap e h env ->
-  JFIEvalInEnv h e confs hn1 res_ex res1 env CC ->
+  JFIEvalInEnv h e confs hn1 res_ex res1 env this CC ->
   JFIDisjointUnion h h2_rest h2 ->
   exists confs2 hn2_base hn2 res2 pi,
     HeapsPermuted hn1 hn2_base pi /\
     EnvsPermuted env env pi /\
     PiMapsTo res1 res2 pi /\
     JFIDisjointUnion hn2_base h2_rest hn2 /\ 
-    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env CC.
+    JFIEvalInEnv h2 e confs2 hn2 res_ex res2 env this CC.
 Proof.
-  intros h h2_rest h2 e confs hn1 res_ex res1 env CC.
+  intros h h2_rest h2 e confs hn1 res_ex res1 env this CC.
   intros h_consistent no_hardcoded free_vals_in_h eval union.
-  destruct (EvaluationDependsOnFreeVars h (Heap.empty Obj) h2_rest h h2 e confs hn1 res_ex res1 env CC)
+  destruct (EvaluationDependsOnFreeVars h (Heap.empty Obj) h2_rest h h2 e confs hn1 res_ex res1 env this CC)
     as (hn1_base & confs2 & hn2_base & hn2 & res2 & pi & conds); try easy.
   now apply DisjointUnionSymmetry, DisjointUnionIdentity.
   exists confs2, hn2_base, hn2, res2, pi.
@@ -2146,14 +2146,14 @@ Proof.
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
 Qed.
 
-Theorem LetEvaluationNormal : forall h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env CC,
-   JFIEvalInEnv h e1 e1_confs h' None e1_res env CC ->
-   JFIEvalInEnv h' e2 e2_confs hn A e2_res (StrMap.add x e1_res env) CC ->
-   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env CC.
+Theorem LetEvaluationNormal : forall h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env this CC,
+   JFIEvalInEnv h e1 e1_confs h' None e1_res env this CC ->
+   JFIEvalInEnv h' e2 e2_confs hn A e2_res (StrMap.add x e1_res env) this CC ->
+   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn A e2_res env this CC.
 Proof.
-  intros h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env CC.
+  intros h h' hn class x e1 e2 e1_confs e2_confs e1_res e2_res A env this CC.
   intros e1_eval e2_eval.
-  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) this e2).
   apply ExistsNormalLetEval with (x := x) (class := class) (e2 := e2_in_env) in e1_eval
     as (let_e1_confs & e1_let_eval).
   exists (let_e1_confs ++ e2_confs).
@@ -2166,39 +2166,39 @@ Proof.
   now rewrite SubsituteVarIdentity.
 Qed.
 
-Theorem LetEvaluationEx : forall h hn class x e1 e2 e1_confs e1_res ex env CC,
-   JFIEvalInEnv h e1 e1_confs hn (Some ex) e1_res env CC ->
-   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn (Some ex) e1_res env CC.
+Theorem LetEvaluationEx : forall h hn class x e1 e2 e1_confs e1_res ex env this CC,
+   JFIEvalInEnv h e1 e1_confs hn (Some ex) e1_res env this CC ->
+   exists confs, JFIEvalInEnv h (JFLet class x e1 e2) confs hn (Some ex) e1_res env this CC.
 Proof.
-  intros h hn class x e1 e2 e1_confs e1_res ex env CC.
+  intros h hn class x e1 e2 e1_confs e1_res ex env this CC.
   intros e1_eval.
-  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) this e2).
   apply ExistsExLetEval with (x := x) (class := class) (e2 := e2_in_env) in e1_eval.
   destruct e1_eval as (let_e1_confs & e1_let_eval).
   now exists (let_e1_confs).
 Qed.
 
-Theorem TryEvaluationNormal : forall h hn mu catch_A x e1 e2 e1_confs e1_res env CC,
-   (JFIEvalInEnv h e1 e1_confs hn None e1_res env CC) ->
-   (exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn None e1_res env CC).
+Theorem TryEvaluationNormal : forall h hn mu catch_A x e1 e2 e1_confs e1_res env this CC,
+   (JFIEvalInEnv h e1 e1_confs hn None e1_res env this CC) ->
+   (exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn None e1_res env this CC).
 Proof.
-  intros h hn mu catch_A x e1 e2 e1_confs e1_res env CC.
+  intros h hn mu catch_A x e1 e2 e1_confs e1_res env this CC.
   intros e1_eval.
-  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) this e2).
   apply ExistsNormalTryEval with (x := x) (mu := mu)
     (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
   destruct e1_eval as (try_e1_confs & try_e1_eval).
   now exists (try_e1_confs).
 Qed.
 
-Theorem TryEvaluationExPass : forall h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env CC,
+Theorem TryEvaluationExPass : forall h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env this CC,
    ~Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
-   JFIEvalInEnv h e1 e1_confs hn (Some e1_A) e1_res env CC ->
-   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn (Some e1_A) e1_res env CC.
+   JFIEvalInEnv h e1 e1_confs hn (Some e1_A) e1_res env this CC ->
+   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn (Some e1_A) e1_res env this CC.
 Proof.
-  intros h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env CC.
+  intros h hn mu e1_A catch_A x e1 e2 e1_confs e1_res env this CC.
   intros not_subtype e1_eval.
-  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) this e2).
   apply ExistsExTryEval with (x := x) (mu := mu)
     (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
   destruct e1_eval as (try_e1_confs & try_e1_eval).
@@ -2213,15 +2213,15 @@ Proof.
   now apply not_subtype.
 Qed.
 
-Theorem TryEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env CC,
+Theorem TryEvaluationExCatch : forall h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env this CC,
    Is_true (subtype_bool CC (JFClass e1_A) (JFClass catch_A)) ->
-   JFIEvalInEnv h e1 e1_confs h' (Some e1_A) e1_res env CC ->
-   JFIEvalInEnv h' e2 e2_confs hn e2_A e2_res (StrMap.add x e1_res env) CC ->
-   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn e2_A e2_res env CC.
+   JFIEvalInEnv h e1 e1_confs h' (Some e1_A) e1_res env this CC ->
+   JFIEvalInEnv h' e2 e2_confs hn e2_A e2_res (StrMap.add x e1_res env) this CC ->
+   exists confs, JFIEvalInEnv h (JFTry e1 mu catch_A x e2) confs hn e2_A e2_res env this CC.
 Proof.
-  intros h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env CC.
+  intros h h' hn mu e1_A e2_A catch_A x e1 e2 e1_confs e2_confs e1_res e2_res env this CC.
   intros is_subtype e1_eval e2_eval.
-  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) e2).
+  set (e2_in_env := JFIExprSubstituteEnv (StrMap.remove x env) this e2).
   apply ExistsExTryEval with (x := x) (mu := mu)
     (catch_ex := catch_A) (e2 := e2_in_env) in e1_eval.
   unfold JFIEvalInEnv, JFIEval in e2_eval.

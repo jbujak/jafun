@@ -197,29 +197,29 @@ Fixpoint JFITermSubstituteVals (froms : list string) (tos : list JFIVal) (t : JF
 Definition JFITermSubstituteVar (from : string) (to : string) (t : JFITerm) : JFITerm :=
     JFITermSubstituteVal from (JFIVar to) t.
 
-Definition JFIValSubstituteEnv (env : JFITermEnv) (val : JFVal)  :=
+Definition JFIValSubstituteEnv (env : JFITermEnv) (this : nat) (val : JFVal) :=
   StrMap.fold (fun k v a => JFValSubstituteVal k (JFVLoc v) a) env val.
 
-Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (e : JFExpr) : JFExpr :=
+Fixpoint JFIExprSubstituteEnv (env : JFITermEnv) (this : nat) (e : JFExpr) : JFExpr :=
   match e with
-  | JFNew mu C vs => JFNew mu C (List.map (JFIValSubstituteEnv env) vs)
+  | JFNew mu C vs => JFNew mu C (List.map (JFIValSubstituteEnv env this) vs)
   | JFLet C x e1 e2 =>
-      JFLet C x (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv (StrMap.remove x env) e2)
+      JFLet C x (JFIExprSubstituteEnv env this e1) (JFIExprSubstituteEnv (StrMap.remove x env) this e2)
   | JFIf v1 v2 e1 e2 =>
-    JFIf (JFIValSubstituteEnv env v1) (JFIValSubstituteEnv env v2)
-         (JFIExprSubstituteEnv env e1) (JFIExprSubstituteEnv env e2)
+    JFIf (JFIValSubstituteEnv env this v1) (JFIValSubstituteEnv env this v2)
+         (JFIExprSubstituteEnv env this e1) (JFIExprSubstituteEnv env this e2)
   | JFInvoke v1 m vs =>
-    JFInvoke (JFIValSubstituteEnv env v1) m (List.map (JFIValSubstituteEnv env) vs)
+    JFInvoke (JFIValSubstituteEnv env this v1) m (List.map (JFIValSubstituteEnv env this) vs)
   | JFAssign (v1,fld) v2 =>
-    JFAssign (JFIValSubstituteEnv env v1, fld) (JFIValSubstituteEnv env v2)
+    JFAssign (JFIValSubstituteEnv env this v1, fld) (JFIValSubstituteEnv env this v2)
   | JFVal1 v1 =>
-    JFVal1 (JFIValSubstituteEnv env v1)
+    JFVal1 (JFIValSubstituteEnv env this v1)
   | JFVal2 (v1, fld) =>
-    JFVal2 (JFIValSubstituteEnv env v1, fld)
+    JFVal2 (JFIValSubstituteEnv env this v1, fld)
   | JFThrow v1 =>
-    JFThrow  (JFIValSubstituteEnv env v1)
+    JFThrow  (JFIValSubstituteEnv env this v1)
   | JFTry e1 mu C x e2 =>
-      JFTry (JFIExprSubstituteEnv env e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) e2)
+      JFTry (JFIExprSubstituteEnv env this e1) mu C x (JFIExprSubstituteEnv (StrMap.remove x env) this e2)
   end.
 
 Definition VarFreeInVal x (v : JFIVal) :=
@@ -269,19 +269,19 @@ Fixpoint VarFreeInTerm x t :=
   | JFIWand t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
   end.
 
-Lemma ValEnvSubstitutionPreservesVLoc : forall env loc,
-  JFIValSubstituteEnv env (JFVLoc loc) = JFVLoc loc.
+Lemma ValEnvSubstitutionPreservesVLoc : forall env this loc,
+  JFIValSubstituteEnv env this (JFVLoc loc) = JFVLoc loc.
 Proof.
-  intros env loc.
+  intros env this loc.
   unfold JFIValSubstituteEnv.
   rewrite StrMap.fold_1.
   induction (StrMap.elements (elt:=Loc) env); auto.
 Qed.
 
-Lemma ValEnvSubstitutionPreservesThis : forall env,
-  JFIValSubstituteEnv env (JFSyn JFThis) = JFSyn JFThis.
+Lemma ValEnvSubstitutionPreservesThis : forall env this,
+  JFIValSubstituteEnv env this (JFSyn JFThis) = JFSyn JFThis.
 Proof.
-  intros env.
+  intros env this.
   unfold JFIValSubstituteEnv.
   rewrite StrMap.fold_1.
   induction (StrMap.elements (elt:=Loc) env); auto.
@@ -434,11 +434,11 @@ Proof.
   + now rewrite H1, H2.
 Qed.
 
-Lemma ValEnvSubstitutionPreservesVarNotInEnv : forall env x,
+Lemma ValEnvSubstitutionPreservesVarNotInEnv : forall env this x,
   ~StrMap.In x env ->
-  JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFSyn (JFVar x).
+  JFIValSubstituteEnv env this (JFSyn (JFVar x)) = JFSyn (JFVar x).
 Proof.
-  intros env x x_not_in_env.
+  intros env this x x_not_in_env.
   unfold JFIValSubstituteEnv.
   assert (x_not_in_elements : forall a, List.In a (StrMap.elements (elt:=Loc) env) -> x <> (fst a)).
   + intros (y, l) a_in_elements.
@@ -469,23 +469,23 @@ Proof.
        apply List.in_eq.
 Qed.
 
-Lemma ValEnvSubstitutionReplacesVarInEnv : forall env x l,
+Lemma ValEnvSubstitutionReplacesVarInEnv : forall env this x l,
   StrMap.find x env = Some l ->
-  JFIValSubstituteEnv env (JFSyn (JFVar x)) = JFVLoc l.
+  JFIValSubstituteEnv env this (JFSyn (JFVar x)) = JFVLoc l.
 Proof.
 Admitted.
 
-Lemma ValEnvSubstitutionReplacesNthVarInEnv : forall var env l vs n,
+Lemma ValEnvSubstitutionReplacesNthVarInEnv : forall var env this l vs n,
   StrMap.find var env = Some l ->
   nth_error vs n = Some (JFSyn (JFVar var)) ->
-  nth_error (map (JFIValSubstituteEnv env) vs) n = Some (JFVLoc l).
+  nth_error (map (JFIValSubstituteEnv env this) vs) n = Some (JFVLoc l).
 Proof.
 Admitted.
 
-Lemma ExprEnvSubstitutionPreservesVLoc : forall env loc,
-  JFIExprSubstituteEnv env (JFVal1 (JFVLoc loc)) = JFVal1 (JFVLoc loc).
+Lemma ExprEnvSubstitutionPreservesVLoc : forall env this loc,
+  JFIExprSubstituteEnv env this (JFVal1 (JFVLoc loc)) = JFVal1 (JFVLoc loc).
 Proof.
-  intros env loc.
+  intros env this loc.
   unfold JFIExprSubstituteEnv.
   rewrite ValEnvSubstitutionPreservesVLoc.
   trivial.
@@ -567,12 +567,12 @@ Lemma SubstExprComm : forall f1 f2 l1 l2 e,
 Proof.
 Admitted.
 
-Lemma SubstituteValEnvComm : forall x l v env,
+Lemma SubstituteValEnvComm : forall x l v env this,
   ~StrMap.In x env ->
-  (JFIValSubstituteEnv env (JFValSubstituteVal x (JFVLoc l) v)) =
-  (JFValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env v)).
+  (JFIValSubstituteEnv env this (JFValSubstituteVal x (JFVLoc l) v)) =
+  (JFValSubstituteVal x (JFVLoc l) (JFIValSubstituteEnv env this v)).
 Proof.
-  intros x l v env.
+  intros x l v env this.
   intros x_not_in_env.
   destruct v.
   + unfold JFValSubstituteVal.
@@ -595,12 +595,12 @@ Proof.
        trivial.
 Admitted.
 
-Lemma SubstituteExprEnvComm : forall x l e env,
+Lemma SubstituteExprEnvComm : forall x l e env this,
   ~StrMap.In x env ->
-  JFIExprSubstituteEnv env (JFIExprSubstituteVal x (JFVLoc l) e) =
-  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv env e).
+  JFIExprSubstituteEnv env this (JFIExprSubstituteVal x (JFVLoc l) e) =
+  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv env this e).
 Proof.
-  intros x l e env.
+  intros x l e env this.
   intros not_x_in_env.
   induction e.
   + simpl.
@@ -612,12 +612,12 @@ Proof.
        unfold map in map_eq.
        rewrite map_eq.
        trivial.
-  + 
+  +
 Admitted.
 
-Lemma RemoveVarFromEnv : forall x v l e env,
-  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv (StrMap.remove x env) e) =
-  JFIExprSubstituteEnv (StrMap.add v l env) (JFIExprSubstituteVar x v e).
+Lemma RemoveVarFromEnv : forall x v l e env this,
+  JFIExprSubstituteVal x (JFVLoc l) (JFIExprSubstituteEnv (StrMap.remove x env) this e) =
+  JFIExprSubstituteEnv (StrMap.add v l env) this (JFIExprSubstituteVar x v e).
 Proof.
 Admitted.
 
@@ -913,4 +913,3 @@ Proof.
   + exists o'.
     now rewrite <-HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff, HeapFacts.add_neq_o.
 Qed.
-  

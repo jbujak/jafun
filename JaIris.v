@@ -77,7 +77,7 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (this
     | JFIImplies t1 t2 => ~(JFIHeapSatisfiesInEnv h t1 env this CC) \/ JFIHeapSatisfiesInEnv h t2 env this CC
     | JFIHoare t1 e ex valueName t2 => JFIHeapSatisfiesInEnv h t1 env this CC -> exists confs hn res_ex res,
         let newEnv := StrMap.add valueName res env
-        in (JFIEvalInEnv h e confs hn res_ex res env CC) /\ (* TODO this in eval *)
+        in (JFIEvalInEnv h e confs hn res_ex res env this CC) /\
            (res_ex = ex /\ JFIHeapSatisfiesInEnv hn t2 newEnv this CC)
     | JFIEq val1 val2 =>
         let l1 := JFIValToLoc val1 env this
