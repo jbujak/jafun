@@ -146,7 +146,7 @@ Lemma EvaluationJoin : forall h st confs h' st' confs' h'' st'' CC,
 Proof.
 Admitted.
 
-(* ======================= Evalution in extended context ======================= *)
+(* ======================= Evalution in extended context / stack ======================= *)
 
 Definition ConfExtendedByCtx (ext_conf conf : Heap * FrameStack) ctx :=
   fst conf = fst ext_conf /\ 
@@ -154,15 +154,30 @@ Definition ConfExtendedByCtx (ext_conf conf : Heap * FrameStack) ctx :=
     snd conf =     st ++ [ ctxs           [[ e1 ]]_ A] /\
     snd ext_conf = st ++ [(ctxs ++ [ctx]) [[ e1 ]]_ A].
 
-Fixpoint ConfsExtendedByCtx ext_confs confs ctx:=
+Fixpoint ConfsExtendedByCtx ext_confs confs ctx :=
   match (ext_confs, confs) with
   | (ext_conf::ext_confs, conf::confs) => ConfExtendedByCtx ext_conf conf ctx /\ ConfsExtendedByCtx ext_confs confs ctx
   | ([], []) => True
   | _ => False
   end.
 
-Lemma ExistExtendedConfs : forall confs ctx,
+Definition ConfExtendedBySt (ext_conf conf : Heap * FrameStack) st :=
+  fst conf = fst ext_conf /\ (snd conf) ++ st = snd ext_conf.
+
+Fixpoint ConfsExtendedBySt ext_confs confs st :=
+  match (ext_confs, confs) with
+  | (ext_conf::ext_confs, conf::confs) => ConfExtendedBySt ext_conf conf st /\ ConfsExtendedBySt ext_confs confs st
+  | ([], []) => True
+  | _ => False
+  end.
+
+Lemma ExistConfsExtendedByCtx : forall confs ctx,
   exists ext_confs, ConfsExtendedByCtx ext_confs confs ctx.
+Proof.
+Admitted.
+
+Lemma ExistConfsExtendedBySt : forall confs st,
+  exists ext_confs, ConfsExtendedBySt ext_confs confs st.
 Proof.
 Admitted.
 
@@ -174,12 +189,19 @@ Lemma ExtendedRedIsRed : forall h h' st st' ctxs ctxs' e1 e1' A A' CC ctx,
 Proof.
 Admitted.
 
-Lemma ExtendedEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_confs hn e_A CC,
+Lemma ExtendedCtxEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_confs hn e_A CC,
   JFIPartialEval h ([ ctxs  [[ e  ]]_ A  ]) confs hn
                     [ ctxs' [[ e' ]]_ e_A] CC ->
   ConfsExtendedByCtx ext_confs confs ctx ->
   JFIPartialEval h ([ (ctxs  ++ [ctx]) [[ e  ]]_ A  ]) ext_confs hn
                     [ (ctxs' ++ [ctx]) [[ e' ]]_ e_A] CC.
+Proof.
+Admitted.
+
+Lemma ExtendedStackEvaluationIsEvaluation : forall h st confs hn st' CC (ext_st : list Frame) ext_confs,
+    JFIPartialEval h st confs hn st' CC ->
+    ConfsExtendedBySt ext_confs confs ext_st ->
+    JFIPartialEval h (st ++ ext_st) ext_confs hn (st' ++ ext_st) CC.
 Proof.
 Admitted.
 
@@ -2069,7 +2091,7 @@ Lemma ExistsNormalLetEval : forall h e1 e1_confs hn e1_res class x e2 CC,
 Proof.
   intros h e1 e1_confs hn e1_res class x e2 CC.
   intros e1_eval.
-  destruct (ExistExtendedConfs e1_confs (JFCtxLet class x __ e2))
+  destruct (ExistConfsExtendedByCtx e1_confs (JFCtxLet class x __ e2))
     as (e1_ext_confs & e1_ext_extended).
   set (letin := (h, [ [] [[ JFLet class x e1 e2 ]]_ None ])).
   set (letgo := (hn, [ [JFCtxLet class x __ e2] [[ JFVal1 (JFVLoc e1_res) ]]_ None])).
@@ -2077,7 +2099,7 @@ Proof.
   simpl.
   split; try split; try trivial.
   apply EvaluationJoin with (h' := hn) (st' := snd letgo).
-  + now apply ExtendedEvaluationIsEvaluation with
+  + now apply ExtendedCtxEvaluationIsEvaluation with
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
   + now simpl.
 Qed.
@@ -2091,7 +2113,7 @@ Lemma ExistsExLetEval : forall h e1 e1_confs hn e1_res ex class x e2 CC,
 Proof.
   intros h e1 e1_confs hn e1_res ex class x e2 CC.
   intros e1_eval.
-  destruct (ExistExtendedConfs e1_confs (JFCtxLet class x __ e2))
+  destruct (ExistConfsExtendedByCtx e1_confs (JFCtxLet class x __ e2))
     as (e1_ext_confs & e1_ext_extended).
   set (letin := (h, [ [] [[ JFLet class x e1 e2 ]]_ None ])).
   set (letgo := (hn, [ [JFCtxLet class x __ e2] [[ JFVal1 (JFVLoc e1_res) ]]_ (Some ex)])).
@@ -2099,7 +2121,7 @@ Proof.
   simpl.
   split; try split; try trivial.
   apply EvaluationJoin with (h' := hn) (st' := snd letgo).
-  + now apply ExtendedEvaluationIsEvaluation with
+  + now apply ExtendedCtxEvaluationIsEvaluation with
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
   + now simpl.
 Qed.
@@ -2113,7 +2135,7 @@ Lemma ExistsNormalTryEval : forall h e1 e1_confs hn e1_res mu catch_ex x e2 CC,
 Proof.
   intros h e1 e1_confs hn e1_res mu catch_ex x e2 CC.
   intros e1_eval.
-  destruct (ExistExtendedConfs e1_confs (JFCtxTry __ mu catch_ex x e2))
+  destruct (ExistConfsExtendedByCtx e1_confs (JFCtxTry __ mu catch_ex x e2))
     as (e1_ext_confs & e1_ext_extended).
   set (tryin := (h, [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ])).
   set (trygo := (hn, [ [JFCtxTry __ mu catch_ex x e2] [[ JFVal1 (JFVLoc e1_res) ]]_ None])).
@@ -2121,7 +2143,7 @@ Proof.
   simpl.
   split; try split; try trivial.
   apply EvaluationJoin with (h' := hn) (st' := snd trygo).
-  + now apply ExtendedEvaluationIsEvaluation with
+  + now apply ExtendedCtxEvaluationIsEvaluation with
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
   + now simpl.
 Qed.
@@ -2135,14 +2157,14 @@ Lemma ExistsExTryEval : forall h e1 e1_confs hn e1_res mu catch_ex ex x e2 CC,
 Proof.
   intros h e1 e1_confs hn e1_res mu catch_ex ex x e2 CC.
   intros e1_eval.
-  destruct (ExistExtendedConfs e1_confs (JFCtxTry __ mu catch_ex x e2))
+  destruct (ExistConfsExtendedByCtx e1_confs (JFCtxTry __ mu catch_ex x e2))
     as (e1_ext_confs & e1_ext_extended).
   set (tryin := (h, [ [] [[ JFTry e1 mu catch_ex x e2 ]]_ None ])).
   set (trygo := (hn, [ [] [[ e2 ]]_ None])).
   exists (tryin::e1_ext_confs).
   simpl.
   split; try split; try trivial.
-  now apply ExtendedEvaluationIsEvaluation with
+  now apply ExtendedCtxEvaluationIsEvaluation with
       (ctxs := []) (ctxs' := []) (confs := e1_confs).
 Qed.
 

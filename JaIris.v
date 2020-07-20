@@ -515,16 +515,16 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (fst (rettyp_of_md method) = JFClass rettypeCN) ->
       (In (JFIInvariant cn mn p' ex w q') (JFIDeclsInvariants decls)) ->
       (JFIProves decls gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse)) ->
-      (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) ->
+      (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) -> (* TODO substitute this *)
       (forall x gamma_x,
          JFIVarFreshInTerm x s ->
          JFIGammaAddNew x rettypeCN gamma = Some gamma_x ->
-         JFIProves decls gamma s
+         JFIProves decls gamma_x s
            (JFIImplies
              (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
              (JFITermSubstituteVar u x q))) ->
       (*--------------------------------------------------*)
-      JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q) (* TODO null *)
+      JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)
 
 | JFIHTInvokeNoRetRule :
     forall cn method p' ex w q' decls gamma s p q u v v_expr vs vs_expr mn,
@@ -536,7 +536,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) ->
       (JFIProves decls gamma s (JFIImplies (JFITermSubstituteVals (params_of_md method) vs q') q)) ->
       (*--------------------------------------------------*)
-      JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q) (* TODO null *)
+      JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)
 
 | JFIHTNullInvokeRule :
     forall decls gamma s x x_expr mn vs v,

@@ -2757,6 +2757,112 @@ Proof.
 Qed.
 Hint Resolve HTNullInvokeSoundness : core.
 
+Lemma ValToLocImpliesSubstitute : forall v env this n,
+  JFIValToLoc v env this = Some (JFLoc n) ->
+  JFIValSubstituteEnv env this (JFIValToJFVal v) = JFVLoc (JFLoc n).
+Proof.
+  intros v env this n v_to_loc.
+  destruct v; try discriminate v_to_loc; simpl in *.
+  + injection v_to_loc as n_eq.
+    now rewrite ValEnvSubstitutionSubstitutesThis, n_eq.
+  + now rewrite ValEnvSubstitutionReplacesVarInEnv with (l := (JFLoc n)).
+Qed.
+
+(* TODO substitute this in p' *)
+Lemma ParamsSubstitutionPreservesHeapSatisfying : forall h method vs p' env this params_env n CC,
+  JFIHeapSatisfiesInEnv h (JFITermSubstituteVals (params_of_md method) vs p') env this CC <->
+  JFIHeapSatisfiesInEnv h p' params_env n CC.
+Proof.
+Admitted.
+
+Lemma SubstMethodWithParamsEnv : forall method params_env env this vs_expr n,
+  substList (map JFVar (params_of_md method)) (map (JFIValSubstituteEnv env this) vs_expr)
+                 (substExpr JFThis (JFLoc n) (body_of_md method)) =
+  Some (JFIExprSubstituteEnv params_env n (body_of_md method)).
+Proof.
+Admitted.
+
+Lemma InvokeBodyEq : forall h n cn mn params_env env this vs_expr method CC,
+  getClassName h n = Some cn ->
+  methodLookup CC cn mn = Some method ->
+  getInvokeBody CC (getClassName h n) n mn (map (JFIValSubstituteEnv env this) vs_expr) h [] [] =
+  Some (h, [ [] [[JFIExprSubstituteEnv params_env n (body_of_md method) ]]_ None;
+             [] [[JFInvoke (JFVLoc (JFLoc n)) mn (map (JFIValSubstituteEnv env this) vs_expr) ]]_ None]).
+Proof.
+  intros h n cn mn params_env env this vs_expr method CC.
+  intros class_name mn_method.
+  unfold getInvokeBody.
+  rewrite class_name, mn_method.
+  rewrite SubstMethodWithParamsEnv with (params_env := params_env); try easy.
+Admitted.
+
+Lemma HTInvokeRetSoundness : forall cn method rettypeCN p' ex w q' gamma s p q u v v_expr vs vs_expr mn decls invariants CC,
+  v_expr = JFIValToJFVal v ->
+  vs_expr = JFIValsToJFVals vs ->
+  JFIValType decls gamma v = Some cn ->
+  methodLookup CC cn mn = Some method ->
+  fst (rettyp_of_md method) = JFClass rettypeCN ->
+  In (JFIInvariant cn mn p' ex w q') invariants ->
+  JFISemanticallyImplies gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse) CC ->
+  JFISemanticallyImplies gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p')) CC ->
+  (forall (x : string) (gamma_x : JFITypeEnv),
+     JFIVarFreshInTerm x s ->
+     JFIGammaAddNew x rettypeCN gamma = Some gamma_x ->
+     JFISemanticallyImplies gamma_x s
+       (JFIImplies
+          (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
+          (JFITermSubstituteVar u x q)) CC) ->
+  JFISemanticallyImplies gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q) CC.
+Proof.
+  intros cn method rettypeCN p' ex w q' gamma s p q u v v_expr vs vs_expr mn decls invariants CC.
+  intros v_expr_val vs_expr_val type_of_v mn_is_method ret_type_of_method in_invariants
+         v_not_null p_implies_p' q'_implies_q.
+  intros env this h gamma_match_env h_satisfies_s h_satisfies_p.
+  unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
+  fold JFIPartialEval.
+
+  set (params_env := StrMap.empty (Loc)). (* TODO new env for body *)
+  destruct (JFIExistsValToLoc v v_expr env this) as (l & x_is_l & x_subst_eq); trivial.
+  destruct l.
+    exfalso.
+    destruct (v_not_null env this h); try easy.
+    apply H.
+    simpl.
+    now rewrite x_is_l.
+  assert (hoare_body : JFIHeapSatisfiesInEnv h (JFIHoare p' (body_of_md method) ex w q') params_env n CC).
+    admit. (* TODO invariant to Hoare *)
+  simpl in hoare_body.
+  destruct hoare_body as (confs & hn & res_ex & res & eval & ex_eq & hn_satisfies_q').
+    assert (h_satisfies_p' := p_implies_p' env this h gamma_match_env h_satisfies_s).
+    simpl in h_satisfies_p'.
+    destruct h_satisfies_p'; [ now destruct (H h_satisfies_p) | ].
+    now apply (ParamsSubstitutionPreservesHeapSatisfying h method vs p' env this params_env n CC).
+
+  rewrite ex_eq in *.
+  set (invoke_f := [ [] [[JFInvoke (JFIValSubstituteEnv env this v_expr) mn (map (JFIValSubstituteEnv env this) vs_expr) ]]_ None]).
+  destruct (ExistConfsExtendedBySt confs invoke_f) as (ext_confs & ext_confs_extended).
+
+  exists (((h, invoke_f)::ext_confs) ++ [(hn, ([] [[JFVal1 (JFVLoc res) ]]_ ex) :: invoke_f)]), hn, ex, res.
+  split; [ split; [ | split] | split]; try easy.
+  + unfold JFIEvalInEnv, JFIEval in eval.
+    simpl.
+    rewrite v_expr_val.
+    rewrite ValToLocImpliesSubstitute with (n := n); try easy.
+    unfold JFIEvalInEnv, JFIEval in eval.
+    rewrite InvokeBodyEq with (params_env := params_env) (cn := cn) (method := method); try easy.
+    ++ apply ExtendedStackEvaluationIsEvaluation
+          with (ext_st := invoke_f) (ext_confs := ext_confs) in eval; trivial.
+       simpl in eval.
+       apply EvaluationJoin with (h' := hn) (st' :=  (([] [[JFVal1 (JFVLoc res) ]]_ ex) :: invoke_f)); try easy.
+       +++ unfold invoke_f in eval |- *.
+           rewrite x_subst_eq in eval |- *.
+           apply eval.
+       +++ now destruct ex.
+    ++ admit. (* TODO type of v *)
+  + admit. (* TODO hn satisfies q *)
+Admitted.
+Hint Resolve HTInvokeRetSoundness : core.
+
 
 Lemma HTThrowSoundness : forall decls gamma x x_expr cn s v CC,
   x_expr = JFIValToJFVal x ->
@@ -3357,7 +3463,7 @@ Proof.
   (* JFIHTIfRule *)
   + now apply HTIfRuleSoundness with (v1 := v1) (v2 := v2).
   (* JFIHTInvokeRetRule *)
-  + admit. (* TODO *)
+  + eauto.
   (* JFIHTInvokeNoRetRule *)
   + admit. (* TODO *)
   (* JFIHTNullInvokeRule *)
