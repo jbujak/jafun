@@ -738,19 +738,6 @@ Lemma AddingFreshVarPreservesHeapSatisfyingOuter : forall q CC h x l env this,
 Proof.
 Admitted.
 
-Lemma RemovingFreshVarPreservesHeapSatisfyig : forall h p x l env this CC x0,
-  (JFIVarFreshInTerm x0 p) ->
-  (JFIHeapSatisfiesInEnv h p (StrMap.add x l env) this CC) ->
-   JFIHeapSatisfiesInEnv h p (StrMap.add x l (StrMap.remove (elt:=Loc) x0 env)) this CC.
-Proof.
-Admitted.
-
-Lemma VarNameChangePreservesHeapSatisfying : forall h t u v l env this CC,
-  (JFIHeapSatisfiesInEnv h t (StrMap.add v l env) this CC) <->
-   JFIHeapSatisfiesInEnv h (JFITermSubstituteVar v u t) (StrMap.add u l env) this CC.
-Proof.
-Admitted.
-
 Lemma HeapSatisfiesSubstIffVarMovedToEnv : forall h x v l p env this CC,
   (StrMap.find v env = Some l) ->
   (JFIHeapSatisfiesOuterInEnv h (JFIOuterTermSubstituteVal x (JFIVar v) p) env this CC <->
@@ -1686,7 +1673,7 @@ Proof.
     now rewrite ValEnvSubstitutionPreservesVLoc.
   + exists (JFLoc this).
     split; try easy.
-    admit. (* TODO this val substitute env *)
+    apply ValEnvSubstitutionSubstitutesThis.
   + assert (exists l, StrMap.find var env = Some l). admit. (* TODO var in env *)
     destruct H as (l & var_l_env).
     exists l.
