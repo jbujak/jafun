@@ -12,6 +12,7 @@ Require Import JaProgram.
 Require Import JaEnvs.
 Require Import Jafun.
 Require Import JaIrisCommon.
+Require Import JaIrisProof.
 Require Import JaIrisPermutation.
 Require Import JaEval.
 Require Import JaIris.
@@ -1694,16 +1695,6 @@ Proof.
   now rewrite u_eq_var.
 Qed.
 
-Lemma EnsureValIsLoc : forall (v : JFVal),
-  exists l, v = JFVLoc l.
-Proof.
-Admitted.
-
-Lemma EnsureVarInEnv : forall x (env : JFITermEnv),
-  exists l, StrMap.find x env = Some l.
-Proof.
-Admitted.
-
 Lemma EnsureValsMapIsLocsMap : forall vs env this,
   exists ls, map (JFIValSubstituteEnv env this) vs = map JFVLoc ls.
 Proof.
@@ -3014,6 +3005,40 @@ Definition ValInEnv x (env : JFITermEnv) :=
   | _ => True
   end.
 
+Lemma FreeVarsInEqThenValsInEnv : forall val1 val2 h env,
+  FreeVarsInTermAreInHeap (JFIEq val1 val2) h env ->
+  (ValInEnv val1 env /\ ValInEnv val2 env).
+Proof.
+  intros val1 val2 h env free_vars.
+  split.
+  + destruct val1; simpl; try easy.
+    destruct (free_vars var).
+    ++ now apply or_introl.
+    ++ apply StrMapFacts.elements_in_iff.
+       exists null.
+       now apply StrMapFacts.elements_mapsto_iff.
+    ++ apply StrMapFacts.elements_in_iff.
+       destruct H as (n & _ & var_n & _).
+       exists (JFLoc n).
+       now apply StrMapFacts.elements_mapsto_iff.
+  + destruct val2; simpl; try easy.
+    destruct (free_vars var).
+    ++ now apply or_intror.
+    ++ apply StrMapFacts.elements_in_iff.
+       exists null.
+       now apply StrMapFacts.elements_mapsto_iff.
+    ++ apply StrMapFacts.elements_in_iff.
+       destruct H as (n & _ & var_n & _).
+       exists (JFLoc n).
+       now apply StrMapFacts.elements_mapsto_iff.
+Qed.
+
+Lemma FreeVarsInFieldEqThenValsInEnv : forall obj field v h env,
+  FreeVarsInTermAreInHeap (JFIFieldEq obj field v) h env ->
+  (ValInEnv obj env /\ ValInEnv v env).
+Proof.
+Admitted.
+
 Lemma SubenvValToLocEq : forall v env1 env2 this,
   Subenv env1 env2 ->
   ValInEnv v env1 ->
@@ -3044,147 +3069,176 @@ Proof.
   now rewrite l_o_h1, l_o_h2.
 Qed.
 
-Lemma FreeVarsInHoarePoscondition : forall t1 e ex v t2 env res,
+Lemma FreeVarsInHoarePrecondition : forall t1 e ex v t2 env,
   FreeVarsInEnv (JFIHoare t1 e ex v t2) env ->
-  FreeVarsInEnv t2 (StrMap.add v res env).
+  FreeVarsInEnv t1 env.
 Proof.
-  intros t1 e ex v t2 env res.
+  intros t1 e ex v t2 env.
   intros free_vars_hoare.
-  intros x x_free_in_t2.
-  destruct (Classical_Prop.classic (v = x)).
-  + apply StrMapFacts.elements_in_iff.
-    exists res.
-    now apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff, StrMapFacts.add_eq_o.
-  + assert (x_in_env := free_vars_hoare x).
-    apply StrMapFacts.elements_in_iff in x_in_env as (l & x_e).
-    ++ apply StrMapFacts.elements_in_iff.
-       exists l.
-       rewrite <-StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in x_e |- *.
-       now rewrite StrMapFacts.add_neq_o.
-    ++ simpl.
-       apply or_intror, or_intror.
-       assert ((v =? x)%string = true -> False).
-       +++ intros v_eq_x.
-           apply H.
-           now rewrite String.eqb_eq in v_eq_x.
-       +++ now destruct ((v =? x)%string).
+  intros x x_free_in_t1.
+  unfold FreeVarsInEnv in free_vars_hoare.
+  apply (free_vars_hoare x).
+  now apply or_introl.
 Qed.
 
-Lemma ExtendingHeapPreservesHoareSatisfying : forall t1 e ex v t2 h1 env1 h2 h env this CC,
-  let t := JFIHoare t1 e ex v t2 in
-  EnvMapsToHeap env1 h1 ->
-  EnvMapsToHeap env h ->
+Lemma FreeVarsInHoarePoscondition : forall t1 e ex v t2 h env res,
+  FreeVarsInTermAreInHeap (JFIHoare t1 e ex v t2) h env->
+  FreeVarsInTermAreInHeap t2 h (StrMap.add v res env).
+Proof.
+Admitted.
+
+Definition ExtendingHeapPreservesTermSatisfying t := forall h1 env1 h2 h env this CC,
+  FreeVarsInTermAreInHeap t h1 env1 ->
   Subenv env1 env ->
   JFIDisjointUnion h1 h2 h ->
-  FreeVarsInEnv t env1 ->
   HeapEnvEquivalent h1 h env1 env this this t CC.
+
+Lemma FreeVarsInHoareExpr : forall env h1 t1 e ex v t2,
+  FreeVarsInTermAreInHeap (JFIHoare t1 e ex v t2) h1 env ->
+  FreeVarsInExprAreInHeap e h1 env.
 Proof.
-  intros t1 e ex v t2 h1 env1 h2 h env this CC t.
-  intros env1_h1 env_h subenv union free_vars.
+Admitted.
+
+Lemma FreeVarsInSuperenvAreInHeap : forall e h env1 env,
+  FreeVarsInExprAreInHeap e h env1 ->
+  Subenv env1 env ->
+  FreeVarsInExprAreInHeap e h env.
+Proof.
+Admitted.
+
+
+Lemma ExtendingHeapPreservesHoareSatisfying : forall t1 e ex v t2,
+  ExtendingHeapPreservesTermSatisfying t1 ->
+  ExtendingHeapPreservesTermSatisfying t2 ->
+  ExtendingHeapPreservesTermSatisfying (JFIHoare t1 e ex v t2).
+Proof.
+  intros t1 e ex v t2.
+  intros IHt1 IHt2.
+  intros h1 env1 h2 h env this CC.
+  intros free_vars subenv union.
   unfold HeapEnvEquivalent.
-  assert (IHt1 : HeapEnvEquivalent h1 h env1 env this this t1 CC). admit.
-  assert (IHt2 : forall (h1 : Heap) (env1 : StrMap.t Loc) 
-         (h2 h : Heap) (env : StrMap.t Loc) 
-         (CC : JFProgram),
-       EnvMapsToHeap env1 h1 ->
-       EnvMapsToHeap env h ->
-       Subenv env1 env ->
-       JFIDisjointUnion h1 h2 h ->
-       FreeVarsInEnv t2 env1 ->
-       HeapEnvEquivalent h1 h env1 env this this t2 CC). admit.
-  unfold t in *.
-  clear t.
-  split; simpl.
+  assert (t1_equivalent : HeapEnvEquivalent h1 h env1 env this this t1 CC).
+    apply IHt1 with (h2 := h2); try easy.
+    admit. (* TODO apply FreeVarsInHoarePrecondition in free_vars. *)
+  split.
   + admit. (* evaluation on extended heap *)
   + intros h_satisfies_hoare h1_satisfies_t1.
+    simpl in *.
     destruct h_satisfies_hoare as (confs & hn & res_ex & res & h_eval & ex_eq & hn_satisfies_t2).
-      now apply IHt1.
+      unfold ExtendingHeapPreservesTermSatisfying, HeapEnvEquivalent in IHt1.
+      now apply t1_equivalent.
     destruct (EvaluationDependsOnFreeVars h1 h2 (Heap.empty Obj) h h1 e confs hn res_ex res env this CC)
       as (hn_base & confs1 & hn1_base & hn1 & res1 & pi &
           pi_env & pi_res & res_in_base & pi_hn_base & union_hn & union_hn1 & h1_eval);
-      try easy.
+        try easy.
       admit. (* h1 consistent *)
       admit. (* no hardcoded locs in e *)
-      admit. (* free vars in h1 *)
+      apply FreeVarsInSuperenvAreInHeap with (env1 := env1); try easy.
+        now apply FreeVarsInHoareExpr in free_vars.
     now apply DisjointUnionSymmetry, DisjointUnionIdentity.
     exists confs1, hn1, res_ex, res1.
     split; [ | split]; trivial.
     ++ admit. (* eval on restricted env *)
-    ++ apply (IHt2 hn_base (StrMap.add v res env1) h2 hn (StrMap.add v res env) CC)
+    ++ apply (IHt2 hn_base (StrMap.add v res env1) h2 hn (StrMap.add v res env) this CC)
          in hn_satisfies_t2; try easy.
        +++ apply (PermutationPreservesHeapSatisfying t2 hn_base hn1 (StrMap.add v res env1) (StrMap.add v res1 env1) this pi CC); try easy.
            - now apply EqPermuted2 with (h2 := hn1_base), UnionWithEmptyEq, union_hn1.
            - apply ExtendPermutedEnvs; try easy.
              now apply SubenvPermuted with (env2 := env).
-       +++ admit. (* res in hn_base *)
-       +++ admit. (* res in hn *)
+       +++ admit. (* Free vars in t2 are in hn_base *)
        +++ now apply ExtendingSubenv.
-       +++ now apply FreeVarsInHoarePoscondition with (t1 := t1) (e := e) (ex := ex).
 Admitted.
 
-Lemma ExtendingHeapPreservesHeapSatisfying : forall t h1 env1 h2 h env this CC,
-  EnvMapsToHeap env1 h1 ->
-  EnvMapsToHeap env h ->
-  Subenv env1 env ->
-  JFIDisjointUnion h1 h2 h ->
-  FreeVarsInEnv t env1 ->
-  HeapEnvEquivalent h1 h env1 env this this t CC.
+Lemma ExtendingHeapPreservesHeapSatisfying : forall t,
+  ExtendingHeapPreservesTermSatisfying t.
 Proof.
   intros t.
-  induction t; intros h1 env1 h2 h env this CC env1_h1 env_h subenv union free_vars; eauto.
+  induction t; intros h1 env1 h2 h env this CC free_vars subenv union; eauto.
   + admit. (* easy *)
   + admit. (* easy *)
   + admit. (* easy *)
   + now apply ExtendingHeapPreservesHoareSatisfying with (h2 := h2).
   + unfold HeapEnvEquivalent.
     simpl.
-    rewrite !SubenvValToLocEq with (env1 := env1) (env2 := env); try easy.
-    now destruct val2; try easy; apply free_vars; apply or_intror.
-    now destruct val1; try easy; apply free_vars; apply or_introl.
+    rewrite !SubenvValToLocEq with (env1 := env1) (env2 := env); try easy;
+    now apply FreeVarsInEqThenValsInEnv in free_vars.
   + destruct union as ((subheap_h1 & subheap_h2 & same_keys) & disjoint).
     unfold HeapEnvEquivalent.
     simpl.
     rewrite <-!SubenvValToLocEq with (env1 := env1) (env2 := env); try easy.
     destruct obj.
     ++ now destruct (JFIValToLoc v env).
-    ++ destruct (JFIValToLoc v env1 this), (JFIValToLoc JFIThis env1 this); try easy.
-           destruct l0; try easy.
-           apply SubheapFieldEq; try easy.
-           unfold EnvMapsToHeap in env_h.
-           admit. (* TODO this in heap*)
+    ++ replace (JFIValToLoc JFIThis env1 this) with (Some (JFLoc this)); try easy.
+       destruct (JFIValToLoc v env1 this); try easy.
+       apply SubheapFieldEq; try easy.
+       admit. (* TODO this in heap*)
     ++ simpl.
        destruct (Classical_Prop.classic (StrMap.In var env1)).
        +++ apply StrMapFacts.elements_in_iff in H as (l & var_l).
            apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in var_l.
-           rewrite var_l.
+           rewrite var_l in *.
+
            destruct (JFIValToLoc v env1); try easy.
            destruct l; try easy.
            apply SubheapFieldEq; try easy.
-           unfold EnvMapsToHeap in env_h.
-           apply (env1_h1 var (JFLoc n)).
-           now apply StrMapFacts.find_mapsto_iff.
+           unfold FreeVarsInTermAreInHeap in free_vars.
+           destruct (free_vars var); try now apply or_introl.
+             now rewrite StrMapFacts.find_mapsto_iff, var_l in H.
+           destruct H as (n' & o & var_n & n_o).
+           rewrite StrMapFacts.find_mapsto_iff, var_l in var_n.
+           injection var_n as n_eq.
+           rewrite <-n_eq in n_o.
+           apply HeapFacts.elements_in_iff.
+           exists o.
+           now apply HeapFacts.elements_mapsto_iff.
        +++ apply StrMapFacts.not_find_mapsto_iff in H.
            now rewrite H.
-    ++ now destruct v; try easy; apply free_vars; apply or_intror.
-    ++ now destruct obj; try easy; apply free_vars; apply or_introl.
+    ++ now apply FreeVarsInFieldEqThenValsInEnv in free_vars.
+    ++ now apply FreeVarsInFieldEqThenValsInEnv in free_vars.
   + unfold HeapEnvEquivalent.
     simpl.
     split.
     ++ intros (h11 & h12 & disjoint_union_h1 & h11_satisfies_t1 & h12_satisfies_t2).
        destruct (ExistsUnion h11 h2) as (h11_h2 & union_h11_h2). admit.
+       destruct (ExistsUnion h12 h2) as (h12_h2 & union_h12_h2). admit.
        exists h11_h2, h12.
        split; [ | split].
        +++ admit.
        +++ apply (IHt1 h11 env1 h2 h11_h2 env this CC); try easy.
            - admit. (* TODO envs in sep *)
-           - admit. (* TODO envs in sep *)
-           - admit.
-           - intros x x_free.
-             now apply free_vars, or_introl.
+           - split; try easy.
+             admit. (* TODO disjoint *)
        +++ admit. (* TODO envs in sep *)
     ++ admit.
   + admit.
 Admitted.
+
+Lemma FreeVarsInGammaToFreeVarsInHeap : forall p gamma h env,
+  FreeVarsInTermAreInGamma p gamma ->
+  JFIGammaMatchEnv h gamma env ->
+  FreeVarsInTermAreInHeap p h env.
+Proof.
+  intros p gamma h env.
+  intros free_vars gamma_match_env.
+  intros x x_free.
+  assert (x_in_gamma := free_vars x x_free).
+  destruct (gamma_match_env x) as (same_keys & matching_types).
+  assert (x_in_env := (proj1 same_keys) x_in_gamma).
+  apply StrMapFacts.elements_in_iff in x_in_env as (l & x_l).
+  apply StrMapFacts.elements_in_iff in x_in_gamma as (type & x_type).
+  rewrite <-StrMapFacts.elements_mapsto_iff in x_l, x_type.
+  destruct l.
+    now apply or_introl.
+  apply or_intror.
+  assert (n_of_type := matching_types (JFLoc n) type x_type x_l).
+  unfold JFILocOfType in n_of_type.
+  assert (exists o, Heap.find n h = Some o).
+    destruct (Heap.find n h); try now destruct n_of_type.
+    now exists o.
+  destruct H as (o & n_o).
+  apply HeapFacts.find_mapsto_iff in n_o.
+  now exists n, o.
+Qed.
 
 Lemma GammaMatchEnvImpliesEnvMapsToHeap : forall h gamma env,
   JFIGammaMatchEnv h gamma env ->
@@ -3214,16 +3268,17 @@ Proof.
   now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
 Qed.
 
-Lemma WeakRuleSoundness : forall gamma p1 p2 CC,
+Lemma WeakRuleSoundness : forall decls gamma p1 p2 CC,
+  JFIProves decls gamma (JFISep p1 p2) p1 ->
   JFISemanticallyImplies gamma (JFISep p1 p2) p1 CC.
 Proof.
-  intros gamma p1 p2 CC.
-  intros env this h gamma_match_env h_satisfies_sep.
+  intros decls gamma p1 p2 CC.
+  intros proof env this h gamma_match_env h_satisfies_sep.
   destruct h_satisfies_sep as (h1 & h2 & disjoint_union & h1_satisfies_p1 & h2_satisfies_p2).
   apply (ExtendingHeapPreservesHeapSatisfying p1 h1 env h2 h env); try easy.
-  + admit. (* TODO envs in sep *)
-  + now apply GammaMatchEnvImpliesEnvMapsToHeap with (gamma := gamma).
-  + admit. (* TODO JFI proof implies all free vars are in env *)
+  apply FreeVarsAreInGamma in proof as (free_vars_sep & free_vars_p2).
+  apply FreeVarsInGammaToFreeVarsInHeap with (gamma := gamma); try easy.
+  admit. (* TODO envs in sep *)
 Admitted.
 Hint Resolve WeakRuleSoundness : core.
 
@@ -3401,7 +3456,8 @@ Proof.
   (* JFIImpliesElimRule *)
   + now apply ImpliesElimRuleSoundness with (p := p).
   (* JFIWeakRule *)
-  + eauto.
+  + assert (JFIProves decls gamma (JFISep p1 p2) p1). admit. (* TODO get through all IHs *)
+    eauto.
   (* JFISepAssoc1Rule *)
   + eauto.
   (* JFISepAssoc2Rule *)

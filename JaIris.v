@@ -242,6 +242,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIAsmRule :
     forall decls gamma p,
+      (FreeVarsInTermAreInGamma p gamma) ->
       (*-----------------*)
       JFIProves decls gamma p p
 
@@ -254,6 +255,8 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIEqReflRule :
     forall decls gamma p v,
+      (FreeVarsInTermAreInGamma p gamma) ->
+      (FreeVarsInValAreInGamma v gamma) ->
       (*----------------------------------*)
       JFIProves decls gamma p (JFIEq v v)
 
@@ -264,13 +267,15 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       JFIProves decls gamma p (JFIEq v2 v1)
 
 | JFIFalseElimRule :
-    forall decls gamma p q, 
+    forall decls gamma p q,
+      (FreeVarsInTermAreInGamma q gamma) ->
       (JFIProves decls gamma p JFIFalse) ->
       (*-----------------*)
       JFIProves decls gamma p q
 
 | JFITrueIntroRule :
     forall decls gamma p,
+      (FreeVarsInTermAreInGamma p gamma) ->
       (*----------------------*)
       JFIProves decls gamma p JFITrue
 
@@ -295,12 +300,14 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIOrIntroLRule :
     forall decls gamma p q r,
+      (FreeVarsInTermAreInGamma q gamma) ->
       (JFIProves decls gamma r p) ->
       (*--------------------------*)
       JFIProves decls gamma r (JFIOr p q)
 
 | JFIOrIntroRRule :
     forall decls gamma p q r,
+      (FreeVarsInTermAreInGamma p gamma) ->
       (JFIProves decls gamma r q) ->
       (*--------------------------*)
       JFIProves decls gamma r (JFIOr p q)
@@ -330,21 +337,31 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFIWeakRule :
     forall decls gamma p1 p2,
+      (FreeVarsInTermAreInGamma p1 gamma) ->
+      (FreeVarsInTermAreInGamma p2 gamma) ->
       (*------------------------------------*)
       JFIProves decls gamma (JFISep p1 p2) p1
 
 | JFISepAssoc1Rule :
     forall decls gamma p1 p2 p3,
+      (FreeVarsInTermAreInGamma p1 gamma) ->
+      (FreeVarsInTermAreInGamma p2 gamma) ->
+      (FreeVarsInTermAreInGamma p3 gamma) ->
       (*------------------------------------------------------------------*)
       JFIProves decls gamma (JFISep p1 (JFISep p2 p3)) (JFISep (JFISep p1 p2) p3)
 
 | JFISepAssoc2Rule :
     forall decls gamma p1 p2 p3,
+      (FreeVarsInTermAreInGamma p1 gamma) ->
+      (FreeVarsInTermAreInGamma p2 gamma) ->
+      (FreeVarsInTermAreInGamma p3 gamma) ->
       (*------------------------------------------------------------------*)
       JFIProves decls gamma (JFISep (JFISep p1 p2) p3) (JFISep p1 (JFISep p2 p3))
 
 | JFISepCommRule :
     forall decls gamma p1 p2,
+      (FreeVarsInTermAreInGamma p1 gamma) ->
+      (FreeVarsInTermAreInGamma p2 gamma) ->
       (*-----------------------------------------*)
       JFIProves decls gamma (JFISep p1 p2) (JFISep p2 p1)
 
@@ -357,6 +374,8 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
 
 | JFISepIntroPersistentRule :
     forall decls gamma p q,
+      (FreeVarsInTermAreInGamma p gamma) ->
+      (FreeVarsInTermAreInGamma q gamma) ->
       (JFITermPersistent p) ->
       (*---------------------------------------------*)
       JFIProves decls gamma (JFIAnd p q) (JFISep p q)
@@ -397,7 +416,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (JFIProves decls gamma s (JFIImplies p p')) ->
       (JFIProves decls gamma s (JFIHoare p' e ex v q')) ->
       (JFIProves decls (JFIGammaAdd v cn gamma) s (JFIImplies q' q)) ->
-      (*-----------------------------Csq-*)
+      (*------------------------------*)
       JFIProves decls gamma s (JFIHoare p e ex v q)
 
 | JFIHTDisjIntroRule :

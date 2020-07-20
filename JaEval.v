@@ -207,10 +207,6 @@ Admitted.
 
 (* ======================= Evaluation on heap with same free variables ======================= *)
 
-Definition FreeVarsInExprAreInHeap e (h : Heap) (env : JFITermEnv) :=
-  forall x, VarFreeInExpr x e ->
-    ((StrMap.MapsTo x null env) \/ exists n o, StrMap.MapsTo x (JFLoc n) env /\ Heap.MapsTo n o h).
-
 Definition ValIsNotHardcodedLoc v :=
   match v with
   | JFVLoc (JFLoc _) => False

@@ -280,6 +280,23 @@ Fixpoint VarFreeInTerm x t :=
   | JFIWand t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
   end.
 
+Definition FreeVarsInExprAreInHeap e (h : Heap) (env : JFITermEnv) :=
+  forall x, VarFreeInExpr x e ->
+    ((StrMap.MapsTo x null env) \/ exists n o, StrMap.MapsTo x (JFLoc n) env /\ Heap.MapsTo n o h).
+
+Definition FreeVarsInTermAreInHeap e (h : Heap) (env : JFITermEnv) :=
+  forall x, VarFreeInTerm x e ->
+    ((StrMap.MapsTo x null env) \/ exists n o, StrMap.MapsTo x (JFLoc n) env /\ Heap.MapsTo n o h).
+
+Definition FreeVarsInValAreInGamma v (gamma : JFITypeEnv) :=
+  forall x, VarFreeInVal x v -> StrMap.In x gamma.
+
+Definition FreeVarsInExprAreInGamma e (gamma : JFITypeEnv) :=
+  forall x, VarFreeInExpr x e -> StrMap.In x gamma.
+
+Definition FreeVarsInTermAreInGamma t (gamma : JFITypeEnv) :=
+  forall x, VarFreeInTerm x t -> StrMap.In x gamma.
+
 Lemma ValEnvSubstitutionPreservesVLoc : forall env this loc,
   JFIValSubstituteEnv env this (JFVLoc loc) = JFVLoc loc.
 Proof.
