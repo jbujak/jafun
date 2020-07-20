@@ -3037,7 +3037,28 @@ Lemma FreeVarsInFieldEqThenValsInEnv : forall obj field v h env,
   FreeVarsInTermAreInHeap (JFIFieldEq obj field v) h env ->
   (ValInEnv obj env /\ ValInEnv v env).
 Proof.
-Admitted.
+  intros obj field v h env.
+  intros free_vars.
+  unfold FreeVarsInTermAreInHeap in free_vars.
+  unfold ValInEnv.
+  split.
+  + destruct obj; try easy; apply StrMapFacts.elements_in_iff.
+    destruct (free_vars var).
+    ++ now apply or_introl.
+    ++ exists null.
+       now apply StrMapFacts.elements_mapsto_iff.
+    ++ destruct H as (n & o & var_n & n_o).
+       exists (JFLoc n).
+       now apply StrMapFacts.elements_mapsto_iff.
+  + destruct v; try easy; apply StrMapFacts.elements_in_iff.
+    destruct (free_vars var).
+    ++ now apply or_intror.
+    ++ exists null.
+       now apply StrMapFacts.elements_mapsto_iff.
+    ++ destruct H as (n & o & var_n & n_o).
+       exists (JFLoc n).
+       now apply StrMapFacts.elements_mapsto_iff.
+Qed.
 
 Lemma SubenvValToLocEq : forall v env1 env2 this,
   Subenv env1 env2 ->
@@ -3069,23 +3090,17 @@ Proof.
   now rewrite l_o_h1, l_o_h2.
 Qed.
 
-Lemma FreeVarsInHoarePrecondition : forall t1 e ex v t2 env,
-  FreeVarsInEnv (JFIHoare t1 e ex v t2) env ->
-  FreeVarsInEnv t1 env.
+Lemma FreeVarsInHoarePrecondition : forall t1 e ex v t2 h env,
+  FreeVarsInTermAreInHeap (JFIHoare t1 e ex v t2) h env ->
+  FreeVarsInTermAreInHeap t1 h env.
 Proof.
-  intros t1 e ex v t2 env.
+  intros t1 e ex v t2 h env.
   intros free_vars_hoare.
   intros x x_free_in_t1.
   unfold FreeVarsInEnv in free_vars_hoare.
   apply (free_vars_hoare x).
   now apply or_introl.
 Qed.
-
-Lemma FreeVarsInHoarePoscondition : forall t1 e ex v t2 h env res,
-  FreeVarsInTermAreInHeap (JFIHoare t1 e ex v t2) h env->
-  FreeVarsInTermAreInHeap t2 h (StrMap.add v res env).
-Proof.
-Admitted.
 
 Definition ExtendingHeapPreservesTermSatisfying t := forall h1 env1 h2 h env this CC,
   FreeVarsInTermAreInHeap t h1 env1 ->
@@ -3097,15 +3112,29 @@ Lemma FreeVarsInHoareExpr : forall env h1 t1 e ex v t2,
   FreeVarsInTermAreInHeap (JFIHoare t1 e ex v t2) h1 env ->
   FreeVarsInExprAreInHeap e h1 env.
 Proof.
-Admitted.
+  intros env h1 t1 e ex v t2 free_vars.
+  intros x x_free.
+  destruct (free_vars x).
+  + now apply or_intror, or_introl.
+  + now apply or_introl.
+  + now apply or_intror.
+Qed.
 
 Lemma FreeVarsInSuperenvAreInHeap : forall e h env1 env,
   FreeVarsInExprAreInHeap e h env1 ->
   Subenv env1 env ->
   FreeVarsInExprAreInHeap e h env.
 Proof.
-Admitted.
-
+  intros e h env1 env free_vars subenv.
+  intros x x_free.
+  destruct (free_vars x x_free).
+  + now apply or_introl, subenv.
+  + destruct H as (n & o & x_n & n_o).
+    apply or_intror.
+    exists n, o.
+    split; trivial.
+    now apply subenv.
+Qed.
 
 Lemma ExtendingHeapPreservesHoareSatisfying : forall t1 e ex v t2,
   ExtendingHeapPreservesTermSatisfying t1 ->
@@ -3119,7 +3148,7 @@ Proof.
   unfold HeapEnvEquivalent.
   assert (t1_equivalent : HeapEnvEquivalent h1 h env1 env this this t1 CC).
     apply IHt1 with (h2 := h2); try easy.
-    admit. (* TODO apply FreeVarsInHoarePrecondition in free_vars. *)
+    now apply FreeVarsInHoarePrecondition in free_vars.
   split.
   + admit. (* evaluation on extended heap *)
   + intros h_satisfies_hoare h1_satisfies_t1.
