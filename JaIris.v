@@ -526,18 +526,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)
 
-| JFIHTInvokeNoRetRule :
-    forall cn method p' ex w q' decls gamma s p q u v v_expr vs vs_expr mn,
-      (v_expr = JFIValToJFVal v) -> (vs_expr = JFIValsToJFVals vs) ->
-      (JFIValType decls gamma v = Some cn) ->
-      (methodLookup (JFIDeclsProg decls) cn mn = Some method) ->
-      (In (JFIInvariant cn mn p' ex w q') (JFIDeclsInvariants decls)) ->
-      (JFIProves decls gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse)) ->
-      (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) ->
-      (JFIProves decls gamma s (JFIImplies (JFITermSubstituteVals (params_of_md method) vs q') q)) ->
-      (*--------------------------------------------------*)
-      JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)
-
 | JFIHTNullInvokeRule :
     forall decls gamma s x x_expr mn vs v,
       (x_expr = JFIValToJFVal x) ->

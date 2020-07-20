@@ -2863,7 +2863,6 @@ Proof.
 Admitted.
 Hint Resolve HTInvokeRetSoundness : core.
 
-
 Lemma HTThrowSoundness : forall decls gamma x x_expr cn s v CC,
   x_expr = JFIValToJFVal x ->
   JFIValType decls gamma x = Some cn ->
@@ -3464,8 +3463,6 @@ Proof.
   + now apply HTIfRuleSoundness with (v1 := v1) (v2 := v2).
   (* JFIHTInvokeRetRule *)
   + eauto.
-  (* JFIHTInvokeNoRetRule *)
-  + admit. (* TODO *)
   (* JFIHTNullInvokeRule *)
   + eauto.
   (* JFIHTThrowRule *)
