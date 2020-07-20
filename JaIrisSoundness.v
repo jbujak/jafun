@@ -3236,7 +3236,8 @@ Proof.
        +++ apply (IHt1 h11 env1 h2 h11_h2 env this CC); try easy.
            - admit. (* TODO envs in sep *)
            - split; try easy.
-             admit. (* TODO disjoint *)
+             apply SubheapDisjoint with (h2 := h12) (h12 := h1); try easy.
+             now apply union.
        +++ admit. (* TODO envs in sep *)
     ++ admit.
   + admit.

@@ -267,8 +267,8 @@ Fixpoint VarFreeInExpr (x : string) (e : JFExpr) :=
 
 Fixpoint VarFreeInTerm x t :=
   match t with
-  | JFITrue => True
-  | JFIFalse => True
+  | JFITrue => False
+  | JFIFalse => False
   | JFIAnd t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
   | JFIOr t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
   | JFIImplies t1 t2 => VarFreeInTerm x t1 \/ VarFreeInTerm x t2
