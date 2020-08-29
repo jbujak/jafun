@@ -789,17 +789,34 @@ Proof.
   exact h_satisfies_p.
 Qed.
 
+Lemma ValIsLoc : forall v h gamma env this,
+  FreeVarsInValAreInGamma v gamma ->
+  JFIGammaMatchEnv h gamma env ->
+  exists l, JFIValToLoc v env this = Some l.
+Proof.
+  intros v h gamma env this.
+  intros free_in_v gamma_match_env.
+  destruct v.
+  + now exists null.
+  + now exists (JFLoc this).
+  + unfold FreeVarsInValAreInGamma in free_in_v.
+    assert (var_in_gamma := free_in_v var).
+    apply (gamma_match_env var) in var_in_gamma as var_in_env; try easy.
+    apply StrMapFacts.elements_in_iff in var_in_env as (l & var_l); try easy.
+    exists l.
+    now apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff in var_l.
+Qed.
+
 Lemma EqReflRuleSoundness : forall gamma p v CC,
+  FreeVarsInValAreInGamma v gamma ->
   JFISemanticallyImplies gamma p (JFIEq v v) CC.
 Proof.
   intros gamma p v CC.
-  intros env this h gamma_match_env h_satisfies_p.
+  intros free_vars_in_v env this h gamma_match_env h_satisfies_p.
   unfold JFIHeapSatisfiesInEnv.
-
-  destruct (JFIValToLoc v env).
-  + trivial.
-  + admit. (* TODO zapewnic obecnosc zmiennej w srodowisku *)
-Admitted.
+  destruct (ValIsLoc v h gamma env this) as (l & v_is_l); try easy.
+  now rewrite v_is_l.
+Qed.
 
 Lemma EqSymRuleSoundness : forall gamma p v1 v2 CC,
   JFISemanticallyImplies gamma p (JFIEq v1 v2) CC ->
@@ -1427,21 +1444,6 @@ Proof.
   apply RestrictedEnvPreservesHeapSatisfying with (env' := env'); try assumption.
 Qed.
 
-Lemma MoveFreeVarsToMatchingHeap : forall h1 h2 h p1 p2 env this gamma CC,
-  JFIGammaMatchEnv h gamma env ->
-  JFIHeapsUnion h1 h2 h ->
-  JFIHeapsDisjoint h1 h2 ->
-  JFIHeapSatisfiesInEnv h1 p1 env this CC ->
-  JFIHeapSatisfiesInEnv h2 p2 env this CC ->
-  exists h1' h2',
-    JFIGammaMatchEnv h1' gamma env /\
-    JFIGammaMatchEnv h2' gamma env /\
-    JFIDisjointUnion h1' h2' h /\
-    JFIHeapSatisfiesInEnv h1' p1 env this CC /\
-    JFIHeapSatisfiesInEnv h2' p2 env this CC.
-Proof.
-Admitted.
-
 Lemma SepIntroSoundness : forall decls gamma p1 q1 p2 q2,
   let CC := JFIDeclsProg decls in
   JFISemanticallyImplies gamma p1 q1 CC ->
@@ -1452,14 +1454,12 @@ Proof.
   intros p1_implies_q1 p2_implies_q2.
   intros env this h gamma_match_env h_satisfies_sep.
   destruct h_satisfies_sep as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
-  destruct (MoveFreeVarsToMatchingHeap h1 h2 h p1 p2 env this gamma CC)
-    as (h1' & h2' & gamma_match_h1' & gamma_match_h2' & h'_union & h1'_satisfies_p1 & h2'_satisfies_p2); try easy.
 
-  exists h1', h2'.
+  exists h1, h2.
   split; [ | split]; try easy.
-  now apply p1_implies_q1.
-  now apply p2_implies_q2.
-Qed.
+  apply p1_implies_q1; try easy. admit. (* TODO gamma match env *)
+  apply p2_implies_q2; try easy. admit. (* TODO gamma match env *)
+Admitted.
 Hint Resolve SepIntroSoundness : core.
 
 Lemma SepIntroPersistentSoundness : forall decls gamma p q,
@@ -1677,11 +1677,13 @@ Admitted.
 
 (* =============== Soundness of Hoare triple rules =============== *)
 
-Lemma JFIExistsValToLoc : forall v v_expr env this,
+Lemma JFIExistsValToLoc : forall v v_expr h gamma env this,
   v_expr = JFIValToJFVal v ->
+  FreeVarsInValAreInGamma v gamma ->
+  JFIGammaMatchEnv h gamma env ->
   exists l, JFIValToLoc v env this = Some l /\ JFIValSubstituteEnv env this v_expr = (JFVLoc l).
 Proof.
-  intros v v_expr env this v_expr_val.
+  intros v v_expr h gamma env this v_expr_val free_in_v gamma_match_env.
   destruct v; simpl in v_expr_val; rewrite v_expr_val.
   + exists null.
     split; trivial.
@@ -1690,12 +1692,10 @@ Proof.
   + exists (JFLoc this).
     split; try easy.
     apply ValEnvSubstitutionSubstitutesThis.
-  + assert (exists l, StrMap.find var env = Some l). admit. (* TODO var in env *)
-    destruct H as (l & var_l_env).
+  + destruct (ValIsLoc (JFIVar var) h gamma env this free_in_v gamma_match_env) as (l & var_l_env).
     exists l.
-    unfold JFIValToLoc.
-    now rewrite var_l_env, ValEnvSubstitutionReplacesVarInEnv with (l := l).
-Admitted.
+    now rewrite ValEnvSubstitutionReplacesVarInEnv with (l := l).
+Qed.
 
 Lemma ValToLoc_neq_o : forall x u v env this,
   x <> (JFIVar u) ->
@@ -2281,14 +2281,15 @@ Admitted.
 Hint Resolve HTFrameRuleSoundness : core.
 
 Lemma HTRetRuleSoundness : forall gamma s v w w_expr CC,
+  FreeVarsInValAreInGamma w gamma ->
   w_expr = JFIValToJFVal w ->
   JFISemanticallyImplies gamma s
     (JFIHoare JFITrue (JFVal1 w_expr) None v (JFIEq (JFIVar v) w)) CC.
 Proof.
   intros gamma s v w w_expr CC.
-  intros expr_val env this h gamma_match_env h_satisfies_s h_satisfies_true.
+  intros w_in_gamma expr_val env this h gamma_match_env h_satisfies_s h_satisfies_true.
 
-  destruct (JFIExistsValToLoc w w_expr env this) as (l & w_is_l & subst_w); trivial.
+  destruct (JFIExistsValToLoc w w_expr h gamma env this) as (l & w_is_l & subst_w); try easy.
   exists [], h, None, l.
   unfold JFIEvalInEnv, JFIExprSubstituteEnv.
   rewrite subst_w.
@@ -2425,6 +2426,7 @@ Qed.
 Hint Resolve HTNewNotNullRuleSoundness : core.
 
 Lemma HTNewFieldRuleSoundness : forall decls gamma cn objflds vs n field value s p mu v CC,
+  (FreeVarsInValAreInGamma value gamma) ->
   (flds (JFIDeclsProg decls) (JFClass cn) = Some objflds) ->
   (nth_error objflds n = Some field) ->
   (nth_error vs n = Some (JFIValToJFVal value)) ->
@@ -2433,13 +2435,13 @@ Lemma HTNewFieldRuleSoundness : forall decls gamma cn objflds vs n field value s
       (JFIHoare p (JFNew mu cn vs) None v (JFIFieldEq (JFIVar v) field value)) CC.
 Proof.
   intros decls gamma cn objflds vs n field value s p mu v CC.
-  intros fdls_of_cn nth_field nth_value value_not_v.
+  intros value_in_gamma fdls_of_cn nth_field nth_value value_not_v.
   intros env this h gamma_match_env h_satisfies_s h_satisfies_p.
   destruct (EnsureValsMapIsLocsMap vs env this) as (ls & vs_map_is_ls).
   simpl.
   unfold JFIHeapSatisfiesInEnv.
 
-  destruct (JFIExistsValToLoc value (JFIValToJFVal value) env this) as (l & value_is_l & subst_value); trivial.
+  destruct (JFIExistsValToLoc value (JFIValToJFVal value) h gamma env this) as (l & value_is_l & subst_value); trivial.
   assert (vs_is_ls := EnsureValsListIsLocsList ls vs n l env this vs_map_is_ls).
   destruct (AllocSucceedsInCorrectProgram (JFIDeclsProg decls) h cn ls)
     as (newloc & (newheap & alloc_newloc_newheap)).
@@ -2523,6 +2525,8 @@ Qed.
 Hint Resolve HTLetExSoundness : core.
 
 Lemma HTFieldSetRuleSoundness : forall gamma s x x_expr field u v v_expr CC,
+  FreeVarsInValAreInGamma x gamma ->
+  FreeVarsInValAreInGamma v gamma ->
   x_expr = JFIValToJFVal x ->
   v_expr = JFIValToJFVal v ->
   x <> (JFIVar u) ->
@@ -2532,11 +2536,11 @@ Lemma HTFieldSetRuleSoundness : forall gamma s x x_expr field u v v_expr CC,
      None u (JFIFieldEq x field v)) CC.
 Proof.
   intros gamma s x x_expr field u v v_expr CC.
-  intros x_expr_val v_expr_val x_not_u v_not_u.
+  intros x_in_gamma v_in_gamma x_expr_val v_expr_val x_not_u v_not_u.
   intros env this h gamma_match_env h_satisfies_s h_satisfies_p.
 
-  destruct (JFIExistsValToLoc x x_expr env this) as (xl & x_is_xl & subst_x); trivial.
-  destruct (JFIExistsValToLoc v v_expr env this) as (vl & v_is_vl & subst_v); trivial.
+  destruct (JFIExistsValToLoc x x_expr h gamma env this) as (xl & x_is_xl & subst_x); trivial.
+  destruct (JFIExistsValToLoc v v_expr h gamma env this) as (vl & v_is_vl & subst_v); trivial.
   destruct xl as [ | xn].
   + destruct h_satisfies_p; try easy. exfalso. apply H. simpl. now rewrite x_is_xl.
   + destruct (EnsureLocInHeap h xn) as ((obj & cn) & x_points_to_o).
@@ -2640,6 +2644,8 @@ Qed.
 Hint Resolve HTNullFieldGetRuleSoundness : core.
 
 Lemma HTIfRuleSoundness : forall gamma v1 v1_expr v2 v2_expr e1 e2 p q s ex u CC,
+  (FreeVarsInValAreInGamma v1 gamma) ->
+  (FreeVarsInValAreInGamma v2 gamma) ->
   (v1_expr = JFIValToJFVal v1) -> (v2_expr = JFIValToJFVal v2) ->
   (JFISemanticallyImplies gamma s 
     (JFIHoare (JFIAnd p (JFIEq v1 v2)) e1 ex u q) CC) ->
@@ -2649,11 +2655,11 @@ Lemma HTIfRuleSoundness : forall gamma v1 v1_expr v2 v2_expr e1 e2 p q s ex u CC
     (JFIHoare p (JFIf v1_expr v2_expr e1 e2) ex u q) CC.
 Proof.
   intros gamma v1 v1_expr v2 v2_expr e1 e2 p q s ex u CC.
-  intros v1_expr_val v2_expr_val IH_if_eq IH_if_neq.
+  intros v1_in_gamma v2_in_gamma v1_expr_val v2_expr_val IH_if_eq IH_if_neq.
   intros env this h gamma_match_env h_satisfies_s h_satisfies_p.
 
-  destruct (JFIExistsValToLoc v1 v1_expr env this) as (l1 & v1_is_l1 & v1_subst_eq); trivial.
-  destruct (JFIExistsValToLoc v2 v2_expr env this) as (l2 & v2_is_l2 & v2_subst_eq); trivial.
+  destruct (JFIExistsValToLoc v1 v1_expr h gamma env this) as (l1 & v1_is_l1 & v1_subst_eq); trivial.
+  destruct (JFIExistsValToLoc v2 v2_expr h gamma env this) as (l2 & v2_is_l2 & v2_subst_eq); trivial.
 
   destruct (Classical_Prop.classic (l1 = l2)) as [l1_eq_l2 | l1_neq_l2].
   + assert (h_satisfies_and : JFIHeapSatisfiesInEnv h (JFIAnd p (JFIEq v1 v2)) env this CC).
@@ -2693,16 +2699,17 @@ Proof.
 Qed.
 
 Lemma HTNullInvokeSoundness : forall gamma s x x_expr mn vs v CC,
+  FreeVarsInValAreInGamma x gamma ->
   x_expr = JFIValToJFVal x ->
   JFISemanticallyImplies gamma s
     (JFIHoare (JFIEq x JFINull) (JFInvoke x_expr mn vs)
      NPE_mode v JFITrue) CC.
 Proof.
   intros gamma s x x_expr mn vs v CC.
-  intros x_expr_val env this h gamma_match_env h_satisfies_s.
+  intros x_in_gamma x_expr_val env this h gamma_match_env h_satisfies_s.
   intros x_is_null.
   simpl in x_is_null.
-  destruct (JFIExistsValToLoc x x_expr env this) as (l & x_is_l & x_subst_eq); trivial.
+  destruct (JFIExistsValToLoc x x_expr h gamma env this) as (l & x_is_l & x_subst_eq); trivial.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env this (JFInvoke x_expr mn vs) ]]_ None])],
     h, NPE_mode, (JFLoc NPE_object_loc).
   simpl.
@@ -2756,47 +2763,37 @@ Proof.
   rewrite SubstMethodWithParamsEnv with (params_env := params_env); try easy.
 Admitted.
 
-Lemma HTInvokeRetSoundness : forall cn method rettypeCN p' ex w q' gamma s p q u v v_expr vs vs_expr mn decls invariants CC,
+Lemma HTInvokeRetSoundness : forall cn method rettypeCN ex w gamma s p q u v v_expr vs vs_expr mn decls invariants CC,
+  FreeVarsInValAreInGamma v gamma ->
   v_expr = JFIValToJFVal v ->
   vs_expr = JFIValsToJFVals vs ->
   JFIValType decls gamma v = Some cn ->
   methodLookup CC cn mn = Some method ->
   fst (rettyp_of_md method) = JFClass rettypeCN ->
-  In (JFIInvariant cn mn p' ex w q') invariants ->
+  In (JFIInvariant cn mn p ex w q) invariants ->
   JFISemanticallyImplies gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse) CC ->
-  JFISemanticallyImplies gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p')) CC ->
-  (forall (x : string) (gamma_x : JFITypeEnv),
-     JFIVarFreshInTerm x s ->
-     JFIGammaAddNew x rettypeCN gamma = Some gamma_x ->
-     JFISemanticallyImplies gamma_x s
-       (JFIImplies
-          (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
-          (JFITermSubstituteVar u x q)) CC) ->
   JFISemanticallyImplies gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q) CC.
 Proof.
-  intros cn method rettypeCN p' ex w q' gamma s p q u v v_expr vs vs_expr mn decls invariants CC.
-  intros v_expr_val vs_expr_val type_of_v mn_is_method ret_type_of_method in_invariants
-         v_not_null p_implies_p' q'_implies_q.
+  intros cn method rettypeCN ex w gamma s p q u v v_expr vs vs_expr mn decls invariants CC.
+  intros v_in_gamma v_expr_val vs_expr_val type_of_v mn_is_method ret_type_of_method in_invariants v_not_null.
   intros env this h gamma_match_env h_satisfies_s h_satisfies_p.
   unfold JFIEvalInEnv, JFIEval, JFIPartialEval.
   fold JFIPartialEval.
 
   set (params_env := StrMap.empty (Loc)). (* TODO new env for body *)
-  destruct (JFIExistsValToLoc v v_expr env this) as (l & x_is_l & x_subst_eq); trivial.
+  destruct (JFIExistsValToLoc v v_expr h gamma env this) as (l & x_is_l & x_subst_eq); trivial.
   destruct l.
     exfalso.
     destruct (v_not_null env this h); try easy.
     apply H.
     simpl.
     now rewrite x_is_l.
-  assert (hoare_body : JFIHeapSatisfiesInEnv h (JFIHoare p' (body_of_md method) ex w q') params_env n CC).
+  assert (hoare_body : JFIHeapSatisfiesInEnv h (JFIHoare p (body_of_md method) ex w q) params_env n CC).
     admit. (* TODO invariant to Hoare *)
   simpl in hoare_body.
-  destruct hoare_body as (confs & hn & res_ex & res & eval & ex_eq & hn_satisfies_q').
-    assert (h_satisfies_p' := p_implies_p' env this h gamma_match_env h_satisfies_s).
-    simpl in h_satisfies_p'.
-    destruct h_satisfies_p'; [ now destruct (H h_satisfies_p) | ].
-    now apply (ParamsSubstitutionPreservesHeapSatisfying h method vs p' env this params_env n CC).
+  destruct hoare_body as (confs & hn & res_ex & res & eval & ex_eq & hn_satisfies_q).
+    apply (ParamsSubstitutionPreservesHeapSatisfying h method vs p env this params_env n CC).
+    admit. (* TODO params env *)
 
   rewrite ex_eq in *.
   set (invoke_f := [ [] [[JFInvoke (JFIValSubstituteEnv env this v_expr) mn (map (JFIValSubstituteEnv env this) vs_expr) ]]_ None]).
@@ -2824,6 +2821,7 @@ Admitted.
 Hint Resolve HTInvokeRetSoundness : core.
 
 Lemma HTThrowSoundness : forall decls gamma x x_expr cn s v CC,
+  FreeVarsInValAreInGamma x gamma ->
   x_expr = JFIValToJFVal x ->
   JFIValType decls gamma x = Some cn ->
   JFISemanticallyImplies gamma s
@@ -2831,13 +2829,13 @@ Lemma HTThrowSoundness : forall decls gamma x x_expr cn s v CC,
      (Some cn) v (JFIEq (JFIVar v) x)) CC.
 Proof.
   intros decls gamma x x_expr cn s v CC.
-  intros x_expr_val type_of_x.
+  intros x_in_gamma x_expr_val type_of_x.
   intros env this h gamma_match_env h_satifsies_s.
   intros x_not_null.
   simpl in x_not_null.
   destruct x_not_null as [x_not_null | x_null]; try destruct x_null.
 
-  destruct (JFIExistsValToLoc x x_expr env this) as (l & x_is_l & x_subst_eq); trivial.
+  destruct (JFIExistsValToLoc x x_expr h gamma env this) as (l & x_is_l & x_subst_eq); trivial.
   rewrite x_is_l in x_not_null.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env this (JFThrow x_expr) ]]_ None])],
     h, (Some cn), l.
@@ -2870,16 +2868,17 @@ Admitted.
 Hint Resolve HTThrowSoundness : core.
 
 Lemma HTNullThrowSoundness : forall gamma x x_expr s v CC,
+  FreeVarsInValAreInGamma x gamma ->
   x_expr = JFIValToJFVal x -> 
   JFISemanticallyImplies gamma s
     (JFIHoare (JFIEq x JFINull) (JFThrow x_expr)
      NPE_mode v JFITrue) CC.
 Proof.
   intros gamma x x_expr s v CC.
-  intros x_expr_val env this h gamma_match_env h_satifsies_s.
+  intros x_in_gamma x_expr_val env this h gamma_match_env h_satifsies_s.
   intros x_is_null.
   simpl in x_is_null.
-  destruct (JFIExistsValToLoc x x_expr env this) as (l & x_is_l & x_subst_eq); trivial.
+  destruct (JFIExistsValToLoc x x_expr h gamma env this) as (l & x_is_l & x_subst_eq); trivial.
   exists [(h, [ [] [[ JFIExprSubstituteEnv env this (JFThrow x_expr) ]]_ None])],
     h, NPE_mode, (JFLoc NPE_object_loc).
   simpl.
@@ -3280,15 +3279,14 @@ Proof.
   now apply HeapFacts.elements_mapsto_iff, HeapFacts.find_mapsto_iff.
 Qed.
 
-Lemma WeakRuleSoundness : forall decls gamma p1 p2 CC,
-  JFIProves decls gamma (JFISep p1 p2) p1 ->
+Lemma WeakRuleSoundness : forall gamma p1 p2 CC,
+  FreeVarsInTermAreInGamma p1 gamma ->
   JFISemanticallyImplies gamma (JFISep p1 p2) p1 CC.
 Proof.
-  intros decls gamma p1 p2 CC.
-  intros proof env this h gamma_match_env h_satisfies_sep.
+  intros gamma p1 p2 CC.
+  intros free_vars_p1 env this h gamma_match_env h_satisfies_sep.
   destruct h_satisfies_sep as (h1 & h2 & disjoint_union & h1_satisfies_p1 & h2_satisfies_p2).
   apply (ExtendingHeapPreservesHeapSatisfying p1 h1 env h2 h env); try easy.
-  apply FreeVarsAreInGamma in proof as (free_vars_sep & free_vars_p2).
   apply FreeVarsInGammaToFreeVarsInHeap with (gamma := gamma); try easy.
   admit. (* TODO envs in sep *)
 Admitted.
@@ -3444,7 +3442,7 @@ Proof.
   (* JFITransRule *)
   + now apply (TransRuleSoundness gamma p q r).
   (* JFIEqReflRule*)
-  + apply EqReflRuleSoundness.
+  + now apply EqReflRuleSoundness.
   (* JFIEqSymRule *)
   + now apply EqSymRuleSoundness.
   (* JFIFalseElimRule *)
@@ -3468,8 +3466,7 @@ Proof.
   (* JFIImpliesElimRule *)
   + now apply ImpliesElimRuleSoundness with (p := p).
   (* JFIWeakRule *)
-  + assert (JFIProves decls gamma (JFISep p1 p2) p1). admit. (* TODO get through all IHs *)
-    eauto.
+  + eauto.
   (* JFISepAssoc1Rule *)
   + eauto.
   (* JFISepAssoc2Rule *)
