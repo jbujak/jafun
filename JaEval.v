@@ -139,7 +139,7 @@ Qed.
 
 (* ======================= Evalution structure ======================= *)
 
-Lemma EvaluationJoin : forall h st confs h' st' confs' h'' st'' CC,
+Theorem EvaluationJoin : forall h st confs h' st' confs' h'' st'' CC,
   JFIPartialEval h  st  confs  h'  st'  CC ->
   JFIPartialEval h' st' confs' h'' st'' CC ->
   JFIPartialEval h  st (confs ++ confs') h'' st'' CC.
@@ -189,7 +189,7 @@ Lemma ExtendedRedIsRed : forall h h' st st' ctxs ctxs' e1 e1' A A' CC ctx,
 Proof.
 Admitted.
 
-Lemma ExtendedCtxEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_confs hn e_A CC,
+Theorem ExtendedCtxEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A ext_confs hn e_A CC,
   JFIPartialEval h ([ ctxs  [[ e  ]]_ A  ]) confs hn
                     [ ctxs' [[ e' ]]_ e_A] CC ->
   ConfsExtendedByCtx ext_confs confs ctx ->
@@ -198,7 +198,7 @@ Lemma ExtendedCtxEvaluationIsEvaluation : forall confs h ctxs ctxs' ctx e e' A e
 Proof.
 Admitted.
 
-Lemma ExtendedStackEvaluationIsEvaluation : forall h st confs hn st' CC (ext_st : list Frame) ext_confs,
+Theorem ExtendedStackEvaluationIsEvaluation : forall h st confs hn st' CC (ext_st : list Frame) ext_confs,
     JFIPartialEval h st confs hn st' CC ->
     ConfsExtendedBySt ext_confs confs ext_st ->
     JFIPartialEval h (st ++ ext_st) ext_confs hn (st' ++ ext_st) CC.

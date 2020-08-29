@@ -358,7 +358,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*------------------------------------------------------------------*)
       JFIProves decls gamma (JFISep (JFISep p1 p2) p3) (JFISep p1 (JFISep p2 p3))
 
-| JFISepCommRule :
+| JFISepSymRule :
     forall decls gamma p1 p2,
       (FreeVarsInTermAreInGamma p1 gamma) ->
       (FreeVarsInTermAreInGamma p2 gamma) ->
@@ -426,19 +426,7 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare (JFIOr p q) e ex v r)
 
-| JFIHTDisjElimLRule :
-    forall decls gamma s p q r e ex v,
-      (JFIProves decls gamma s (JFIHoare (JFIOr p q) e ex v r)) ->
-      (*---------------------------------------------*)
-      (JFIProves decls gamma s (JFIHoare p e ex v r))
-
-| JFIHTDisjElimRRule :
-    forall decls gamma s p q r e ex v,
-      (JFIProves decls gamma s (JFIHoare (JFIOr p q) e ex v r)) ->
-      (*---------------------------------------------*)
-      (JFIProves decls gamma s (JFIHoare p e ex v r))
-
-(* TODO HT-Exist *)
+(* TODO remove both and replace with persistent *)
 
 | JFIHTEqRule1 :
     forall decls gamma s v1 v2 p e ex v q,
@@ -451,8 +439,6 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (JFIProves decls gamma s (JFIHoare (JFIAnd p (JFIEq v1 v2)) e ex v q)) ->
       (*----------------------------------------------------------------*)
       JFIProves decls gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e ex v q)
-
-(* TODO HT-HT *)
 
 (* Rules for basic constructs of Jafun *)
 
@@ -507,7 +493,17 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
           (JFAssign (x_expr, field) (JFVLoc loc))
            NPE_mode v JFITrue)
 
-(* TODO JFIHTFieldGetRule *)
+| JFIHTFieldGetRule :
+    forall decls gamma s x x_expr field u v,
+      (x_expr = JFIValToJFVal x) ->
+      (x <> (JFIVar u)) ->
+      (v <> (JFIVar u)) ->
+      (*--------------------------------------------------*)
+      JFIProves decls gamma s
+        (JFIHoare
+          (JFIFieldEq x field v)
+          (JFVal2 (x_expr, field))
+           None u (JFIEq (JFIVar u) v))
 
 | JFIHTNullFieldGetRule :
     forall decls gamma s x x_expr field v,
@@ -533,15 +529,9 @@ Inductive JFIProves : JFIDeclsType -> JFITypeEnv -> JFITerm -> JFITerm -> Prop :
       (methodLookup (JFIDeclsProg decls) cn mn = Some method) ->
       (fst (rettyp_of_md method) = JFClass rettypeCN) ->
       (In (JFIInvariant cn mn p' ex w q') (JFIDeclsInvariants decls)) ->
+      (JFIProves decls gamma (JFIAnd s (JFIHoare p' (JFInvoke v_expr mn vs_expr) ex w q'))
+                             (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)) ->
       (JFIProves decls gamma (JFIAnd s p) (JFIImplies (JFIEq v JFINull) JFIFalse)) ->
-      (JFIProves decls gamma s (JFIImplies p (JFITermSubstituteVals (params_of_md method) vs p'))) -> (* TODO substitute this *)
-      (forall x gamma_x,
-         JFIVarFreshInTerm x s ->
-         JFIGammaAddNew x rettypeCN gamma = Some gamma_x ->
-         JFIProves decls gamma_x s
-           (JFIImplies
-             (JFITermSubstituteVals (params_of_md method) vs (JFITermSubstituteVar w x q'))
-             (JFITermSubstituteVar u x q))) ->
       (*--------------------------------------------------*)
       JFIProves decls gamma s (JFIHoare p (JFInvoke v_expr mn vs_expr) ex u q)
 

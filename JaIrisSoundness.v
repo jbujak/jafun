@@ -33,7 +33,7 @@ Module JFXIdMapFacts := Facts JFXIdMap.
 
 Definition JFISemanticallyImplies (gamma : JFITypeEnv) (s : JFITerm) (p : JFITerm) (CC : JFProgram) :=
   forall env this h,
-    (JFIGammaMatchEnv h gamma env) ->
+    (JFIGammaMatchEnv h gamma env) -> (* TODO ograniczyć wymaganie do zmiennych wolnych w p i s *)
     (JFIHeapSatisfiesInEnv h s env this CC) ->
      JFIHeapSatisfiesInEnv h p env this CC.
 
@@ -1396,7 +1396,7 @@ Proof.
 Qed.
 Hint Resolve SepAssoc2Soundness : core.
 
-Lemma SepCommRuleSoundness : forall decls gamma p1 p2,
+Lemma SepSymRuleSoundness : forall decls gamma p1 p2,
   JFISemanticallyImplies gamma (JFISep p1 p2) (JFISep p2 p1) (JFIDeclsProg decls).
 Proof.
   intros decls gamma p1 p2.
@@ -1409,7 +1409,7 @@ Proof.
   + apply DisjointSymmetry.
     assumption.
 Qed.
-Hint Resolve SepCommRuleSoundness : core.
+Hint Resolve SepSymRuleSoundness : core.
 
 Lemma ImplicationToRestrictedImplication : forall gamma env this h h' p q CC,
   JFISubheap h' h ->
@@ -1427,6 +1427,21 @@ Proof.
   apply RestrictedEnvPreservesHeapSatisfying with (env' := env'); try assumption.
 Qed.
 
+Lemma MoveFreeVarsToMatchingHeap : forall h1 h2 h p1 p2 env this gamma CC,
+  JFIGammaMatchEnv h gamma env ->
+  JFIHeapsUnion h1 h2 h ->
+  JFIHeapsDisjoint h1 h2 ->
+  JFIHeapSatisfiesInEnv h1 p1 env this CC ->
+  JFIHeapSatisfiesInEnv h2 p2 env this CC ->
+  exists h1' h2',
+    JFIGammaMatchEnv h1' gamma env /\
+    JFIGammaMatchEnv h2' gamma env /\
+    JFIDisjointUnion h1' h2' h /\
+    JFIHeapSatisfiesInEnv h1' p1 env this CC /\
+    JFIHeapSatisfiesInEnv h2' p2 env this CC.
+Proof.
+Admitted.
+
 Lemma SepIntroSoundness : forall decls gamma p1 q1 p2 q2,
   let CC := JFIDeclsProg decls in
   JFISemanticallyImplies gamma p1 q1 CC ->
@@ -1437,13 +1452,13 @@ Proof.
   intros p1_implies_q1 p2_implies_q2.
   intros env this h gamma_match_env h_satisfies_sep.
   destruct h_satisfies_sep as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
+  destruct (MoveFreeVarsToMatchingHeap h1 h2 h p1 p2 env this gamma CC)
+    as (h1' & h2' & gamma_match_h1' & gamma_match_h2' & h'_union & h1'_satisfies_p1 & h2'_satisfies_p2); try easy.
 
-  exists h1, h2.
-  split; split; try assumption.
-  + apply ImplicationToRestrictedImplication with (gamma := gamma) (h := h) (p := p1); try assumption.
-    exact (proj1 union_h1_h2).
-  + apply ImplicationToRestrictedImplication with (gamma := gamma) (h := h) (p := p2); try assumption.
-    exact (proj1 (proj2 union_h1_h2)).
+  exists h1', h2'.
+  split; [ | split]; try easy.
+  now apply p1_implies_q1.
+  now apply p2_implies_q2.
 Qed.
 Hint Resolve SepIntroSoundness : core.
 
@@ -2361,39 +2376,6 @@ Proof.
   + exact (hoare_q_r env this h gamma_match_env h_satisfies_s H).
 Qed.
 Hint Resolve HTDisjIntroRuleSoundness : core.
-
-Lemma HTDisjElimRuleSoundness : forall gamma s p q e ex v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
-    (JFISemanticallyImplies gamma s (JFIHoare p e ex v r) CC) /\
-    (JFISemanticallyImplies gamma s (JFIHoare q e ex v r) CC).
-Proof.
-  intros gamma s p q e ex v r CC.
-  intros hoare_pq_r.
-  split;
-    intros env this h gamma_match_env h_satisfies_s h_satisfies_p;
-    apply (hoare_pq_r env this h gamma_match_env h_satisfies_s);
-    auto.
-Qed.
-
-Lemma HTDisjElimLRuleSoundness : forall gamma s p q e ex v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare p e ex v r) CC.
-Proof.
-  intros.
-  apply HTDisjElimRuleSoundness with (q := q).
-  assumption.
-Qed.
-Hint Resolve HTDisjElimLRuleSoundness : core.
-
-Lemma HTDisjElimRRuleSoundness : forall gamma s p q e ex v r CC,
-  (JFISemanticallyImplies gamma s (JFIHoare (JFIOr p q) e ex v r) CC) ->
-   JFISemanticallyImplies gamma s (JFIHoare q e ex v r) CC.
-Proof.
-  intros.
-  apply HTDisjElimRuleSoundness with (p := p).
-  assumption.
-Qed.
-Hint Resolve HTDisjElimRRuleSoundness : core.
 
 Lemma HTEqRule1Soundness : forall gamma s p v1 v2 e ex v q CC,
   (JFISemanticallyImplies gamma (JFIAnd s (JFIEq v1 v2)) (JFIHoare p e ex v q) CC) ->
@@ -3492,7 +3474,7 @@ Proof.
   + eauto.
   (* JFISepAssoc2Rule *)
   + eauto.
-  (* JFISepCommRule *)
+  (* JFISepSymRule *)
   + eauto.
   (* JFISepIntroRule *)
   + eauto.
@@ -3510,10 +3492,6 @@ Proof.
   + eauto.
   (* JFIHTDisjIntroRule *)
   + eauto.
-  (* JFIHTDisjElimLRule *)
-  + eauto.
-  (* JFIHTDisjElimRRule *)
-  + eauto.
   (* JFIHTEqRule1 *)
   + eauto.
   (* JFIHTEqRule2 *)
@@ -3530,6 +3508,8 @@ Proof.
   + eauto.
   (* JFINullHTFieldSetRule *)
   + eauto.
+  (* JFIHTFieldGetRule *)
+  + admit. (* TODO *)
   (* JFIHTNullFieldGetRule *)
   + eauto.
   (* JFIHTIfRule *)
