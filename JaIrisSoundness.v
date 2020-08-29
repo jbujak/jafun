@@ -1745,9 +1745,29 @@ Proof.
     ++ trivial.
 Qed.
 
-Lemma EnsureLocInHeap : forall h (n : nat),
+Lemma EnsureLocInHeap : forall x h gamma env this (n : nat),
+  JFIValToLoc x env this = Some (JFLoc n) ->
+  JFIGammaMatchEnv h gamma env ->
   exists (o : Obj), Heap.find n h = Some o.
 Proof.
+  intros x h gamma env this n.
+  intros x_is_n gamma_match_env.
+  unfold JFIValToLoc in x_is_n.
+  destruct x; try easy.
+  + admit. (* TODO this in heap *)
+  + destruct (gamma_match_env var) as (same_keys & types_match).
+    assert (StrMap.In var gamma).
+      apply same_keys.
+      apply StrMapFacts.elements_in_iff.
+      exists (JFLoc n).
+      now apply StrMapFacts.elements_mapsto_iff, StrMapFacts.find_mapsto_iff.
+    apply StrMapFacts.elements_in_iff in H as (type & var_type).
+    apply StrMapFacts.elements_mapsto_iff in var_type.
+    apply LocOfTypeImpliesLocInHeap with (n := n) (type := type) in types_match; try easy.
+    ++ apply HeapFacts.elements_in_iff in types_match as (o & n_o).
+       exists o.
+       now apply HeapFacts.find_mapsto_iff, HeapFacts.elements_mapsto_iff.
+    ++ now apply StrMapFacts.find_mapsto_iff.
 Admitted.
 
 (* Heaps and envs permutation *)
@@ -2543,7 +2563,7 @@ Proof.
   destruct (JFIExistsValToLoc v v_expr h gamma env this) as (vl & v_is_vl & subst_v); trivial.
   destruct xl as [ | xn].
   + destruct h_satisfies_p; try easy. exfalso. apply H. simpl. now rewrite x_is_xl.
-  + destruct (EnsureLocInHeap h xn) as ((obj & cn) & x_points_to_o).
+  + destruct (EnsureLocInHeap x h gamma env this xn) as ((obj & cn) & x_points_to_o); try easy.
     set (new_obj := ((JFXIdMap.add field vl obj), cn)).
     set (new_h := Heap.add xn new_obj h).
     exists [(h, [ [] [[ (JFAssign (JFVLoc (JFLoc xn), field) (JFVLoc vl)) ]]_ None])], new_h, None, vl.
