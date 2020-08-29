@@ -33,9 +33,9 @@ Module JFXIdMapFacts := Facts JFXIdMap.
 
 Definition JFISemanticallyImplies (gamma : JFITypeEnv) (s : JFITerm) (p : JFITerm) (CC : JFProgram) :=
   forall env this h,
-    (JFIGammaMatchEnv h gamma env) -> (* TODO ograniczyć wymaganie do zmiennych wolnych w p i s *)
-    (JFIHeapSatisfiesInEnv h s env this CC) ->
-     JFIHeapSatisfiesInEnv h p env this CC.
+    JFIGammaMatchEnv h gamma env ->
+    JFIHeapSatisfiesInEnv h s env this CC ->
+    JFIHeapSatisfiesInEnv h p env this CC.
 
 Definition JFISemanticallyImpliesOuter (gamma : JFITypeEnv) (s : JFIOuterTerm) (p : JFIOuterTerm) (CC : JFProgram) :=
   forall env this h,
@@ -826,9 +826,7 @@ Proof.
   intros v1_eq_v2.
   intros env this h gamma_match_env h_satisfies_p.
   apply EqSymmetry.
-  apply (v1_eq_v2 env this h).
-  + exact gamma_match_env.
-  + exact h_satisfies_p.
+  now apply (v1_eq_v2 env this h).
 Qed.
 
 Lemma FalseElimRuleSoundness : forall gamma p q CC,
@@ -862,12 +860,8 @@ Proof.
   intros env this h gamma_match_env h_satisfies_r.
   simpl.
   split.
-  + apply r_implies_p.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
-  + apply r_implies_q.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
+  now apply r_implies_p.
+  now apply r_implies_q.
 Qed.
 
 Lemma AndElimRuleSoundness : forall gamma p q r CC,
@@ -878,11 +872,7 @@ Proof.
   intros r_implies_p_and_q.
   split;
   intros env this h gamma_match_env h_satisfies_r;
-  apply r_implies_p_and_q.
-  + exact gamma_match_env.
-  + exact h_satisfies_r.
-  + exact gamma_match_env.
-  + exact h_satisfies_r.
+  now apply r_implies_p_and_q.
 Qed.
 
 Lemma OrIntroRuleSoundness : forall gamma p q r CC,
@@ -891,14 +881,8 @@ Lemma OrIntroRuleSoundness : forall gamma p q r CC,
 Proof.
   intros gamma p q r CC.
   intros [r_implies_p | r_implies_q]; intros env this h gamma_match_env h_satisfies_r; simpl.
-  + apply or_introl.
-    apply r_implies_p.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
-  + apply or_intror.
-    apply r_implies_q.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
+  now apply or_introl, r_implies_p.
+  now apply or_intror, r_implies_q.
 Qed.
 
 Lemma OrElimRuleSoundness : forall gamma p q r s CC,
@@ -912,12 +896,8 @@ Proof.
   intros env this h gamma_match_env h_satisfies_s.
   set (p_or_q := s_implies_p_or_q env this h gamma_match_env h_satisfies_s).
   destruct p_or_q as [h_satisfies_p | h_satisfies_q].
-  + apply (s_and_p_implies_r env this h gamma_match_env).
-    simpl.
-    exact (conj h_satisfies_s h_satisfies_p).
-  + apply (s_and_q_implies_r env this h gamma_match_env).
-    simpl.
-    exact (conj h_satisfies_s h_satisfies_q).
+  + now apply (s_and_p_implies_r env this h gamma_match_env).
+  + now apply (s_and_q_implies_r env this h gamma_match_env).
 Qed.
 
 Lemma ImpliesIntroRuleSoundness : forall gamma p q r CC,
@@ -931,9 +911,7 @@ Proof.
   simpl in r_and_p_implies_q.
   apply Classical_Prop.imply_to_or.
   intros h_satisfies_p.
-  apply r_and_p_implies_q.
-  + exact gamma_match_env.
-  + apply (conj h_satisfies_r h_satisfies_p).
+  now apply r_and_p_implies_q.
 Qed.
 
 Lemma ImpliesElimRuleSoundness : forall gamma p q r CC,
@@ -945,15 +923,11 @@ Proof.
   intros r_implies_p_implies_q r_implies_p.
   intros env this h gamma_match_env h_satisfies_r.
   apply (Classical_Prop.or_to_imply (JFIHeapSatisfiesInEnv h p env this CC)).
-  + apply r_implies_p_implies_q.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
-  + apply r_implies_p.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
+  now apply r_implies_p_implies_q.
+  now apply r_implies_p.
 Qed.
 
-(* =============== Separation rules soundness ===============*)
+(* =============h gamma_match_env===============*)
 
 Lemma EqualHeapsAreEquivalent : forall t CC h1 h2 env this,
   (HeapEq h1 h2) ->
@@ -1343,7 +1317,11 @@ Proof.
        apply or_intror.
        now apply (IHp2 h env env'). 
   + admit.
-  + split. (* TODO to moze nie zadzialac *)
+  + admit. (* TODO to jeszcze nie dziala, x -> l spoza h w env, x -> null w env'.
+                   Trzeba dolozyc wszystkie zmienne wolne z p do h i env' *)
+  + admit. (* TODO jw *)
+  + admit.
+  + admit.
 Admitted.
 
 Lemma EveryHeapSatisfiesPersistentTerm : forall p h h' env this CC,
@@ -1366,16 +1344,14 @@ Proof.
   destruct (ExistsUnion h1 h2) as (h12, union_h1_h2).
   + apply DisjointSymmetry.
     apply (SubheapDisjoint h2 h3 h23 h1); try assumption.
-    apply DisjointSymmetry.
-    exact disj_h1_h23.
+    now apply DisjointSymmetry.
   + exists h12, h3.
-    split; try split; try trivial.
+    split; try split; trivial.
     ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply (UnionDisjoint h1 h2 h12 h3); try assumption.
        apply DisjointSymmetry.
        apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
-       apply UnionSymmetry.
-       assumption.
+       now apply UnionSymmetry.
     ++ exists h1, h2.
        split; try split; trivial.
        apply DisjointSymmetry.
@@ -1394,7 +1370,6 @@ Proof.
       ((h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & (h1_satisfies_p1 & h2_satisfies_p2)) &
        h3_satisfies_p3)).
   simpl.
-
   destruct (ExistsUnion h2 h3) as (h23 & h2_h3_union).
   + apply (SubheapDisjoint h2 h1 h12 h3); try assumption.
     now apply UnionSymmetry.
@@ -1403,8 +1378,7 @@ Proof.
     ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply DisjointSymmetry.
         apply (UnionDisjoint h2 h3 h23 h1); try assumption.
-        +++ apply DisjointSymmetry.
-            assumption.
+        +++ now apply DisjointSymmetry.
         +++ apply DisjointSymmetry.
             apply (SubheapDisjoint h1 h2 h12 h3); try assumption.
     ++ exists h2, h3.
@@ -1437,11 +1411,11 @@ Lemma ImplicationToRestrictedImplication : forall gamma env this h h' p q CC,
 Proof.
   intros gamma env this h h' p q CC.
   intros h'_subheap gamma_match_env p_implies_q h'_satisfies_p.
-  destruct (ExistsRestrictedEnv env h') as (env' & env'_restricted).
-  assert (gamma_match_env' := RestrictedEnvMatchesGamma _ _ _ _ _ gamma_match_env h'_subheap env'_restricted).
-  apply RestrictedEnvPreservesHeapSatisfying with (env' := env') in h'_satisfies_p; try assumption.
-  assert (h'_satisfies_q := p_implies_q env' this h' gamma_match_env' h'_satisfies_p).
-  apply RestrictedEnvPreservesHeapSatisfying with (env' := env'); try assumption.
+  destruct (ExistsRestrictedEnv env h') as (env1 & env1_restricted).
+  apply RestrictedEnvPreservesHeapSatisfying with (env' := env1); try easy.
+  apply p_implies_q; try easy.
+  apply RestrictedEnvMatchesGamma with (env := env) (h := h); try easy.
+  apply RestrictedEnvPreservesHeapSatisfying with (env := env); try easy.
 Qed.
 
 Lemma SepIntroSoundness : forall decls gamma p1 q1 p2 q2,
@@ -1454,12 +1428,13 @@ Proof.
   intros p1_implies_q1 p2_implies_q2.
   intros env this h gamma_match_env h_satisfies_sep.
   destruct h_satisfies_sep as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
-
   exists h1, h2.
   split; [ | split]; try easy.
-  apply p1_implies_q1; try easy. admit. (* TODO gamma match env *)
-  apply p2_implies_q2; try easy. admit. (* TODO gamma match env *)
-Admitted.
+  + apply ImplicationToRestrictedImplication with (h := h) (gamma := gamma) (p := p1); try easy.
+    now apply union_h1_h2.
+  + apply ImplicationToRestrictedImplication with (h := h) (gamma := gamma) (p := p2); try easy.
+    now apply union_h1_h2.
+Qed.
 Hint Resolve SepIntroSoundness : core.
 
 Lemma SepIntroPersistentSoundness : forall decls gamma p q,
@@ -2338,8 +2313,8 @@ Proof.
   simpl in h_satisfies_hoare_p'.
   apply h_satisfies_hoare_p'.
   destruct (p_implies_p' env this h gamma_match_env h_satisfies_s) as [not_h_satisfies_p | h_satisfies_p'].
-    + destruct (not_h_satisfies_p h_satisfies_p).
-    + exact h_satisfies_p'.
+  + destruct (not_h_satisfies_p h_satisfies_p).
+  + exact h_satisfies_p'.
 Qed.
 
 Lemma HTPostconditionWeakenSoundness : forall gamma s p e ex v q q' cn CC,
@@ -3370,9 +3345,8 @@ Proof.
   apply h_satisfies_q.
   + apply ExtendedGammaMatchesExtendedEnv; assumption.
   + simpl.
-    split.
-    ++ apply AddingFreshVarPreservesHeapSatisfyingOuter; assumption.
-    ++ exact h_satisfies_p.
+    split; try easy.
+    apply AddingFreshVarPreservesHeapSatisfyingOuter; assumption.
 Qed.
 Hint Resolve OuterExistsElimRuleSoundness : core.
 
@@ -3417,13 +3391,9 @@ Proof.
   intros gamma p q r CC.
   intros [r_implies_p | r_implies_q]; intros env this h gamma_match_env h_satisfies_r; simpl.
   + apply or_introl.
-    apply r_implies_p.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
+    now apply r_implies_p.
   + apply or_intror.
-    apply r_implies_q.
-    ++ exact gamma_match_env.
-    ++ exact h_satisfies_r.
+    now apply r_implies_q.
 Qed.
 
 Lemma OuterOrElimRuleSoundness : forall gamma p q r s CC,
