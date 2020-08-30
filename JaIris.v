@@ -94,9 +94,13 @@ Fixpoint JFIHeapSatisfiesInEnv (h : Heap) (t : JFITerm) (env : JFITermEnv) (this
           | _ => False
         end
     | JFISep t1 t2 => exists (h1 h2 : Heap), (* TODO free vars in t_n map to h_n *)
+        (HeapConsistent h1 /\ HeapConsistent h2) /\
         (JFIHeapsUnion h1 h2 h /\ JFIHeapsDisjoint h1 h2) /\
         (JFIHeapSatisfiesInEnv h1 t1 env this CC /\ JFIHeapSatisfiesInEnv h2 t2 env this CC)
-    | JFIWand t1 t2 => forall h', JFIHeapsDisjoint h h' -> JFIHeapSatisfiesInEnv h' t1 env this CC ->
+    | JFIWand t1 t2 => forall h',
+        HeapConsistent h' ->
+        JFIHeapsDisjoint h h' ->
+        JFIHeapSatisfiesInEnv h' t1 env this CC ->
         (exists h_h', JFIHeapsUnion h h' h_h' /\ JFIHeapSatisfiesInEnv h_h' t2 env this CC) 
   end.
 

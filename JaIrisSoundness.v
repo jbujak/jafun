@@ -545,13 +545,11 @@ Proof.
   intros h t1 t2 env1 env2 this CC.
   intros env_eq t1_equivalence t2_equivalence.
   simpl.
-  intros (h1 & (h2 & (disjoint_unions & (h1_satisfies_t1 & h2_satisfies_t2)))).
+  intros (h1 & h2 & hs_consistent & disjoint_unions & h1_satisfies_t1 & h2_satisfies_t2).
   exists h1, h2.
-  split.
-  + exact disjoint_unions.
-  + split.
-    now apply (t1_equivalence h1 env1 env2).
-    now apply (t2_equivalence h2 env1 env2).
+  split; [ | split; [ | split]]; try easy.
+  now apply (t1_equivalence h1 env1 env2).
+  now apply (t2_equivalence h2 env1 env2).
 Qed.
 
 Lemma EnvEqGivesWandImplication : forall h t1 t2 env1 env2 this CC,
@@ -564,10 +562,10 @@ Proof.
   intros h t1 t2 env1 env2 this CC.
   intros env_eq t1_equivalence t2_equivalence.
   simpl.
-  intros wand h' disjoint_h_h' h'_satisfies_t1.
+  intros wand h' h'_consistent disjoint_h_h' h'_satisfies_t1.
   unfold EqualEnvsEquivalentInTermForHeap in t1_equivalence.
   apply (t1_equivalence h' env1 env2 this env_eq) in h'_satisfies_t1.
-  destruct (wand h' disjoint_h_h' h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
+  destruct (wand h' h'_consistent disjoint_h_h' h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
   apply (t2_equivalence h_h' env1 env2 this env_eq) in h_h'_satisfies_t2.
   now exists h_h'.
 Qed.
@@ -677,12 +675,12 @@ Proof.
   intros h x l env this (x_fresh_in_t1 & x_fresh_in_t2).
   split.
   + simpl.
-    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    intros (h1 & h2 & hs_consistent & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
     assert (h1_satisfies_t1_in_env_x := proj1 (t1_preserves h1 x l env this x_fresh_in_t1) h1_satisfies_t1).
     assert (h2_satisfies_t2_in_env_x := proj1 (t2_preserves h2 x l env this x_fresh_in_t2) h2_satisfies_t2).
     now exists h1, h2.
   + simpl.
-    intros (h1 & h2 & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
+    intros (h1 & h2 & hs_consistent & disjoint_union & h1_satisfies_t1 & h2_satisfies_t2).
     assert (h1_satisfies_t1_in_env := proj2 (t1_preserves h1 x l env this x_fresh_in_t1) h1_satisfies_t1).
     assert (h2_satisfies_t2_in_env := proj2 (t2_preserves h2 x l env this x_fresh_in_t2) h2_satisfies_t2).
     now exists h1, h2.
@@ -698,15 +696,15 @@ Proof.
   unfold FreshVarPreservesTermSatysfying.
   intros h x l env this (x_fresh_in_t1 & x_fresh_in_t2).
   split.
-  + intros h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1.
+  + intros h_satisfies_wand h' h'_consistent h_h'_disjoint h'_satisfies_t1.
     apply t1_preserves in h'_satisfies_t1; try assumption.
-    destruct (h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
+    destruct (h_satisfies_wand h' h'_consistent h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
     exists h_h'.
     unfold FreshVarPreservesTermSatysfying in t2_preserves.
     now apply t2_preserves with (x := x) (l := l) in h_h'_satisfies_t2; try assumption.
-  + intros h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1.
+  + intros h_satisfies_wand h' h'_consistent h_h'_disjoint h'_satisfies_t1.
     apply t1_preserves with (x := x) (l := l) in h'_satisfies_t1; try assumption.
-    destruct (h_satisfies_wand h' h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
+    destruct (h_satisfies_wand h' h'_consistent h_h'_disjoint h'_satisfies_t1) as (h_h' & h_h'_union & h_h'_satisfies_t2).
     exists h_h'.
     unfold FreshVarPreservesTermSatysfying in t2_preserves.
     now apply t2_preserves with (x := x) (l := l) in h_h'_satisfies_t2; try assumption.
@@ -1338,25 +1336,27 @@ Lemma SepAssoc1Soundness : forall decls gamma p1 p2 p3,
 Proof.
   intros decls gamma p1 p2 p3.
   intros env this h gamma_match_env h_satisfies_q.
-  destruct h_satisfies_q as (h1 & h23 & (union_h1_h23 & disj_h1_h23) & h1_satisfies_p1 &
-          h2 & h3 & (union_h2_h3 & disj_h2_h3) & h_2_satisfies_p2 & h3_satisfies_p3).
+  destruct h_satisfies_q as
+         (h1 & h23 & (h1_consistent & h23_consistent) & (union_h1_h23 & disj_h1_h23) & h1_satisfies_p1 &
+          h2 & h3 & (h2_consistent & h3_consistent) & (union_h2_h3 & disj_h2_h3) & h_2_satisfies_p2 & h3_satisfies_p3).
   simpl.
   destruct (ExistsUnion h1 h2) as (h12, union_h1_h2).
   + apply DisjointSymmetry.
     apply (SubheapDisjoint h2 h3 h23 h1); try assumption.
     now apply DisjointSymmetry.
   + exists h12, h3.
-    split; try split; trivial.
+    split; split; [ | | split | split]; trivial.
+    ++ admit. (* TODO union of consistent heaps is consistent *)
     ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply (UnionDisjoint h1 h2 h12 h3); try assumption.
        apply DisjointSymmetry.
        apply (SubheapDisjoint h3 h2 h23 h1); try (apply DisjointSymmetry; assumption).
        now apply UnionSymmetry.
     ++ exists h1, h2.
-       split; try split; trivial.
+       split; split; [ | | split | split]; trivial.
        apply DisjointSymmetry.
        apply (SubheapDisjoint h2 h3 h23 h1); try apply DisjointSymmetry; assumption.
-Qed.
+Admitted.
 Hint Resolve SepAssoc1Soundness : core.
 
 Lemma SepAssoc2Soundness : forall decls gamma p1 p2 p3,
@@ -1366,15 +1366,16 @@ Lemma SepAssoc2Soundness : forall decls gamma p1 p2 p3,
 Proof.
   intros decls gamma p1 p2 p3.
   intros env this h gamma_match_env h_satisfies_q.
-  destruct h_satisfies_q as (h12 & h3 & (union_h1_h23 & disj_h1_h23) &
-      ((h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & (h1_satisfies_p1 & h2_satisfies_p2)) &
+  destruct h_satisfies_q as (h12 & h3 & (h12_consistent & h3_consistent) & (union_h1_h23 & disj_h1_h23) &
+      ((h1 & h2 & (h1_consistent & h2_consistent) & (union_h1_h2 & disjoint_h1_h2) & (h1_satisfies_p1 & h2_satisfies_p2)) &
        h3_satisfies_p3)).
   simpl.
   destruct (ExistsUnion h2 h3) as (h23 & h2_h3_union).
   + apply (SubheapDisjoint h2 h1 h12 h3); try assumption.
     now apply UnionSymmetry.
   + exists h1, h23.
-    split; try split; try trivial.
+    split; split; [ | | split | split]; trivial.
+    ++ admit. (* TODO union of consistent heaps is consistent *)
     ++ now apply (UnionAssoc h1 h2 h3 h12 h23).
     ++ apply DisjointSymmetry.
         apply (UnionDisjoint h2 h3 h23 h1); try assumption.
@@ -1382,9 +1383,9 @@ Proof.
         +++ apply DisjointSymmetry.
             apply (SubheapDisjoint h1 h2 h12 h3); try assumption.
     ++ exists h2, h3.
-       split; try split; trivial.
+       split; split; [ | | split | split]; trivial.
        apply (SubheapDisjoint h2 h1 h12 h3); try apply UnionSymmetry; assumption.
-Qed.
+Admitted.
 Hint Resolve SepAssoc2Soundness : core.
 
 Lemma SepSymRuleSoundness : forall decls gamma p1 p2,
@@ -1392,9 +1393,9 @@ Lemma SepSymRuleSoundness : forall decls gamma p1 p2,
 Proof.
   intros decls gamma p1 p2.
   intros env this h gamma_match_env h_satisfies_sep.
-  destruct h_satisfies_sep as (h1 & h2 & (union_h2_h2 & disjoint_h1_h2) & h_satisfies_p1 & h2_satisfies_p2).
+  destruct h_satisfies_sep as (h1 & h2 & (h1_consistent & h2_consistent) & (union_h2_h2 & disjoint_h1_h2) & h_satisfies_p1 & h2_satisfies_p2).
   exists h2, h1.
-  split; split; try assumption.
+  split; split; [ | | split | split]; trivial.
   + apply UnionSymmetry.
     assumption.
   + apply DisjointSymmetry.
@@ -1427,9 +1428,9 @@ Proof.
   intros decls gamma p1 q1 p2 q2 CC.
   intros p1_implies_q1 p2_implies_q2.
   intros env this h gamma_match_env h_satisfies_sep.
-  destruct h_satisfies_sep as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
+  destruct h_satisfies_sep as (h1 & h2 & hs_consistent & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_p1 & h2_satisfies_p2).
   exists h1, h2.
-  split; [ | split]; try easy.
+  split; [ | split; [ | split]]; try easy.
   + apply ImplicationToRestrictedImplication with (h := h) (gamma := gamma) (p := p1); try easy.
     now apply union_h1_h2.
   + apply ImplicationToRestrictedImplication with (h := h) (gamma := gamma) (p := p2); try easy.
@@ -1446,14 +1447,16 @@ Proof.
   intros p_persistent.
   intros env this h gamma_match_env h_satisfies_and.
   exists (Heap.empty Obj), h.
-  split; split; try assumption.
+  split; split; [ | | split | split]; try easy.
+  + admit. (* TODO empty heap is consistent *)
+  + admit. (* TODO h consistent *)
   + apply UnionIdentity.
   + apply JFIEmptyHeapDisjoint.
   + apply EveryHeapSatisfiesPersistentTerm with (h := h); try assumption.
     apply h_satisfies_and.
   + simpl in h_satisfies_and.
     apply h_satisfies_and.
-Qed.
+Admitted.
 Hint Resolve SepIntroPersistentSoundness : core.
 
 Lemma WandIntroSoundness : forall decls gamma p q r,
@@ -1464,7 +1467,7 @@ Proof.
   intros decls gamma p q r CC.
   intros sep_implies_q.
   intros env this h gamma_match_env h_satisfies_r.
-  intros h' h_disjoint h'_satisfies_p.
+  intros h' h'_consistent h_disjoint h'_satisfies_p.
   destruct (ExistsUnion h h') as (h_h', union_h_h'); try assumption.
   exists h_h'.
   split; try assumption.
@@ -1496,8 +1499,9 @@ Proof.
        exists o.
        trivial.
   + exists h, h'.
-    split; split; try assumption.
-Qed.
+    split; split; [ | | split | split]; try assumption.
+    admit. (* TODO h consistent *)
+Admitted.
 Hint Resolve WandIntroSoundness : core.
 
 Lemma WandElimSoundness : forall decls gamma p q r1 r2,
@@ -1511,7 +1515,7 @@ Proof.
   intros env this h gamma_match_env h_satisfies_r.
 
   simpl in h_satisfies_r.
-  destruct h_satisfies_r as (h1 & h2 & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_r1 & h2_satisfies_r2).
+  destruct h_satisfies_r as (h1 & h2 &  (h1_consistent & h2_consistent) & (union_h1_h2 & disjoint_h1_h2) & h1_satisfies_r1 & h2_satisfies_r2).
 
   destruct (ExistsRestrictedEnv env h1) as (env1 & env1_restricted).
   assert (gamma_match_env1 := RestrictedEnvMatchesGamma gamma env h env1 h1 gamma_match_env (proj1 union_h1_h2) env1_restricted).
@@ -1527,7 +1531,7 @@ Proof.
   apply RestrictedEnvPreservesHeapSatisfying with (env := env) in h2_satisfies_p; try assumption.
 
   simpl in h1_satisfies_wand.
-  destruct (h1_satisfies_wand h2 disjoint_h1_h2 h2_satisfies_p) as (h' & union_h1_h2_h' & h'_satisfies_q).
+  destruct (h1_satisfies_wand h2 h2_consistent disjoint_h1_h2 h2_satisfies_p) as (h' & union_h1_h2_h' & h'_satisfies_q).
   apply EqualHeapsAreEquivalent with (h1 := h) (h2 := h'); try assumption.
   apply UnionUnique with (h1 := h1) (h2 := h2); assumption.
 Qed.
@@ -2133,18 +2137,20 @@ Proof.
   intros t1 t2 h h_perm env env_perm this pi CC IH_t1 IH_t2 pi_h pi_env.
   intros sep_in_env.
   assert (pi_correct := proj1 pi_h).
-  destruct sep_in_env as (h1 & h2 & disj_union & h1_satisfies_t1 & h2_satisfies_t2).
+  destruct sep_in_env as (h1 & h2 & hs_consistent & disj_union & h1_satisfies_t1 & h2_satisfies_t2).
   assert (covers_h := PermutedHeapCovered h h_perm pi pi_h).
   destruct (proj1 (PermutationCoversUnion h1 h2 h pi (proj1 disj_union)) covers_h).
   destruct (ExistsPermutedHeap h1 pi) as (h1_perm & pi_h1); trivial.
   destruct (ExistsPermutedHeap h2 pi) as (h2_perm & pi_h2); trivial.
   exists h1_perm, h2_perm.
-  split.
-  now apply DisjointUnionPermuted with (h1 := h1) (h2 := h2) (h := h) (pi := pi).
-  split.
-  now apply (IH_t1 h1 h1_perm env env_perm this pi CC).
-  now apply (IH_t2 h2 h2_perm env env_perm this pi CC).
-Qed.
+  split; split.
+  + admit. (* TODO permutation consistent *)
+  + admit. (* TODO permutation consistent *)
+  + now apply DisjointUnionPermuted with (h1 := h1) (h2 := h2) (h := h) (pi := pi).
+  + split.
+    now apply (IH_t1 h1 h1_perm env env_perm this pi CC).
+    now apply (IH_t2 h2 h2_perm env env_perm this pi CC).
+Admitted.
 
 Lemma PermutationPreservesSepSatisfying : forall t1 t2,
   PermutationPreservesSatisfying t1 ->
@@ -2171,7 +2177,7 @@ Proof.
   intros t1 t2 h h_perm env env_perm this pi CC IH_t1 IH_t2 pi_h pi_env.
   intros wand_in_env.
   assert (bijection := proj1 pi_h).
-  intros h'_perm disj_perm h'_satisfies_t1.
+  intros h'_perm h'_perm_consistent disj_perm h'_satisfies_t1.
   destruct (InvertPermutation pi) as (pi' & pi'_heaps & pi'_envs).
   assert (pi'_h := pi_h).
   apply pi'_heaps in pi'_h.
@@ -2188,7 +2194,9 @@ Proof.
   assert (pi'_env := pi_env).
   apply pi'_envs in pi'_env.
   apply (IH_t1 h'_perm h' env_perm env this pi' CC) in h'_satisfies_t1; try easy.
-  destruct (wand_in_env h' h_h'_disj h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
+  assert (h'_consistent : HeapConsistent h').
+    admit. (* TODO permutation consistent *)
+  destruct (wand_in_env h' h'_consistent h_h'_disj h'_satisfies_t1) as (h_h' & union_h_h' & h_h'_satisfies_t2).
   assert (covers_h := PermutedHeapCovered h h_perm pi pi_h).
   assert (covers_h' := PermutedHeapCovered h' h'_perm pi pi_h').
   assert (covers_h_h' : PiCoversHeap pi h_h').
@@ -2243,7 +2251,7 @@ Proof.
   intros s_persistent v_fresh_in_r hoare_p_e_q.
   intros env this h gamma_match_env h_satisfies_s.
   intros h_satisfies_sep.
-  destruct h_satisfies_sep as (hp & hr & union_hp_hr &
+  destruct h_satisfies_sep as (hp & hr & (hp_consistent & hr_consistent) & union_hp_hr &
     hp_satisfies_p & hr_satisfies_r).
   assert (fake_gamma_match_env : JFIGammaMatchEnv hp gamma env). admit.
   assert (hp_satisfies_s := h_satisfies_s).
@@ -2255,7 +2263,6 @@ Proof.
   rewrite ex_eq in *; clear ex_eq res_ex.
   destruct (EvaluationOnExtendedHeap hp hr h e confs hn ex res env this CC)
     as (confs_ext & hn_perm & hn_ext & res_ext & pi & eval_ext); try easy.
-    admit. (* TODO hp consistent *)
     admit. (* TODO no hardcoded locs in e *)
     admit. (* TODO free vars in e are in hp *)
   destruct eval_ext as
@@ -2264,9 +2271,8 @@ Proof.
   simpl.
   split; try split; try easy.
   exists hn_perm, hr.
-  split; split.
-  + apply union_hn_perm_hr.
-  + apply union_hn_perm_hr.
+  split; [ split | split; [ | split]]; try easy.
+  + admit. (* TODO permutation consistent *)
   + apply (PermutationPreservesHeapSatisfying _  hn _ (StrMap.add v res env) _ _ pi CC); try easy.
     now apply ExtendPermutedEnvs.
   + destruct res_ext.
@@ -3203,11 +3209,12 @@ Proof.
   + unfold HeapEnvEquivalent.
     simpl.
     split.
-    ++ intros (h11 & h12 & disjoint_union_h1 & h11_satisfies_t1 & h12_satisfies_t2).
+    ++ intros (h11 & h12 & (h11_consistent & h12_consistent) & disjoint_union_h1 & h11_satisfies_t1 & h12_satisfies_t2).
        destruct (ExistsUnion h11 h2) as (h11_h2 & union_h11_h2). admit.
        destruct (ExistsUnion h12 h2) as (h12_h2 & union_h12_h2). admit.
        exists h11_h2, h12.
-       split; [ | split].
+       split; [ | split; [ | split]].
+       +++ admit. (* TODO h2 consistent, union consistent *)
        +++ admit.
        +++ apply (IHt1 h11 env1 h2 h11_h2 env this CC); try easy.
            - admit. (* TODO envs in sep *)
