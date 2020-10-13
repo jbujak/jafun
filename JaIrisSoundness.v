@@ -12,7 +12,6 @@ Require Import JaProgram.
 Require Import JaEnvs.
 Require Import Jafun.
 Require Import JaIrisCommon.
-Require Import JaIrisProof.
 Require Import JaIrisPermutation.
 Require Import JaEval.
 Require Import JaIris.
@@ -782,6 +781,7 @@ Proof.
   intros p_implies_q.
   intros q_implies_r.
   intros env this h gamma_match_env h_satisfies_p.
+unfold JFISemanticallyImplies in p_implies_q.
   apply (q_implies_r env this h gamma_match_env).
   apply (p_implies_q env this h gamma_match_env).
   exact h_satisfies_p.
@@ -1275,6 +1275,7 @@ Proof.
   now apply LocOfTypeImpliesLocInHeap with (type := type).
 Qed.
 
+(* TODO to jest szczególny przypadek ExtendingHeapPreservesHeapSatisfying *)
 Lemma RestrictedEnvPreservesHeapSatisfying : forall p h env env' this CC,
   EnvRestrictedToHeap env h env' ->
   (JFIHeapSatisfiesInEnv h p env this CC <-> JFIHeapSatisfiesInEnv h p env' this CC).
@@ -1316,7 +1317,7 @@ Proof.
        now apply (IHp2 h env env'). 
   + admit.
   + admit. (* TODO to jeszcze nie dziala, x -> l spoza h w env, x -> null w env'.
-                   Trzeba dolozyc wszystkie zmienne wolne z p do h i env' *)
+                   Trzeba dolozyc założenie że wszystkie zmienne wolne są w h *)
   + admit. (* TODO jw *)
   + admit.
   + admit.
